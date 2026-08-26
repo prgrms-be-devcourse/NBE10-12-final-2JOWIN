@@ -7,9 +7,11 @@ buildscript {
 
 plugins {
 	id 'java'
+	id 'jacoco'                                  // 테스트 커버리지
 	id 'org.springframework.boot' version '4.1.1'
 	id 'io.spring.dependency-management' version '1.1.7'
 	id 'org.flywaydb.flyway' version '11.7.2'   // CI: flywayMigrate·flywayValidate (13-dev-workflow.md §3)
+	id 'com.github.spotbugs' version '6.5.11'   // 정적 분석
 }
 
 group = 'com.twojo'
@@ -45,6 +47,17 @@ dependencies {
 	// spring-modulith-starter-jdbc + 자기 번호대 마이그레이션으로 추가한다.
 	implementation 'org.springframework.modulith:spring-modulith-starter-core'
 
+	// JWT — access 토큰 서명·검증 (HS256 단일 키, 14-tech-stack.md §3-4)
+	implementation 'io.jsonwebtoken:jjwt-api:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-impl:0.12.6'
+	runtimeOnly 'io.jsonwebtoken:jjwt-jackson:0.12.6'
+
+	// 메일 발송 — JavaMailSender (발송 서비스 SES/SMTP는 14-tech-stack.md §3-3)
+	implementation 'org.springframework.boot:spring-boot-starter-mail'
+
+	// Swagger UI / OpenAPI — API 테스트용 (/swagger-ui/index.html)
+	implementation 'org.springdoc:springdoc-openapi-starter-webmvc-ui:3.1.0'
+
 	compileOnly 'org.projectlombok:lombok'
 	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'   // /actuator/prometheus (14-tech-stack.md §1.5)
 	runtimeOnly 'org.postgresql:postgresql'
@@ -71,8 +84,48 @@ dependencyManagement {
 	}
 }
 
+// ── 테스트 구조 — 팀 플로우: 구현 → 단위 테스트 → Swagger API 테스트
+// test            = 순수 단위 테스트만 (JUnit + Mockito, DB 불필요) — 기본
+// integrationTest = @Tag("integration") — 실제 PG 필요 (로컬: docker compose 선행, CI: 서비스 컨테이너)
 tasks.named('test') {
-	useJUnitPlatform()
+	useJUnitPlatform {
+		excludeTags 'integration'
+	}
+	finalizedBy 'jacocoTestReport'
+}
+
+tasks.register('integrationTest', Test) {
+	description = '실제 PostgreSQL이 필요한 통합 테스트 (@Tag("integration"))'
+	group = 'verification'
+	testClassesDirs = sourceSets.test.output.classesDirs
+	classpath = sourceSets.test.runtimeClasspath
+	useJUnitPlatform {
+		includeTags 'integration'
+	}
+	shouldRunAfter 'test'
+}
+
+// ── JaCoCo — 커버리지 리포트: build/reports/jacoco/test/html/index.html
+jacocoTestReport {
+	dependsOn 'test'
+	reports {
+		xml.required = true
+		html.required = true
+	}
+}
+
+// ── SpotBugs — 정적 분석 (main 소스만 · 리포트: build/reports/spotbugs/main.html)
+spotbugs {
+	reportLevel = com.github.spotbugs.snom.Confidence.valueOf('MEDIUM')
+	excludeFilter = file('config/spotbugs/exclude.xml')   // record DTO의 EI_EXPOSE_REP 소음 제외
+}
+spotbugsTest {
+	enabled = false   // 테스트 코드는 제외
+}
+tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
+	reports {
+		html { required = true }
+	}
 }
 
 // CI 전용 — 실제 PG 컨테이너에 마이그레이션을 태워 검증 (13-dev-workflow.md §3)

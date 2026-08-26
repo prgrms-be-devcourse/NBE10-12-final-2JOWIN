@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- SpotBugs 제외 규칙 — 추가·변경은 팀 합의로 -->
+<FindBugsFilter xmlns="https://github.com/spotbugs/filter/3.0.0">
+
+    <!--
+      EI_EXPOSE_REP / EI_EXPOSE_REP2: record가 List·Date 등 가변 참조를 그대로 반환한다는 경고.
+      DTO 설계서(docs/08-dto.md)가 record + List를 응답 계약의 표준으로 쓰므로
+      전 도메인에서 반복 발생하는 소음이라 제외한다. (엔티티/서비스의 진짜 노출 문제는
+      코드 리뷰에서 잡는다 — PR 셀프 체크리스트)
+    -->
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP"/>
+    </Match>
+    <Match>
+        <Bug pattern="EI_EXPOSE_REP2"/>
+    </Match>
+
+</FindBugsFilter>
