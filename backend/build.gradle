@@ -122,5 +122,6 @@ flyway {
 	url = System.getenv('FLYWAY_URL') ?: 'jdbc:postgresql://localhost:5433/twojo'
 	user = System.getenv('FLYWAY_USER') ?: 'twojo'
 	password = System.getenv('FLYWAY_PASSWORD') ?: 'twojo'
-	locations = ['filesystem:src/main/resources/db/migration']
+	locations = ['filesystem:src/main/resources/db/migration', 'filesystem:src/main/resources/db/seed']
+	// seed(R__demo_seed.sql)도 CI flyway-validate가 함께 태워 SQL 오류를 잡는다 — 운영 적용과는 무관 (local 프로필만)
 }

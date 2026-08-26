@@ -42,6 +42,8 @@ spring:
     url: jdbc:postgresql://localhost:5433/twojo
     username: twojo
     password: twojo
+  flyway:
+    locations: classpath:db/migration, classpath:db/seed   # local만 데모 시드 적용 (R__demo_seed.sql)
 
 logging:
   level:
