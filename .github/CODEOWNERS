@@ -1,0 +1,43 @@
+# CODEOWNERS — PR 리뷰어 자동 배정 (docs/13-dev-workflow.md §2)
+# 담당 매핑: docs/11-work-breakdown.md §0 담당 요약 기준
+# ⚠️ 팀원 GitHub 유저네임 확정 후 주석 해제 — @유저네임 자리를 채운다
+#
+# ── A 조민석 — 온보딩·구성원·인증(+공통 기반)
+# backend/src/main/java/com/twojo/onboarding/  @A유저네임
+# backend/src/main/java/com/twojo/member/      @A유저네임
+# backend/src/main/java/com/twojo/auth/        @A유저네임
+# frontend/src/domains/auth/                   @A유저네임
+# frontend/src/domains/member/                 @A유저네임
+#
+# ── B 한상민 — 고객사·카탈로그·활동이력
+# backend/src/main/java/com/twojo/customer/    @B유저네임
+# backend/src/main/java/com/twojo/product/     @B유저네임
+# backend/src/main/java/com/twojo/activity/    @B유저네임
+# frontend/src/domains/customer/               @B유저네임
+# frontend/src/domains/product/                @B유저네임
+# frontend/src/domains/activity/               @B유저네임
+#
+# ── C 최선진 — Deal·견적·주문
+# backend/src/main/java/com/twojo/deal/        @C유저네임
+# backend/src/main/java/com/twojo/quote/       @C유저네임
+# backend/src/main/java/com/twojo/order/       @C유저네임
+# frontend/src/domains/deal/                   @C유저네임
+# frontend/src/domains/quote/                  @C유저네임
+# frontend/src/domains/order/                  @C유저네임
+#
+# ── D 이준형 — 고객승인·알림·현황
+# backend/src/main/java/com/twojo/approval/     @D유저네임
+# backend/src/main/java/com/twojo/notification/ @D유저네임
+# backend/src/main/java/com/twojo/dashboard/    @D유저네임
+# frontend/src/domains/notification/            @D유저네임
+# frontend/src/domains/dashboard/               @D유저네임
+#
+# ── E 김대연 — 인프라·공통·boundary·프론트 플랫폼
+# backend/src/main/java/com/twojo/global/      @E유저네임
+# backend/src/main/java/com/twojo/boundary/    @E유저네임
+# backend/src/main/resources/db/migration/     @E유저네임
+# frontend/src/app/                            @E유저네임
+# frontend/src/shared/                         @E유저네임
+# frontend/src/mocks/                          @E유저네임
+# infra/                                       @E유저네임
+# .github/                                     @E유저네임
