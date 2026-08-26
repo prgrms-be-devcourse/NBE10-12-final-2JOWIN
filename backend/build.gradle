@@ -1,0 +1,85 @@
+buildscript {
+	repositories { mavenCentral() }
+	dependencies {
+		classpath 'org.flywaydb:flyway-database-postgresql:11.7.2'   // flyway gradle plugin의 PG 지원
+	}
+}
+
+plugins {
+	id 'java'
+	id 'org.springframework.boot' version '4.1.1'
+	id 'io.spring.dependency-management' version '1.1.7'
+	id 'org.flywaydb.flyway' version '11.7.2'   // CI: flywayMigrate·flywayValidate (13-dev-workflow.md §3)
+}
+
+group = 'com.twojo'
+version = '0.0.1-SNAPSHOT'
+description = '2JO Deal-to-Order SaaS Backend'
+
+java {
+	toolchain {
+		languageVersion = JavaLanguageVersion.of(21)   // Java 21 LTS 고정 (14-tech-stack.md §3-5)
+	}
+}
+
+repositories {
+	mavenCentral()
+}
+
+ext {
+	set('springModulithVersion', "2.1.1")
+}
+
+dependencies {
+	implementation 'org.springframework.boot:spring-boot-starter-actuator'
+	implementation 'org.springframework.boot:spring-boot-starter-data-jpa'
+	implementation 'org.springframework.boot:spring-boot-starter-flyway'
+	implementation 'org.springframework.boot:spring-boot-starter-security'
+	implementation 'org.springframework.boot:spring-boot-starter-validation'
+	implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+	implementation 'org.flywaydb:flyway-database-postgresql'
+
+	// Spring Modulith — 모듈 경계 검증 + @ApplicationModuleListener (11-work-breakdown.md §7.3)
+	// starter-jpa(이벤트 영속화 레지스트리)는 의도적으로 제외 — event_publication 테이블을 만들지 않아
+	// ERD v1.6의 25테이블 원칙을 유지한다. 이벤트 유실 보장이 필요해지면 팀 합의 후
+	// spring-modulith-starter-jdbc + 자기 번호대 마이그레이션으로 추가한다.
+	implementation 'org.springframework.modulith:spring-modulith-starter-core'
+
+	compileOnly 'org.projectlombok:lombok'
+	runtimeOnly 'io.micrometer:micrometer-registry-prometheus'   // /actuator/prometheus (14-tech-stack.md §1.5)
+	runtimeOnly 'org.postgresql:postgresql'
+	annotationProcessor 'org.projectlombok:lombok'
+
+	testImplementation 'org.springframework.boot:spring-boot-starter-actuator-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-data-jpa-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-flyway-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-security-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-validation-test'
+	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+	testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
+
+	// 테스트는 실제 PostgreSQL에서 — ddl-auto 기준 금지 (13-dev-workflow.md §3)
+	// 로컬: infra/docker-compose.yml의 twojo_test DB · CI: 서비스 컨테이너 PG (application-test.yml)
+	testCompileOnly 'org.projectlombok:lombok'
+	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+	testAnnotationProcessor 'org.projectlombok:lombok'
+}
+
+dependencyManagement {
+	imports {
+		mavenBom "org.springframework.modulith:spring-modulith-bom:${springModulithVersion}"
+	}
+}
+
+tasks.named('test') {
+	useJUnitPlatform()
+}
+
+// CI 전용 — 실제 PG 컨테이너에 마이그레이션을 태워 검증 (13-dev-workflow.md §3)
+// 로컬: ./gradlew flywayMigrate -Pflyway-local (infra/docker-compose.yml의 PG 대상)
+flyway {
+	url = System.getenv('FLYWAY_URL') ?: 'jdbc:postgresql://localhost:5433/twojo'
+	user = System.getenv('FLYWAY_USER') ?: 'twojo'
+	password = System.getenv('FLYWAY_PASSWORD') ?: 'twojo'
+	locations = ['filesystem:src/main/resources/db/migration']
+}

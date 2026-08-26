@@ -1,0 +1,8 @@
+# 테스트 프로필 — 실제 PostgreSQL 사용 (ddl-auto 기준 금지, 13-dev-workflow.md §3)
+# 로컬: infra/docker-compose.yml이 twojo_test DB를 함께 만든다
+# CI: 같은 좌표(localhost:5432/twojo_test)로 서비스 컨테이너를 띄운다
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5433/twojo_test
+    username: twojo
+    password: twojo

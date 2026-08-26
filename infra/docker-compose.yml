@@ -1,0 +1,25 @@
+# 로컬 개발 인프라 — PostgreSQL 16 (ERD가 PG 15+ 전제, 14-tech-stack.md §1.3)
+# 사용: docker compose -f infra/docker-compose.yml up -d
+#   twojo      — 로컬 개발용 (backend local 프로필)
+#   twojo_test — 테스트용   (backend test 프로필 · ./gradlew test)
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: twojo-postgres
+    environment:
+      POSTGRES_USER: twojo
+      POSTGRES_PASSWORD: twojo
+      POSTGRES_DB: twojo
+    ports:
+      - "5433:5432"   # 5433 사용 — 팀원 로컬의 네이티브 PostgreSQL(5432)과 충돌 방지
+    volumes:
+      - twojo-pgdata:/var/lib/postgresql/data
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U twojo -d twojo"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  twojo-pgdata:
