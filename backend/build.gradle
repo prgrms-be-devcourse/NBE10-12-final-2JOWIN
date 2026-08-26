@@ -1,7 +1,7 @@
 buildscript {
 	repositories { mavenCentral() }
 	dependencies {
-		classpath 'org.flywaydb:flyway-database-postgresql:11.7.2'   // flyway gradle plugin의 PG 지원
+		classpath 'org.flywaydb:flyway-database-postgresql:13.4.0'   // flyway gradle plugin의 PG 지원
 	}
 }
 
@@ -10,7 +10,7 @@ plugins {
 	id 'jacoco'                                  // 테스트 커버리지
 	id 'org.springframework.boot' version '4.1.1'
 	id 'io.spring.dependency-management' version '1.1.7'
-	id 'org.flywaydb.flyway' version '11.7.2'   // CI: flywayMigrate·flywayValidate (13-dev-workflow.md §3)
+	id 'org.flywaydb.flyway' version '13.4.0'   // CI: flywayMigrate·flywayValidate (13-dev-workflow.md §3)
 	id 'com.github.spotbugs' version '6.5.11'   // 정적 분석
 }
 

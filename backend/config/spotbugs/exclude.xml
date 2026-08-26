@@ -15,4 +15,13 @@
         <Bug pattern="EI_EXPOSE_REP2"/>
     </Match>
 
+    <!--
+      JPA 엔티티 오탐: 필드를 자바 코드가 아니라 Hibernate가 리플렉션으로 채우므로
+      "쓰기 없는 필드" 계열 경고가 전부 오탐이다. 엔티티 패키지(*.entity, global.sequence)에 한정해 제외.
+    -->
+    <Match>
+        <Class name="~com\.twojo\.(.*\.entity|global\.sequence)\..*"/>
+        <Bug pattern="UWF_UNWRITTEN_FIELD,UUF_UNUSED_FIELD,URF_UNREAD_FIELD,NP_UNWRITTEN_FIELD"/>
+    </Match>
+
 </FindBugsFilter>
