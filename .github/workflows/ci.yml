@@ -13,7 +13,8 @@ concurrency:
 
 jobs:
   build:
-    name: build (컴파일 + 테스트)
+    # 컴파일 + 테스트(스키마 검증 포함) + SpotBugs — 잡 이름은 required check로 참조되므로 짧게 유지
+    name: build
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -44,7 +45,8 @@ jobs:
         run: ./gradlew build
 
   flyway-validate:
-    name: flyway-validate (실제 PG에 마이그레이션 검증)
+    # 실제 PG에 마이그레이션 적용·검증
+    name: flyway-validate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -78,7 +80,8 @@ jobs:
           FLYWAY_PASSWORD: twojo
 
   flyway-version-check:
-    name: flyway-version-check (버전 번호 중복 검사)
+    # 마이그레이션 버전 번호 중복 검사
+    name: flyway-version-check
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -94,7 +97,8 @@ jobs:
           echo "버전 중복 없음"
 
   frontend:
-    name: frontend (타입 검사 + 빌드) — 문서 외 추가
+    # 타입 검사 + 빌드 — 13-dev-workflow.md 3잡 외 추가분 (required 여부는 팀 결정)
+    name: frontend
     runs-on: ubuntu-latest
     defaults:
       run:
