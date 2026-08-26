@@ -31,10 +31,24 @@ cd backend && ./gradlew bootRun --args='--spring.profiles.active=local'
 cd frontend && npm install && npm run dev
 ```
 
-테스트는 실제 PG(`twojo_test` DB)에 Flyway를 태워 돈다 — **docker compose가 떠 있어야 한다.**
+## 테스트 방식
+
+개발 플로우: **구현 → 단위 테스트 → API 테스트(Swagger)** — 별도 통합 테스트 단계 없음.
 
 ```bash
 cd backend && ./gradlew test
+```
+
+- `test` 하나로 통일 — 단위 테스트(JUnit + Mockito)와 **스키마 검증**(contextLoads)이 함께 돈다
+- 스키마 검증 = 실제 PG(`twojo_test`)에 Flyway 전체 적용 + `ddl-auto: validate`로 엔티티↔테이블 정합 대조.
+  마이그레이션과 엔티티가 어긋나면 여기서 잡힌다 (13-dev-workflow.md §3 "Flyway를 실제로 태워 검증"의 구현체)
+- 따라서 **docker compose PG가 떠 있어야 한다** (안 떠 있으면 connection refused로 실패)
+- 커버리지: `test` 후 자동 생성 — `backend/build/reports/jacoco/test/html/index.html`
+- API 테스트: `bootRun` 후 http://localhost:8080/swagger-ui/index.html
+
+```bash
+# 정적 분석(SpotBugs)까지 포함한 전체 검증 — CI build 잡과 동일
+cd backend && ./gradlew build
 ```
 
 ## 백엔드 구조 — Spring Modulith
