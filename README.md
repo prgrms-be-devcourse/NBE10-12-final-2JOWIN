@@ -31,6 +31,19 @@ cd backend && ./gradlew bootRun --args='--spring.profiles.active=local'
 cd frontend && npm install && npm run dev
 ```
 
+## 시드 = 목 픽스처 = 시연 데이터
+
+`docker compose up` 후 백엔드를 **local 프로필**로 띄우면 데모 데이터가 자동 적용된다
+([R__demo_seed.sql](backend/src/main/resources/db/seed/R__demo_seed.sql) — local에만 적용, 운영·테스트 제외).
+MSW 목([fixtures.ts](frontend/src/mocks/fixtures.ts))이 **같은 ID·같은 수치**를 쓰므로 목→실 API 전환 시 화면 데이터가 그대로 유지된다. **한쪽 수정 시 반드시 함께 수정.**
+
+| 구분 | 내용 |
+| --- | --- |
+| 시연 계정 | `seoyeon@hanbit.co.kr`(관리자 김서연) · `jihun@hanbit.co.kr`(영업 박지훈) — 비밀번호 `test1234!` |
+| 플랫폼 관리자 | `admin@2jo.io` / `test1234!` |
+| 데이터 | 고객사 7 · 상품 8(중지 1) · 딜 17(성사 3·실패 1) · 견적 12(7상태 전부) · 주문 3(이달 성사 4,840만) |
+| 데이터 초기화 | `docker compose -f infra/docker-compose.yml down -v && docker compose -f infra/docker-compose.yml up -d` |
+
 ## 테스트 방식
 
 개발 플로우: **구현 → 단위 테스트 → API 테스트(Swagger)** — 별도 통합 테스트 단계 없음.
