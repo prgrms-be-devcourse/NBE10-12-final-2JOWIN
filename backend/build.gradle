@@ -84,25 +84,12 @@ dependencyManagement {
 	}
 }
 
-// ── 테스트 구조 — 팀 플로우: 구현 → 단위 테스트 → Swagger API 테스트
-// test            = 순수 단위 테스트만 (JUnit + Mockito, DB 불필요) — 기본
-// integrationTest = @Tag("integration") — 실제 PG 필요 (로컬: docker compose 선행, CI: 서비스 컨테이너)
+// ── 테스트 — 팀 플로우: 구현 → 단위 테스트(JUnit + Mockito) → Swagger API 테스트
+// contextLoads(스키마 검증)가 실제 PG를 쓰므로 ./gradlew test는 docker compose PG(5433) 선행 필요.
+// (개발 중엔 bootRun 때문에 어차피 떠 있다 — infra/docker-compose.yml)
 tasks.named('test') {
-	useJUnitPlatform {
-		excludeTags 'integration'
-	}
+	useJUnitPlatform()
 	finalizedBy 'jacocoTestReport'
-}
-
-tasks.register('integrationTest', Test) {
-	description = '실제 PostgreSQL이 필요한 통합 테스트 (@Tag("integration"))'
-	group = 'verification'
-	testClassesDirs = sourceSets.test.output.classesDirs
-	classpath = sourceSets.test.runtimeClasspath
-	useJUnitPlatform {
-		includeTags 'integration'
-	}
-	shouldRunAfter 'test'
 }
 
 // ── JaCoCo — 커버리지 리포트: build/reports/jacoco/test/html/index.html

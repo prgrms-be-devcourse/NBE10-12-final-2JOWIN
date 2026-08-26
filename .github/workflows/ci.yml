@@ -13,7 +13,7 @@ concurrency:
 
 jobs:
   build:
-    name: build (컴파일 + 단위 테스트 + 통합 테스트)
+    name: build (컴파일 + 테스트)
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -40,8 +40,8 @@ jobs:
           java-version: '21'
       - uses: gradle/actions/setup-gradle@v4
       - name: Build & Test
-        # build = 컴파일 + 단위 테스트(test) + 정적 분석(spotbugs) · integrationTest = PG 필요 테스트
-        run: ./gradlew build integrationTest
+        # 컴파일 + 테스트(스키마 검증 포함 — 서비스 컨테이너 PG) + 정적 분석(spotbugs)
+        run: ./gradlew build
 
   flyway-validate:
     name: flyway-validate (실제 PG에 마이그레이션 검증)
