@@ -40,4 +40,6 @@ frontend/src/app/                            @horangnabi97
 frontend/src/shared/                         @horangnabi97
 frontend/src/mocks/                          @horangnabi97
 infra/                                       @horangnabi97
-.github/                                     @horangnabi97
+
+# ── .github(CI·PR 템플릿·CODEOWNERS)은 저장소 세팅 담당 A가 관리 (역할 조정, 2026-08-27)
+.github/                                     @jomin4
