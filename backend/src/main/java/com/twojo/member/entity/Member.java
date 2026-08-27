@@ -46,4 +46,17 @@ public class Member extends BaseTimeEntity {
     private Status status;
 
     private Instant passwordChangedAt;   // AU-04·05 — 이 시각 이후 발급 토큰만 유효
+
+    /** 비활성 구성원은 로그인·재발급 모두 차단 — 권한 이전에 인증에서 막는다 (MB-10). */
+    public boolean isActive() {
+        return status == Status.ACTIVE;
+    }
+
+    /**
+     * 비밀번호가 설정돼 있는가 — 가입 승인 직후 계정은 password_hash가 NULL이다 (Q-33).
+     * 미설정 계정에 별도 상태를 두지 않으므로 로그인 시도는 자연히 LOGIN_FAILED로 떨어진다 (SC-09).
+     */
+    public boolean hasPassword() {
+        return passwordHash != null;
+    }
 }
