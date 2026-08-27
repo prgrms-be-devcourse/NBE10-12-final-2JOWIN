@@ -18,7 +18,8 @@ public interface ViewTokenCommand {
      * 발송·재발송 시 발급 (Q-40 · AP-13).
      *
      * <p><b>C의 호출 순서</b>: 이 호출이 <b>성공한 뒤에</b> {@code quote.status = SENT}로 바꾼다.
-     * 실패하면 견적은 DRAFT로 남아야 안전하다 — 링크 없는 SENT를 만들지 않는다.
+     * 같은 트랜잭션이라 실패하면 순서와 무관하게 전부 롤백되므로, 순서가 지키는 것은 실패가 아니라
+     * <b>성공 경로의 불변식</b>이다 — 어느 시점에도 "링크 없는 SENT"가 존재하지 않는다(Q-40).
      *
      * <p><b>메일은 C가 따로 부르지 않는다.</b> 토큰 생성과 안내 메일 예약까지 이 호출 안에서 끝난다.
      * 메일 발송 자체는 커밋 후 비동기(AFTER_COMMIT)라 <b>메일 실패가 C의 발송 커밋을 되돌리지 않는다</b> —
@@ -42,4 +43,36 @@ public interface ViewTokenCommand {
      * <p>회사 정지 중에도 만료 전이는 계속 돈다 — <b>알림 억제 판정은 D가 한다</b> (Q-27).
      */
     void expire(UUID quoteId, ExpiredReason reason);
+
+    /**
+     * 만료 사유 — {@code quote_view_token.expired_reason}의 CHECK 값과 1:1이다.
+     * <b>값을 바꾸면 마이그레이션도 함께 가야 한다.</b>
+     *
+     * <p>초대(invitation)에도 같은 이름의 컬럼이 있지만 값 집합이 다르므로(TIME·RESENT뿐)
+     * 최상위가 아니라 이 인터페이스 안에 둔다. boundary의 다른 계약도 중첩을 쓴다
+     * ({@code QuoteCommand.Responder} · {@code CustomerQuery.CustomerSummary}).
+     *
+     * <p><b>C가 넘기는 값이 넷</b>이다 — AP-13·14의 구성원용 엔드포인트도 C 소유이기 때문이다(11 §4).
+     * D가 스스로 붙이는 값은 {@link #RESENT} 하나뿐이다.
+     */
+    enum ExpiredReason {
+
+        /** 기간 경과 — 견적 만료 배치가 호출 (C 소유, Q-37) */
+        TIME,
+
+        /** 담당자가 링크를 직접 만료 — {@code POST /quotes/{id}/view-token/expire} (C 소유, AP-14) */
+        MANUAL,
+
+        /** 견적 회수 (QT-17) */
+        WITHDRAWN,
+
+        /**
+         * 수신인 변경 재발송 (AP-13) — 기존 활성 링크를 닫고 새 링크를 연다.
+         * <b>{@link #issue} 안에서 D가 붙이는 값</b>이다. C가 {@code expire(RESENT)}를 부르지 않는다.
+         */
+        RESENT,
+
+        /** Deal 실패로 승인 경로가 닫힘 (DL-10 · 전이표 §5) */
+        DEAL_LOST,
+    }
 }
