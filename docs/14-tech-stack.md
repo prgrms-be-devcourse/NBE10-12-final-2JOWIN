@@ -1,7 +1,8 @@
-# 기술 스택 v1.1
+# 기술 스택 v1.2
 
 > 🧭 [문서 지도](README.md) · ← [13 개발 워크플로우](13-dev-workflow.md) · [15 정리 리포트](15-cleanup-report.md) →
 
+> v1.2 (2026-08-27, 초기 세팅 반영) — **Spring Boot 4.1.1 확정**(§1.2 — 3.x는 2026-06 OSS 지원 종료로 Initializr에서 제외되어 4.x 전환, 스캐폴드 빌드·테스트로 검증 완료) · **Java 21 고정** · **빌드 = Gradle(Groovy DSL)** · **모듈 경계 = Spring Modulith 확정**(단일 Gradle 모듈 + `boundary` 패키지 — 경계 인터페이스 9종을 별도 모듈로 두어 B↔C·C↔D 양방향 호출의 순환 회피) · 테스트·품질 도구 확정(JUnit·Mockito·JaCoCo·SpotBugs·springdoc Swagger) · 프론트 HTTP 클라이언트 = **Axios** · 모니터링에 **Promtail** 명시 · §3-5 확정 처리
 > v1.1 (2026-08-27) — **UI = Radix Themes 확정**(§1.1) · 알림 폴링 30초 · **refresh 전달 = 쿠키 확정**(§2-2) · **오리진 구성 = 서브도메인 분리 확정**(§1.4, 도메인 문자열은 잠정) · §3의 남은 결정을 잠정 기본값으로 채움
 
 > 팀 확정 스택(2026-08-26)을 기록하고, **이 프로젝트의 기획 문서(요구사항·ERD·API·워크플로우)가 스택에 실제로 요구하는 것**과 대조해 보완할 결정과 보안 유의점을 명시한다.
@@ -12,11 +13,11 @@
 | 계층 | 기술 | 역할 |
 | --- | --- | --- |
 | 프론트엔드 | **TypeScript · React · Radix** | 구성원 웹 앱(`/api/v1`) · 관리자 페이지(`/admin/api/v1`) · 고객 열람 페이지(`/public/api/v1`) — UI는 **Radix Themes**(스타일 포함) 채택, 하부의 Radix Primitives가 접근성·키보드 동작을 담당 |
-| 백엔드 | **Java · Spring (Boot)** | API 서버 단일 애플리케이션 — 도메인 A~D 모듈 분리 (업무 분담 §7 경계 규칙) |
+| 백엔드 | **Java 21 · Spring Boot 4.1 · Gradle** | API 서버 단일 애플리케이션 — 도메인 A~D 모듈 분리 (업무 분담 §7 경계 규칙, Spring Modulith 검증) |
 | 데이터베이스 | **PostgreSQL** | 원본 저장소 25테이블 (ERD v1.6) · Flyway 마이그레이션 |
 | 인프라 | **AWS** | 백엔드·DB 운영 환경 |
 | 배포·CI | **GitHub Actions · Vercel** | CI(빌드·테스트·Flyway 검증, 워크플로우 §3) · 프론트 배포(Vercel) · 백엔드 배포(AWS, GitHub Actions 트리거) |
-| 모니터링 | **Prometheus · Loki · Grafana** | 메트릭(Prometheus) · 로그(Loki) · 대시보드·알람(Grafana) |
+| 모니터링 | **Prometheus · Loki · Promtail · Grafana** | 메트릭(Prometheus) · 로그 수집(Promtail)→저장(Loki) · 대시보드·알람(Grafana) |
 
 ---
 
@@ -37,9 +38,11 @@
 
 | 항목 | 내용 | 근거 |
 | --- | --- | --- |
-| Java 버전 | **17 이상 필수** — DTO가 전부 `record` (21 LTS 권장) | 08-dto.md §0 |
-| 핵심 의존성 | Spring Web · Spring Data JPA(@Version 낙관적 락) · Spring Security(필터 체인 3분리) · Bean Validation · **Flyway** · Spring Scheduler(D 배치) | 06-erd.md · 07-api-spec.md · 13-dev-workflow.md |
-| 모듈 경계 | 도메인 A~D 패키지 분리, 타인 Repository 주입 금지 — 빌드 시 경계 검증(Spring Modulith Verification 또는 ArchUnit) | 11-work-breakdown.md §7.3 |
+| Java·Boot 버전 | **Java 21 LTS + Spring Boot 4.1.1 고정** — CI·로컬·운영 동일 (record 필수라 17 미만 불가. 3.x는 OSS 지원 종료로 채택 불가, v1.2 확정) | 08-dto.md §0 · 초기 세팅 |
+| 빌드 | **Gradle (Groovy DSL)** 단일 모듈 — 멀티모듈은 경계 인터페이스의 양방향 호출(B↔C·C↔D)이 모듈 순환이 되어 api/impl 분리 20+모듈이 강제되므로 배제 | 초기 세팅 확정 |
+| 핵심 의존성 | Spring Web · Spring Data JPA(@Version 낙관적 락) · Spring Security(필터 체인 3분리) · **JJWT**(HS256, §3-4) · Bean Validation · **Flyway** · Spring Scheduler(D 배치) · **JavaMailSender**(발송 서비스는 §3-3) · **springdoc-openapi**(Swagger UI — API 테스트) | 06-erd.md · 07-api-spec.md · 13-dev-workflow.md |
+| 테스트·품질 | **JUnit 5 + Mockito**(단위) · **JaCoCo**(커버리지 — PR 코멘트 자동) · **SpotBugs**(정적 분석 — PR 라인 어노테이션 자동, 위반 시 빌드 실패) — 플로우: 구현 → 단위 테스트 → Swagger API 테스트. `./gradlew test`는 스키마 검증(contextLoads)을 포함해 compose PG 필요 | 팀 확정 (2026-08-27) |
+| 모듈 경계 | **Spring Modulith 확정** — `com.twojo.{도메인}` 최상위 패키지 = 모듈, 타인 Repository 주입 금지. 경계 인터페이스 9종(업무 분담 §7.2)은 **`boundary` 패키지**에 계약만 두고 소유 도메인이 구현(순환 회피). 검증 테스트가 CI required — 위반 = 머지 차단 | 11-work-breakdown.md §7.3 · 초기 세팅 |
 | 상태 전이 | 전이표 v1.6을 엔티티 메서드로 구현 — 표에 없는 전이는 코드로 차단 | 05-state-transitions.md |
 | 배치 | 만료 전이(**견적**·링크·초대·토큰 — 견적 만료 전이 배치의 소유 C vs D는 미결, 08 §3-2)·리마인드(NT-05)·임박(NT-06)·보존 삭제(30일·90일) — v1은 단일 인스턴스 스케줄러로 충분, 다중 인스턴스가 되면 중복 실행 방지 필요(email_log UNIQUE가 발송 중복은 이미 방어) | 06-erd.md · 07-api-spec.md |
 
@@ -67,7 +70,7 @@
 | 항목 | 내용 | 근거 |
 | --- | --- | --- |
 | 메트릭 | Spring Boot Actuator + Micrometer(`/actuator/prometheus`) — HTTP 상태별 카운트, DB 커넥션 풀, 배치 실행 결과 | 표준 구성 |
-| 로그 | 구조화(JSON) 로그 → Loki. **traceId 등 상관관계 ID를 로그에 포함** (v1.0 응답 규약에서 빠진 traceId의 실거처는 응답 바디가 아니라 로그·헤더) | 15-cleanup-report.md §2-2 |
+| 로그 | 구조화(JSON) 로그 → **Promtail 수집** → Loki 저장. **traceId 등 상관관계 ID를 로그에 포함** (v1.0 응답 규약에서 빠진 traceId의 실거처는 응답 바디가 아니라 로그·헤더) | 15-cleanup-report.md §2-2 |
 | 프로젝트 특화 지표 | 메일 발송 실패율(email_log FAILED — NT-12의 운영 신호 · **NT-13 승인 메일 실패의 유일한 감지 경로**, 요구사항 §2.13 NT-12 수신자 표) · 로그인 잠금 발생(LOGIN_LOCKED) · 배치 지연(만료 전이·리마인드) · STALE_VERSION 빈도(동시 편집 충돌) | 07-api-spec.md |
 | 접근 통제 | Grafana·Prometheus·Loki는 **공개망에 노출 금지** — 내부 접근만 (§2-6) | ON-11 유사 원칙 |
 
@@ -105,8 +108,8 @@
 | 2 | ~~오리진 구성과 쿠키·CORS~~ ✅ **확정** | **쿠키 전달(§2-2) + 서브도메인 분리(§1.4)** — `app.x.com`/`api.x.com`, `SameSite=Lax`. **도메인 문자열만 잠정**이며 확보 시 교체한다 | 확보 실패 시 교차 오리진 → `SameSite=None` + Origin 검증 | A · E |
 | 3 | 메일 발송 서비스 | **AWS SES** | **샌드박스 해제·도메인 인증이 지연되면 외부 SMTP(Gmail 앱 비밀번호 등)로 대체** — email_log 상태 갱신 방식은 동일 | D 알림 · NT-12 |
 | 4 | JWT 서명 방식·키 관리 | **HS256 단일 키** (AWS Secrets/환경변수 보관, 교체는 키 롤링 1회 절차 문서화) | 서비스 분리·외부 검증자가 생기면 RS256 | A 인증 |
-| 5 | Java·Spring 버전 | **Java 21 LTS + Spring Boot 3.x** — CI·로컬·운영 동일 고정 | — (record 필수라 17 미만 불가) | 전원 |
-| 6 | ~~프론트 세부 스택·담당~~ ✅ **확정** | **Vite + TanStack Query + React Router** · UI **Radix Themes**(§1.1) · **오너 E 김대연**(인프라 겸임, 도메인 화면은 각 백엔드 담당자) · **MSW 목 우선 개발** | 계획은 `12-frontend-plan.md` | 전원 |
+| 5 | ~~Java·Spring 버전~~ ✅ **확정 (v1.2)** | **Java 21 LTS + Spring Boot 4.1.1** — CI·로컬·운영 동일 고정. 3.x(원안)는 OSS 지원 종료(2026-06)로 전환, 스캐폴드 빌드·테스트 검증 완료 | — (record 필수라 17 미만 불가) | 전원 |
+| 6 | ~~프론트 세부 스택·담당~~ ✅ **확정** | **Vite + TanStack Query + React Router + Axios** · UI **Radix Themes**(§1.1) · **오너 E 김대연**(인프라 겸임, 도메인 화면은 각 백엔드 담당자) · **MSW 목 우선 개발** | 계획은 `12-frontend-plan.md` | 전원 |
 | 7 | Vercel Preview의 API 연결 | **Preview는 개발용 API 오리진만** — 운영 API 연결 금지 | — | 리뷰 플로우 안전성 |
 | 8 | 모니터링 배치 위치 | **AWS 내 셀프 호스팅**(단일 EC2 docker-compose) | 리소스 부족 시 Grafana Cloud 무료 티어 | E |
 
