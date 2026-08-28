@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import java.time.Instant;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -45,4 +46,24 @@ public class Notification extends BaseTimeEntity {
     private UUID refId;
 
     private Instant readAt;   // null = 안 읽음
+
+    /** 알림 생성 — 미읽음(readAt=null) 상태. refType·refId는 클릭 이동 대상이 없으면 null. */
+    public static Notification of(UUID companyId, UUID recipientMemberId, Type type,
+                                  String message, String refType, UUID refId) {
+        Notification notification = new Notification();
+        notification.companyId = Objects.requireNonNull(companyId, "companyId");
+        notification.recipientMemberId = Objects.requireNonNull(recipientMemberId, "recipientMemberId");
+        notification.type = Objects.requireNonNull(type, "type");
+        notification.message = Objects.requireNonNull(message, "message");
+        notification.refType = refType;
+        notification.refId = refId;
+        return notification;
+    }
+
+    /** 읽음 처리 — 최초 1회만 시각 기록, 이후 호출은 무동작(멱등). (NT-08) */
+    public void markRead() {
+        if (readAt == null) {
+            this.readAt = Instant.now();
+        }
+    }
 }

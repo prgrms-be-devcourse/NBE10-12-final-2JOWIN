@@ -6,6 +6,7 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -25,4 +26,12 @@ public class CustomerInquiry extends BaseTimeEntity {
 
     @Column(columnDefinition = "text")
     private String content;
+
+    /** 문의 생성 — 기록만 (Q-20). 상태·전이 없음. */
+    public static CustomerInquiry of(UUID quoteId, String content) {
+        CustomerInquiry inquiry = new CustomerInquiry();
+        inquiry.quoteId = Objects.requireNonNull(quoteId, "quoteId");
+        inquiry.content = Objects.requireNonNull(content, "content");
+        return inquiry;
+    }
 }
