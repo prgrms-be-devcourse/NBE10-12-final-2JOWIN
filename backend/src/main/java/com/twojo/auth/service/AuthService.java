@@ -2,6 +2,7 @@ package com.twojo.auth.service;
 
 import com.twojo.auth.dto.LoginRequest;
 import com.twojo.auth.dto.LoginResponse;
+import com.twojo.auth.dto.RefreshTokenResponse;
 import com.twojo.auth.entity.ActorType;
 import com.twojo.auth.entity.RefreshToken;
 import com.twojo.auth.jwt.JwtProvider;
@@ -83,6 +84,60 @@ public class AuthService {
                 new LoginResponse(accessToken, credential.id(), credential.name(),
                         credential.role().name(), companyName),
                 rawToken);
+    }
+
+    /**
+     * 재발급 (회전) — 기존 행을 폐기하고 새 행을 만든다 (전이표 §9).
+     *
+     * <p>실패는 원인을 구별하지 않고 전부 REFRESH_TOKEN_NOT_ACTIVE다.
+     * 특히 재사용을 감지했다는 사실을 응답으로 알려주지 않는다 (05 §9).
+     *
+     * @param rawToken 쿠키에서 꺼낸 원문
+     */
+    @Transactional
+    public RotateResult rotate(String rawToken, Instant now) {
+        RefreshToken token = refreshTokenRepository
+                .findByTokenHash(secureTokenFactory.hash(rawToken))
+                .orElseThrow(() -> new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE));
+
+        if (token.isRotated()) {
+            // 한 번 쓴 토큰이 다시 왔다 — 정상 사용에서는 일어날 수 없다.
+            // 훔쳐간 쪽과 진짜 사용자를 구별할 수 없으므로 이 구성원의 세션을 전부 끊는다
+            revokeAllActive(token.getMemberId(), RefreshToken.RevokedReason.REUSE_DETECTED, now);
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+        }
+        if (!token.isUsableAt(now)) {
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+        }
+
+        // 폐기 누락 대비 안전망 — 비활성화 시점에 이미 끊겼어야 하지만 한 번 더 본다 (05 §9)
+        if (!memberQuery.isActive(token.getMemberId())) {
+            revokeAllActive(token.getMemberId(), RefreshToken.RevokedReason.MEMBER_DEACTIVATED, now);
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+        }
+
+        token.markUsed(now);
+        token.revoke(RefreshToken.RevokedReason.ROTATED, now);
+
+        String newRawToken = secureTokenFactory.generate();
+        // 만료 시각을 상속한다 — 회전마다 갱신하면 Q-32의 12h·14d 상한이 무의미해진다.
+        // 05 §7 열람 링크 재발송의 잔여 유효기간 상속과 같은 패턴이다
+        Instant expiresAt = token.getExpiresAt();
+        refreshTokenRepository.save(RefreshToken.issueForMember(
+                token.getMemberId(), secureTokenFactory.hash(newRawToken), expiresAt));
+
+        MemberQuery.AuthCredential credential = memberQuery.getCredential(token.getMemberId());
+        String accessToken = jwtProvider.issue(
+                credential.id(), credential.companyId(), credential.role(), now);
+
+        return new RotateResult(new RefreshTokenResponse(accessToken), newRawToken, expiresAt);
+    }
+
+    /** 활성 행을 전부 폐기한다. 영속 엔티티라 더티 체킹으로 반영된다 — 트랜잭션 안이어야 한다. */
+    private void revokeAllActive(UUID memberId, RefreshToken.RevokedReason reason, Instant now) {
+        refreshTokenRepository
+                .findByMemberIdAndStatus(memberId, RefreshToken.Status.ACTIVE)
+                .forEach(t -> t.revoke(reason, now));
     }
 
     private void recordFailureAndThrow(String email, UUID memberId, String ipAddress, Instant now) {
