@@ -79,7 +79,8 @@ public class MemberQueryService implements MemberQuery {
         }
         return memberRepository.findByEmailLower(email.trim().toLowerCase(Locale.ROOT))
                 .map(m -> new AuthCredential(
-                        m.getId(), m.getCompanyId(), m.getRole(), m.isActive(), m.getPasswordHash()));
+                        m.getId(), m.getCompanyId(), m.getName(), m.getRole(),
+                        m.isActive(), m.getPasswordHash()));
     }
 
     private MemberSummary toSummary(Member member) {
