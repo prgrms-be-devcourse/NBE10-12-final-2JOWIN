@@ -45,4 +45,36 @@ public class QuoteItem extends BaseTimeEntity {
     private Long catalogPriceAtCreation;   // QT-24 · QT-29 확장 지점
 
     private int sortOrder;   // QT-07
+
+    /**
+     * 항목 생성 — amount는 단가 x 수량으로 <b>서버가 계산한다</b> (QT-08, 검증 노트 #1).
+     *
+     * @param productId                null이면 직접 입력 (QT-03)
+     * @param catalogPriceAtCreation   작성 시점 카탈로그 단가 (QT-24). 직접 입력이면 null
+     */
+    public static QuoteItem of(UUID productId, String name, String unit,
+                               int quantity, Long unitPrice,
+                               Long catalogPriceAtCreation, int sortOrder) {
+        if (quantity <= 0) {
+            throw new IllegalArgumentException("수량은 1 이상이어야 합니다: " + quantity);
+        }
+        if (unitPrice == null || unitPrice < 0) {
+            throw new IllegalArgumentException("단가는 0원 이상이어야 합니다: " + unitPrice);   // 0원 하한 (Q-02)
+        }
+        QuoteItem item = new QuoteItem();
+        item.productId = productId;
+        item.name = name;
+        item.unit = unit;
+        item.quantity = quantity;
+        item.unitPrice = unitPrice;
+        item.amount = Math.multiplyExact(unitPrice, (long) quantity);
+        item.catalogPriceAtCreation = catalogPriceAtCreation;
+        item.sortOrder = sortOrder;
+        return item;
+    }
+
+    /** 양방향 연관 설정 — {@link Quote#replaceItems} 에서만 호출한다 */
+    void assignTo(Quote quote) {
+        this.quote = quote;
+    }
 }
