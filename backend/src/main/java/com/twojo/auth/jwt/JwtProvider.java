@@ -19,7 +19,7 @@ import org.springframework.stereotype.Component;
  * <p>수명 15분은 Q-32 확정값이라 상수로 둔다 — 설정으로 빼면 문서에 없는 유연성이 생긴다.
  */
 @Component
-public class JwtProvider {
+public final class JwtProvider {
 
     /** Q-32 — 차단이 실제로 걸리기까지의 최대 노출 창. */
     public static final Duration ACCESS_TOKEN_TTL = Duration.ofMinutes(15);
