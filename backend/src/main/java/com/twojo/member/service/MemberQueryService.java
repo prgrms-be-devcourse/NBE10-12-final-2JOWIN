@@ -78,9 +78,21 @@ public class MemberQueryService implements MemberQuery {
             return Optional.empty();
         }
         return memberRepository.findByEmailLower(email.trim().toLowerCase(Locale.ROOT))
-                .map(m -> new AuthCredential(
-                        m.getId(), m.getCompanyId(), m.getName(), m.getRole(),
-                        m.isActive(), m.getPasswordHash()));
+                .map(this::toCredential);
+    }
+
+    /** 회전 시 access claim 을 채우는 경로 — 없으면 데이터 이상이다 (FK 보장). */
+    @Override
+    public AuthCredential getCredential(UUID memberId) {
+        return memberRepository.findById(memberId)
+                .map(this::toCredential)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    private AuthCredential toCredential(Member member) {
+        return new AuthCredential(
+                member.getId(), member.getCompanyId(), member.getName(), member.getRole(),
+                member.isActive(), member.getPasswordHash());
     }
 
     private MemberSummary toSummary(Member member) {

@@ -33,6 +33,12 @@ public interface MemberQuery {
      */
     Optional<AuthCredential> findCredentialByEmail(String email);
 
+    /**
+     * memberId 로 자격 조회 — refresh 회전 시 access claim(companyId·role)을 채운다.
+     * refresh_token 행에는 member_id 밖에 없어 MemberSummary 로는 부족하다.
+     */
+    AuthCredential getCredential(UUID memberId);
+
     record MemberSummary(UUID id, String name, boolean active) {}
 
     /**
