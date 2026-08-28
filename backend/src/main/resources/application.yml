@@ -18,6 +18,11 @@ spring:
   jackson:
     time-zone: UTC            # 저장·전송은 UTC(TIMESTAMPTZ·Instant), 표시 변환은 프론트 책임
 
+# JWT — HS256 단일 키 (14 §3-4). 저장소에 시크릿을 두지 않는다 (14 §2-8).
+# 기본값 없음 — 미주입 시 기동이 실패한다. local·test 프로필만 개발용 기본값을 갖는다.
+jwt:
+  secret: ${JWT_SECRET}
+
 server:
   port: 8080
   shutdown: graceful
@@ -48,6 +53,10 @@ spring:
 logging:
   level:
     org.hibernate.SQL: debug
+
+# clone 직후 바로 bootRun 되도록 개발용 기본값을 둔다 — 운영 키로 쓰지 않는다
+jwt:
+  secret: ${JWT_SECRET:2jo-local-dev-only-secret-key-not-for-production-use}
 
 ---
 # 운영 — 값은 전부 환경변수 주입 (시크릿 저장 금지, 14-tech-stack.md §2-8)

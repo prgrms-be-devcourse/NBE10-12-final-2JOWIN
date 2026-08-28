@@ -6,3 +6,7 @@ spring:
     url: jdbc:postgresql://localhost:5433/twojo_test
     username: twojo
     password: twojo
+
+# BackendApplicationTests가 전체 컨텍스트를 로드하므로 JwtProvider 빈도 생성된다 — 키가 없으면 깨진다
+jwt:
+  secret: 2jo-test-only-secret-key-not-for-production-use
