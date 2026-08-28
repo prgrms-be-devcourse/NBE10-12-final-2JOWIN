@@ -38,6 +38,8 @@ public interface MemberQuery {
     /**
      * 인증에 필요한 최소 정보.
      * passwordHash는 NULL일 수 있다 — 가입 승인 직후 비밀번호 미설정 계정 (Q-33).
+     * name은 로그인 응답(08 §A)에 필요해 함께 싣는다 — 같은 행이라 추가 조회가 없다.
      */
-    record AuthCredential(UUID id, UUID companyId, Role role, boolean active, String passwordHash) {}
+    record AuthCredential(UUID id, UUID companyId, String name, Role role,
+                          boolean active, String passwordHash) {}
 }
