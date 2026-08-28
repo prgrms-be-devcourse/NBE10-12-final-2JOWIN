@@ -13,6 +13,8 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
+import org.junit.jupiter.api.DisplayNameGeneration;
+import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -24,6 +26,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * 10분은 잠금 지속 시간이지 판정 윈도우가 아니다 — 이 구분이 깨지면 8분 간격 공격을 못 막는다.
  */
 @ExtendWith(MockitoExtension.class)
+@DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class LoginAttemptServiceTest {
 
     private static final String EMAIL = "jihun@hanbit.co.kr";

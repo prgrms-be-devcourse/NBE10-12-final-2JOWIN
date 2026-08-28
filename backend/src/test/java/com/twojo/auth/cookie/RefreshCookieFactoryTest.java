@@ -4,10 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Duration;
 import java.time.Instant;
+import org.junit.jupiter.api.DisplayNameGeneration;
+import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.springframework.http.ResponseCookie;
 
 /** 쿠키 규약 (07 refresh 쿠키 규약표 · 회전 Max-Age 는 남은 기간). */
+@DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class RefreshCookieFactoryTest {
 
     private static final String RAW_TOKEN = "kJ8mQ2xRf9vN";

@@ -24,6 +24,8 @@ import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.DisplayNameGeneration;
+import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -37,6 +39,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
  * 셋 다 틀려도 정상 동작처럼 보여서 조용히 뚫리는 종류다.
  */
 @ExtendWith(MockitoExtension.class)
+@DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class AuthServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-08-28T05:00:00Z");

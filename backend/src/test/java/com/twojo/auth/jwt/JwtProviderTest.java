@@ -9,9 +9,12 @@ import io.jsonwebtoken.ExpiredJwtException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import org.junit.jupiter.api.DisplayNameGeneration;
+import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 
 /** access token 왕복 (Q-32 15분 · 14 §3-4 HS256). */
+@DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class JwtProviderTest {
 
     private static final UUID MEMBER_ID = UUID.randomUUID();
