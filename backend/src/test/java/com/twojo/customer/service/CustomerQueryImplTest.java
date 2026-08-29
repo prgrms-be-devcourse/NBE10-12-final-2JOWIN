@@ -70,15 +70,16 @@ class CustomerQueryImplTest {
 
     /**
      * 판정 자체는 리포지토리에 위임하므로 이 테스트가 지키는 건 <b>인자 순서</b>다.
-     * {@code existsByIdAndCustomerId(UUID, UUID)}는 두 인자가 모두 {@code UUID}라
-     * 뒤바꿔 써도 컴파일된다 — strict stub이 그 실수를 잡는다.
+     * 두 인자가 모두 {@code UUID}라 뒤바꿔 써도 컴파일된다 — strict stub이 그 실수를 잡는다.
+     * 계약과 리포지토리의 파라미터 순서를 {@code (customerId, contactId)}로 맞춰뒀으므로
+     * 호출부에서 뒤집을 일 자체가 없다.
      */
     @Test
     @DisplayName("담당자 소속 판정을 리포지토리에 위임한다 — 인자 순서가 뒤바뀌면 실패")
     void existsContactInCustomer_delegatesInCorrectArgumentOrder() {
         UUID customerId = UUID.randomUUID();
         UUID contactId = UUID.randomUUID();
-        given(customerContactRepository.existsByIdAndCustomerId(contactId, customerId)).willReturn(false);
+        given(customerContactRepository.existsByCustomerIdAndId(customerId, contactId)).willReturn(false);
 
         assertThat(customerQuery.existsContactInCustomer(customerId, contactId)).isFalse();
     }

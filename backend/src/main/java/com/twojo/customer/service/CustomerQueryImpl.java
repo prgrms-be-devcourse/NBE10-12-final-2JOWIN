@@ -36,7 +36,7 @@ class CustomerQueryImpl implements CustomerQuery {
 
     @Override
     public boolean existsContactInCustomer(UUID customerId, UUID contactId) {
-        return customerContactRepository.existsByIdAndCustomerId(contactId, customerId);
+        return customerContactRepository.existsByCustomerIdAndId(customerId, contactId);
     }
 
     /**

@@ -21,5 +21,5 @@ public interface CustomerContactRepository extends JpaRepository<CustomerContact
      * {@code customer_contact}에 복합 FK를 걸 수 없어 서비스 검증이 유일 방어다
      * (docs/06 "DB로 못 막는 것", CONTACT_NOT_IN_CUSTOMER).
      */
-    boolean existsByIdAndCustomerId(UUID id, UUID customerId);
+    boolean existsByCustomerIdAndId(UUID customerId, UUID id);
 }
