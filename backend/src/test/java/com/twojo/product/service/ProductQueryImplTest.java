@@ -3,6 +3,7 @@ package com.twojo.product.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
@@ -33,7 +34,7 @@ class ProductQueryImplTest {
     @DisplayName("견적 항목에 복사될 이름·단위·단가를 돌려준다 (QT-24)")
     void get_returnsSnapshot() {
         UUID productId = UUID.randomUUID();
-        Product product = org.mockito.Mockito.mock(Product.class);
+        Product product = mock(Product.class);
         given(product.getId()).willReturn(productId);
         given(product.getName()).willReturn("1200 사무책상");
         given(product.getUnit()).willReturn("개");
@@ -65,7 +66,7 @@ class ProductQueryImplTest {
     @DisplayName("판매 중인 상품은 견적에 추가할 수 있다 (PR-06)")
     void isSellable_active_true() {
         UUID productId = UUID.randomUUID();
-        Product product = org.mockito.Mockito.mock(Product.class);
+        Product product = mock(Product.class);
         given(product.getStatus()).willReturn(Product.Status.ACTIVE);
         given(productRepository.findByIdAndCompanyId(productId, CTX.companyId()))
                 .willReturn(Optional.of(product));
@@ -77,7 +78,7 @@ class ProductQueryImplTest {
     @DisplayName("판매 중지 상품은 새 견적에 추가할 수 없다 (PR-06)")
     void isSellable_discontinued_false() {
         UUID productId = UUID.randomUUID();
-        Product product = org.mockito.Mockito.mock(Product.class);
+        Product product = mock(Product.class);
         given(product.getStatus()).willReturn(Product.Status.DISCONTINUED);
         given(productRepository.findByIdAndCompanyId(productId, CTX.companyId()))
                 .willReturn(Optional.of(product));
@@ -89,7 +90,7 @@ class ProductQueryImplTest {
     @DisplayName("판매 중지 상품도 get()은 값을 돌려준다 — 기존 견적 조회가 깨지면 안 된다 (PR-07)")
     void get_discontinued_stillReturns() {
         UUID productId = UUID.randomUUID();
-        Product product = org.mockito.Mockito.mock(Product.class);
+        Product product = mock(Product.class);
         given(product.getId()).willReturn(productId);
         given(product.getName()).willReturn("메쉬 의자");
         given(product.getUnit()).willReturn("개");

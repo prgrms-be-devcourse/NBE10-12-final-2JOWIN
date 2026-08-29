@@ -2,10 +2,10 @@ package com.twojo.product.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.ProductQuery;
-import com.twojo.product.entity.Product;
-import com.twojo.product.repository.ProductRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import com.twojo.product.entity.Product;
+import com.twojo.product.repository.ProductRepository;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;

@@ -3,6 +3,7 @@ package com.twojo.customer.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.mock;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
@@ -23,8 +24,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * 경계 계약의 매핑·예외 변환 검증. 회사 스코프 조건이 SQL로 실제 걸리는지는
- * {@link com.twojo.TenantScopeIsolationTest}가 실제 DB로 검증한다.
+ * 경계 계약의 매핑·예외 변환 검증.
+ *
+ * <p>회사 스코프(SC-01)의 실질 검증은 {@code AccessContext} 주입 필터와 컨트롤러가 붙은 뒤
+ * "타사 리소스를 요청하면 404가 오는가"로 한다 — 고객사·상품 API 이슈에서.
  */
 @ExtendWith(MockitoExtension.class)
 class CustomerQueryImplTest {
@@ -40,7 +43,7 @@ class CustomerQueryImplTest {
     @DisplayName("고객사를 찾으면 id·이름만 담은 요약을 돌려준다")
     void get_returnsSummary() {
         UUID customerId = UUID.randomUUID();
-        Customer customer = org.mockito.Mockito.mock(Customer.class);
+        Customer customer = mock(Customer.class);
         given(customer.getId()).willReturn(customerId);
         given(customer.getName()).willReturn("도담건설");
         given(customerRepository.findByIdAndCompanyIdAndDeletedAtIsNull(customerId, CTX.companyId()))
@@ -65,9 +68,14 @@ class CustomerQueryImplTest {
                 .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
     }
 
+    /**
+     * 판정 자체는 리포지토리에 위임하므로 이 테스트가 지키는 건 <b>인자 순서</b>다.
+     * {@code existsByIdAndCustomerId(UUID, UUID)}는 두 인자가 모두 {@code UUID}라
+     * 뒤바꿔 써도 컴파일된다 — strict stub이 그 실수를 잡는다.
+     */
     @Test
-    @DisplayName("다른 고객사에 속한 담당자면 false — 견적 수신인 검증의 재료 (CONTACT_NOT_IN_CUSTOMER)")
-    void existsContactInCustomer_otherCustomer_false() {
+    @DisplayName("담당자 소속 판정을 리포지토리에 위임한다 — 인자 순서가 뒤바뀌면 실패")
+    void existsContactInCustomer_delegatesInCorrectArgumentOrder() {
         UUID customerId = UUID.randomUUID();
         UUID contactId = UUID.randomUUID();
         given(customerContactRepository.existsByIdAndCustomerId(contactId, customerId)).willReturn(false);
@@ -79,7 +87,7 @@ class CustomerQueryImplTest {
     @DisplayName("담당자를 찾으면 이름·직책·이메일을 돌려준다")
     void getContact_returnsSummary() {
         UUID contactId = UUID.randomUUID();
-        CustomerContact contact = org.mockito.Mockito.mock(CustomerContact.class);
+        CustomerContact contact = mock(CustomerContact.class);
         given(contact.getId()).willReturn(contactId);
         given(contact.getName()).willReturn("이수정");
         given(contact.getTitle()).willReturn("총무팀 대리");
