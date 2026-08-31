@@ -28,6 +28,10 @@ jwt:
 app:
   cookie:
     secure: ${COOKIE_SECURE:true}
+  # CORS — 허용 오리진 정확 명시, 와일드카드 금지 (07 §A · 14 §3-9).
+  # 기본값 없음 — jwt.secret과 같다. 운영에서 빠뜨리면 기동이 실패하는 편이 조용히 열리는 것보다 낫다.
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS}
 
 server:
   port: 8080
@@ -68,6 +72,9 @@ jwt:
 app:
   cookie:
     secure: false
+  # Vite 개발 서버 기본 포트 — 도메인 확보 전까지는 로컬만 쓴다 (14 §1.4 자리표시자)
+  cors:
+    allowed-origins: http://localhost:5173
 
 ---
 # 운영 — 값은 전부 환경변수 주입 (시크릿 저장 금지, 14-tech-stack.md §2-8)

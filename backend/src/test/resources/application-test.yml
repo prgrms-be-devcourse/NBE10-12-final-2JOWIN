@@ -14,3 +14,6 @@ jwt:
 app:
   cookie:
     secure: false
+  # 전체 컨텍스트 로드 시 CorsConfigurationSource 빈이 이 값을 요구한다 — 없으면 주입이 실패한다
+  cors:
+    allowed-origins: http://localhost:5173
