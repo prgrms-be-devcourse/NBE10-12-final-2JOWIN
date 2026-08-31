@@ -65,7 +65,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
             // 비활성·정지는 토큰 발급 이후에 바뀐다 — claim이 아니라 지금 값을 본다 (09 구현 위치)
             MemberQuery.AuthCredential credential = memberQuery.getCredential(memberId);
-            if (!credential.active() || companyQuery.isSuspended(credential.companyId())) {
+            if (!credential.active() || !companyQuery.get(credential.companyId()).active()) {
                 return Optional.empty();
             }
             return Optional.of(new AccessContext(credential.companyId(), credential.id(),

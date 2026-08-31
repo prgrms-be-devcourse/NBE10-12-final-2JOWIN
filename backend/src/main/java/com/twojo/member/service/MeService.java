@@ -30,7 +30,7 @@ public class MeService {
         Member member = memberRepository.findById(ctx.memberId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        String companyName = companyQuery.getIdentity(member.getCompanyId()).name();
+        String companyName = companyQuery.get(member.getCompanyId()).name();
 
         return new MeResponse(member.getId(), member.getName(), member.getEmail(),
                 member.getPhone(), member.getRole().name(), member.getCompanyId(), companyName);

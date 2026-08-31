@@ -75,9 +75,9 @@ class AuthServiceTest {
     void 정상_로그인하면_세션이_발급되고_성공이_기록된다() {
         given(memberQuery.findCredentialByEmail(EMAIL))
                 .willReturn(Optional.of(credential(true, passwordEncoder.encode(PASSWORD))));
-        given(companyQuery.getIdentity(COMPANY_ID))
-                .willReturn(new CompanyQuery.CompanyIdentity(COMPANY_ID, "한빛오피스"));
-        given(companyQuery.isSuspended(COMPANY_ID)).willReturn(false);
+        given(companyQuery.get(COMPANY_ID))
+                .willReturn(new CompanyQuery.CompanySummary(
+                        COMPANY_ID, "한빛오피스", "123-45-67890", true));
 
         LoginResult result = authService.login(request(true), IP, NOW);
 
@@ -163,7 +163,9 @@ class AuthServiceTest {
             // given — 김서연은 활성 구성원이고 비밀번호도 맞지만, 한빛오피스가 정지됐다
             given(memberQuery.findCredentialByEmail(EMAIL))
                     .willReturn(Optional.of(credential(true, passwordEncoder.encode(PASSWORD))));
-            given(companyQuery.isSuspended(COMPANY_ID)).willReturn(true);
+            given(companyQuery.get(COMPANY_ID))
+                    .willReturn(new CompanyQuery.CompanySummary(
+                            COMPANY_ID, "한빛오피스", "123-45-67890", false));
 
             // when — 올바른 비밀번호로 로그인을 시도하면
             // then — 자격 증명이 틀렸을 때와 똑같은 응답이 나간다 (SC-09)
@@ -185,6 +187,7 @@ class AuthServiceTest {
         given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(active));
         given(memberQuery.isActive(MEMBER_ID)).willReturn(true);
         given(memberQuery.getCredential(MEMBER_ID)).willReturn(credential(true, "hash"));
+        given(companyQuery.get(COMPANY_ID)).willReturn(활성_회사());
 
         RotateResult result = authService.rotate("아무-원문", NOW);
 
@@ -201,6 +204,7 @@ class AuthServiceTest {
         given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(active));
         given(memberQuery.isActive(MEMBER_ID)).willReturn(true);
         given(memberQuery.getCredential(MEMBER_ID)).willReturn(credential(true, "hash"));
+        given(companyQuery.get(COMPANY_ID)).willReturn(활성_회사());
 
         RotateResult result = authService.rotate("아무-원문", NOW.plusSeconds(900));
 
@@ -275,6 +279,10 @@ class AuthServiceTest {
 
     private LoginRequest request(boolean rememberMe) {
         return new LoginRequest(EMAIL, PASSWORD, rememberMe);
+    }
+
+    private CompanyQuery.CompanySummary 활성_회사() {
+        return new CompanyQuery.CompanySummary(COMPANY_ID, "한빛오피스", "123-45-67890", true);
     }
 
     private MemberQuery.AuthCredential credential(boolean active, String passwordHash) {

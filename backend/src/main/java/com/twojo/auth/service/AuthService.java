@@ -88,7 +88,9 @@ public class AuthService {
 
         // 정지 회사 구성원은 새 세션을 얻지 못한다 — ON-09의 refresh 일괄 폐기가
         // 재로그인으로 무효화되는 것을 막는다. 응답은 자격 증명 오류와 구별하지 않는다 (07 §A)
-        if (companyQuery.isSuspended(credential.companyId())) {
+        // 응답에 실을 회사명도 여기서 함께 얻는다 — 같은 행이라 조회를 두 번 할 이유가 없다
+        CompanyQuery.CompanySummary company = companyQuery.get(credential.companyId());
+        if (!company.active()) {
             recordFailureAndThrow(request.email(), credential.id(), ipAddress, now);
         }
 
@@ -103,12 +105,9 @@ public class AuthService {
 
         String accessToken = jwtProvider.issue(
                 credential.id(), credential.companyId(), credential.role(), now);
-        // 성공이 확정된 뒤에 조회한다 — 실패할 요청에서 이 쿼리가 돌 이유가 없다
-        String companyName = companyQuery.getIdentity(credential.companyId()).name();
-
         return new LoginResult(
                 new LoginResponse(accessToken, credential.id(), credential.name(),
-                        credential.role().name(), companyName),
+                        credential.role().name(), company.name()),
                 rawToken);
     }
 
@@ -151,7 +150,7 @@ public class AuthService {
 
         // 위 검사가 통과했으므로 행이 있다 — companyId를 얻으려 여기서 읽고, 아래 claim에도 그대로 쓴다
         MemberQuery.AuthCredential credential = memberQuery.getCredential(token.getMemberId());
-        if (companyQuery.isSuspended(credential.companyId())) {
+        if (!companyQuery.get(credential.companyId()).active()) {
             revokeAllActive(token.getMemberId(), RefreshToken.RevokedReason.COMPANY_SUSPENDED, now);
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
         }

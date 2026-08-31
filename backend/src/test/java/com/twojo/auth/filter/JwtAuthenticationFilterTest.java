@@ -80,7 +80,7 @@ class JwtAuthenticationFilterTest {
         void 역할에_맞는_조회_범위를_갖는다(Role role, AccessScope 기대_범위) {
             // given — 활성 구성원이고, 소속 회사도 정상이다
             given(memberQuery.getCredential(MEMBER_ID)).willReturn(자격(role, true));
-            given(companyQuery.isSuspended(COMPANY_ID)).willReturn(false);
+            given(companyQuery.get(COMPANY_ID)).willReturn(회사(true));
 
             // when — 유효한 access token 을 달고 요청하면
             Authentication 결과 = 필터를_통과시킨다("Bearer " + 유효한_토큰(role));
@@ -103,7 +103,7 @@ class JwtAuthenticationFilterTest {
             // given — 구성원 자신은 활성이지만 한빛오피스가 정지됐다
             given(memberQuery.getCredential(MEMBER_ID))
                     .willReturn(자격(Role.COMPANY_ADMIN, true));
-            given(companyQuery.isSuspended(COMPANY_ID)).willReturn(true);
+            given(companyQuery.get(COMPANY_ID)).willReturn(회사(false));
 
             // when — 정지 전에 발급받은 멀쩡한 토큰으로 요청하면
             // then — 인증되지 않는다. 이후 체인이 401 을 낸다
@@ -144,6 +144,19 @@ class JwtAuthenticationFilterTest {
 
             assertThat(필터를_통과시킨다("Bearer " + 유효한_토큰(Role.SALES_REP))).isNull();
         }
+
+        /**
+         * CompanyQuery.get 도 없는 회사에 예외를 던진다. 판정할 수 없을 때
+         * 여는 쪽이 아니라 막는 쪽으로 접히는지 — 인증 경로의 기본값이다.
+         */
+        @Test
+        void 회사_행이_사라졌으면_미인증으로_남는다() {
+            given(memberQuery.getCredential(MEMBER_ID)).willReturn(자격(Role.SALES_REP, true));
+            given(companyQuery.get(COMPANY_ID))
+                    .willThrow(new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+
+            assertThat(필터를_통과시킨다("Bearer " + 유효한_토큰(Role.SALES_REP))).isNull();
+        }
     }
 
     static Stream<Arguments> 잘못된_인증_헤더() {
@@ -177,6 +190,11 @@ class JwtAuthenticationFilterTest {
 
     private static String 유효한_토큰(Role role) {
         return JWT.issue(MEMBER_ID, COMPANY_ID, role, Instant.now());
+    }
+
+    private static CompanyQuery.CompanySummary 회사(boolean active) {
+        return new CompanyQuery.CompanySummary(
+                COMPANY_ID, "한빛오피스", "123-45-67890", active);
     }
 
     private static MemberQuery.AuthCredential 자격(Role role, boolean active) {

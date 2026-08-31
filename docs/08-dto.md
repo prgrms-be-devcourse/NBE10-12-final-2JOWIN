@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.4
+# DTO 설계서 — v1.6.5
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.5 | **화면 설계 공백 반영(2026-08-31)** — `PublicQuoteResponse`에 **`companyBusinessNo` 추가**(`10-screen-design.md` §5.6 · GAP-05 — 고객 열람 페이지가 회사명과 사업자번호를 최상단에 함께 표시). 경계 계약 `CompanyQuery.CompanySummary`에 **`businessNo` 동반 추가**(A 구현 — 발신 회사 정보를 받을 통로가 없었음) |
 | v1.6.4 | **refresh 전달 = 쿠키 확정(2026-08-27)** — `LoginResponse`·`RefreshTokenResponse`에서 **refreshToken 필드 제거**, **`RefreshTokenRequest` 폐기**(요청 바디 없음 — 쿠키가 자격 증명). 검증 노트 #8 추가 |
 | v1.6.3 | **화면 설계 공백 반영(2026-08-26)** — **`ApproveQuoteRequest` 신설** · `RejectQuoteRequest`에 응답자 필드 추가(AP-19, Q-44) · `QuoteDetailResponse`에 응답자 표시 필드 · **`WaitingQuote`에 `firstViewedAt`**(대시보드에서 미열람/열람 구분 — `10-screen-design.md` GAP-08) |
 | v1.6.2 | **Q-38·39·43 반영(2026-08-26)** — SendQuoteResponse에 **version 추가**(Q-38 응답 일관) · §0 페이징 규칙에 파라미터 표준 명시(Q-39) · 403 `FORBIDDEN` 확정 반영(Q-43) |
@@ -378,6 +379,7 @@ public record OrderScheduleRequest(LocalDate startDate, LocalDate deliveryDate) 
 public record PublicQuoteResponse(
         String quoteNo, String status,
         String companyName,                                           // 발송 회사
+        String companyBusinessNo,                                     // 10 §5.6 · GAP-05 — 회사명과 함께 최상단 표시
         AssigneeInfo assignee,                                        // AP-18: Deal의 "현재" 담당자 동적 조회
         String vatMode, String terms, LocalDate validUntil,
         Long supplyAmount, Long vatAmount, Long totalAmount,          // 3분리 표시 (QT-25)

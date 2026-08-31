@@ -11,6 +11,7 @@ public record PublicQuoteResponse(
         String quoteNo,
         String status,
         String companyName,                       // 발송 회사
+        String companyBusinessNo,                 // 10 §5.6 · GAP-05: 회사명과 함께 최상단 표시
         AssigneeInfo assignee,                    // AP-18: Deal의 "현재" 담당자 동적 조회
         String vatMode,
         String terms,
