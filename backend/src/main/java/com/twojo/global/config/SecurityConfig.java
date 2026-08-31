@@ -2,6 +2,7 @@ package com.twojo.global.config;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configuration.EnableWebSecurity;
 import org.springframework.security.config.http.SessionCreationPolicy;
@@ -32,6 +33,10 @@ public class SecurityConfig {
                         .requestMatchers("/public/api/v1/**").permitAll()
                         // Swagger — API 테스트용. TODO(A): 운영 프로필에서는 차단
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        // 인증 전에 호출되는 두 경로만 연다. logout은 인증된 사용자만 해야 하므로
+                        // /api/v1/auth/** 를 통째로 열지 않는다 (07 §A)
+                        .requestMatchers(HttpMethod.POST,
+                                "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
                         .anyRequest().authenticated())
                 .build();
     }

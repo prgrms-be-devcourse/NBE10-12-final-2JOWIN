@@ -18,6 +18,17 @@ spring:
   jackson:
     time-zone: UTC            # 저장·전송은 UTC(TIMESTAMPTZ·Instant), 표시 변환은 프론트 책임
 
+# JWT — HS256 단일 키 (14 §3-4). 저장소에 시크릿을 두지 않는다 (14 §2-8).
+# 기본값 없음 — 미주입 시 기동이 실패한다. local·test 프로필만 개발용 기본값을 갖는다.
+jwt:
+  secret: ${JWT_SECRET}
+
+# 쿠키 — 07 refresh 쿠키 규약표. 이름·Path·SameSite는 코드 상수(RefreshCookieFactory)다.
+# secure만 환경에 따라 갈린다. 기본값 true — 빠뜨렸을 때 안전한 쪽이 켜진 상태여야 한다.
+app:
+  cookie:
+    secure: ${COOKIE_SECURE:true}
+
 server:
   port: 8080
   shutdown: graceful
@@ -48,6 +59,15 @@ spring:
 logging:
   level:
     org.hibernate.SQL: debug
+
+# clone 직후 바로 bootRun 되도록 개발용 기본값을 둔다 — 운영 키로 쓰지 않는다
+jwt:
+  secret: ${JWT_SECRET:2jo-local-dev-only-secret-key-not-for-production-use}
+
+# http://localhost 에서 Secure 쿠키는 브라우저가 저장하지 않을 수 있다 — Swagger 검증이 막힌다
+app:
+  cookie:
+    secure: false
 
 ---
 # 운영 — 값은 전부 환경변수 주입 (시크릿 저장 금지, 14-tech-stack.md §2-8)
