@@ -51,12 +51,12 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * <pre>{@code
  * @Component
  * @RequiredArgsConstructor
- * public class QuoteSentAfterCommitListener {
+ * public class MailScheduledListener {
  *
  *     private final NotificationDispatcher notificationDispatcher;
  *
  *     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
- *     public void handle(QuoteSent event) {
+ *     public void handle(MailScheduled event) {
  *         try {
  *             notificationDispatcher.dispatch(event.emailLogId());
  *         } catch (TaskRejectedException e) {
@@ -79,6 +79,14 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *     }
  * }
  * }</pre>
+ *
+ * <p><b>어떤 이벤트를 듣는지는 발송 주체가 정한다.</b> 위 예시의 {@code MailScheduled}는
+ * 발송을 예약한 모듈이 {@code email_log} 행을 만들면서 그 id를 담아 내보내는 <b>자기 모듈
+ * 이벤트</b>다. 감사용 이벤트({@code QuoteSent} 등, docs/11-work-breakdown.md §3)를 그대로
+ * 듣지 않는 이유는 <b>목적이 다르기 때문</b>이다 — 그쪽은 audit_log 적재를 위해 "무슨 일이
+ * 있었나"를 싣지, 발송에 필요한 {@code emailLogId}를 싣지 않는다. 감사 이벤트에서 대상을
+ * 역조회하면 재발송 시 같은 견적에 {@code SCHEDULED} 행이 여러 건이라 어느 것인지 가려지지
+ * 않는다. 발송 이벤트는 발송 예약과 같은 트랜잭션에서 나와야 id가 정확하다.
  *
  * <p><b>이벤트에는 식별자만 싣는다</b> — {@code emailLogId} 같은 ID다. 엔티티를 실으면
  * 영속성 컨텍스트가 닫힌 뒤 다른 스레드에서 만져 {@code LazyInitializationException}이 나고,
