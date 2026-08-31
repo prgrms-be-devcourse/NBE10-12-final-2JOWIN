@@ -22,7 +22,8 @@ public class CompanyQueryService implements CompanyQuery {
     public CompanySummary get(UUID companyId) {
         return companyRepository.findById(companyId)
                 .map(c -> new CompanySummary(
-                        c.getId(), c.getName(), c.getStatus() == Company.Status.ACTIVE))
+                        c.getId(), c.getName(), c.getBusinessNo(),
+                        c.getStatus() == Company.Status.ACTIVE))
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     }
 }

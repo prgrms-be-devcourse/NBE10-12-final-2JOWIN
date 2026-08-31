@@ -378,6 +378,7 @@ public record OrderScheduleRequest(LocalDate startDate, LocalDate deliveryDate) 
 public record PublicQuoteResponse(
         String quoteNo, String status,
         String companyName,                                           // 발송 회사
+        String companyBusinessNo,                                     // 10 §5.6 · GAP-05 — 회사명과 함께 최상단 표시
         AssigneeInfo assignee,                                        // AP-18: Deal의 "현재" 담당자 동적 조회
         String vatMode, String terms, LocalDate validUntil,
         Long supplyAmount, Long vatAmount, Long totalAmount,          // 3분리 표시 (QT-25)

@@ -75,7 +75,8 @@ class AuthServiceTest {
         given(memberQuery.findCredentialByEmail(EMAIL))
                 .willReturn(Optional.of(credential(true, passwordEncoder.encode(PASSWORD))));
         given(companyQuery.get(COMPANY_ID))
-                .willReturn(new CompanyQuery.CompanySummary(COMPANY_ID, "한빛오피스", true));
+                .willReturn(new CompanyQuery.CompanySummary(
+                        COMPANY_ID, "한빛오피스", "123-45-67890", true));
 
         LoginResult result = authService.login(request(true), IP, NOW);
 
