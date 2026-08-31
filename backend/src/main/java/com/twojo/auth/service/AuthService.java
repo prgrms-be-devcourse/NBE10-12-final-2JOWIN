@@ -92,9 +92,16 @@ public class AuthService {
      * <p>실패는 원인을 구별하지 않고 전부 REFRESH_TOKEN_NOT_ACTIVE다.
      * 특히 재사용을 감지했다는 사실을 응답으로 알려주지 않는다 (05 §9).
      *
+     * <p><b>noRollbackFor</b> — 재사용 감지·비활성 구성원 경로는 세션을 폐기한 뒤 예외를 던진다.
+     * 기본 규칙(RuntimeException이면 롤백)을 그대로 두면 그 폐기가 함께 사라져
+     * 05 §9의 안전망이 코드상 존재하되 작동하지 않는다.
+     * 예외를 던지는 네 자리 모두 커밋해도 안전하다 — 앞의 둘은 쓴 것이 없고, 뒤의 둘은 커밋이 목적이다.
+     *
+     * <p><b>여기에 새 쓰기를 추가할 때는</b> 그것이 실패 응답과 함께 커밋돼도 되는지 먼저 확인한다.
+     *
      * @param rawToken 쿠키에서 꺼낸 원문
      */
-    @Transactional
+    @Transactional(noRollbackFor = BusinessException.class)
     public RotateResult rotate(String rawToken, Instant now) {
         RefreshToken token = refreshTokenRepository
                 .findByTokenHash(secureTokenFactory.hash(rawToken))
@@ -133,7 +140,14 @@ public class AuthService {
         return new RotateResult(new RefreshTokenResponse(accessToken), newRawToken, expiresAt);
     }
 
-    /** 활성 행을 전부 폐기한다. 영속 엔티티라 더티 체킹으로 반영된다 — 트랜잭션 안이어야 한다. */
+    /**
+     * 활성 행을 전부 폐기한다 — 영속 엔티티라 더티 체킹으로 반영된다.
+     *
+     * <p>별도 빈 + REQUIRES_NEW로 분리하지 않는다. 분리하면 rotate()가 잡은 행 락을 쥔 채
+     * 새 트랜잭션이 같은 행을 UPDATE하려 들어 무한 대기한다 (비활성 구성원 경로).
+     * 락 대기 사이클이 아니라서 PostgreSQL 데드락 감지에도 걸리지 않는다.
+     * 커밋 보장은 rotate()의 noRollbackFor가 맡는다.
+     */
     private void revokeAllActive(UUID memberId, RefreshToken.RevokedReason reason, Instant now) {
         refreshTokenRepository
                 .findByMemberIdAndStatus(memberId, RefreshToken.Status.ACTIVE)
