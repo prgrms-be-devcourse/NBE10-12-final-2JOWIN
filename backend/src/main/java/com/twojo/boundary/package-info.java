@@ -9,7 +9,8 @@
  * <p><b>소유(구현 책임)는 여전히 문서대로다</b>:
  * <ul>
  *   <li>A 조민석 — {@link com.twojo.boundary.MemberQuery}</li>
- *   <li>B 한상민 — {@link com.twojo.boundary.CustomerQuery} · {@link com.twojo.boundary.ProductQuery}</li>
+ *   <li>B 한상민 — {@link com.twojo.boundary.CustomerQuery} · {@link com.twojo.boundary.ProductQuery}
+ *       · {@link com.twojo.boundary.ActivityQuery} · {@link com.twojo.boundary.TaskQuery} (DB-04·05 통로)</li>
  *   <li>C 최선진 — {@link com.twojo.boundary.QuoteCommand} · {@link com.twojo.boundary.DealQuery}
  *       · {@link com.twojo.boundary.QuoteQuery} · {@link com.twojo.boundary.SalesStatsQuery}</li>
  *   <li>D 이준형 — {@link com.twojo.boundary.ViewTokenCommand} · {@link com.twojo.boundary.ViewTokenQuery}</li>
