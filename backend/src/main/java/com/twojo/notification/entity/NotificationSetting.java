@@ -28,4 +28,9 @@ public class NotificationSetting extends BaseTimeEntity {
     private String type;
 
     private boolean enabled;
+
+    /** 메일 채널 수신 여부 변경 (NT-07). 설정 API는 A 소유, 이 메서드는 그 반영용. */
+    public void changeEnabled(boolean enabled) {
+        this.enabled = enabled;
+    }
 }
