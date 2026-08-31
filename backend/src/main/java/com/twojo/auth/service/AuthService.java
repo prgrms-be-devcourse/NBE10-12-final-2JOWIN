@@ -12,6 +12,7 @@ import com.twojo.boundary.CompanyQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
@@ -39,6 +40,19 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
 
     /**
+     * 미가입·미설정·비활성 경로에서 대조할 더미 해시 — BCrypt 비용을 균등하게 맞추기 위한 것이다.
+     *
+     * <p>상수로 박지 않고 기동 때마다 만든다. matches()는 인코더 설정이 아니라 <b>해시 문자열에
+     * 적힌 강도</b>로 검증하므로, 나중에 인코더 강도를 올리면 상수만 옛 비용으로 남아 차이가 되살아난다.
+     */
+    private String dummyPasswordHash;
+
+    @PostConstruct
+    void initDummyPasswordHash() {
+        dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
+    }
+
+    /**
      * 로그인. 실패 사유를 응답으로 구별하지 않는다 — 미가입·미설정·비활성·불일치가 모두
      * LOGIN_FAILED다 (SC-09, 07 §A).
      *
@@ -54,15 +68,21 @@ public class AuthService {
         Optional<MemberQuery.AuthCredential> found =
                 memberQuery.findCredentialByEmail(request.email());
 
+        // 미가입·미설정·비활성이면 더미 해시와 대조한다 — 어느 경로로 가든 BCrypt를 정확히 한 번 돌려
+        // 응답 시간이 계정의 존재나 상태를 드러내지 않게 한다 (SC-09)
+        String hashToMatch = found
+                .filter(MemberQuery.AuthCredential::active)
+                .map(MemberQuery.AuthCredential::passwordHash)
+                .orElse(dummyPasswordHash);
+        boolean matched = passwordEncoder.matches(request.password(), hashToMatch);
+
         if (found.isEmpty()) {
             // 미가입 이메일도 기록한다 — 안 하면 잠기지 않는다는 사실로 계정 부재가 드러난다
             recordFailureAndThrow(request.email(), null, ipAddress, now);
         }
 
         MemberQuery.AuthCredential credential = found.get();
-        if (!credential.active()
-                || credential.passwordHash() == null
-                || !passwordEncoder.matches(request.password(), credential.passwordHash())) {
+        if (!matched) {
             recordFailureAndThrow(request.email(), credential.id(), ipAddress, now);
         }
 
