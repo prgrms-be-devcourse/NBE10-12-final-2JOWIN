@@ -26,6 +26,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -151,6 +152,28 @@ class AuthServiceTest {
 
         // 기록하면 마지막 실패가 갱신되어 잠금이 무한 연장된다
         verify(loginAttemptService, never()).recordFailure(any(), any(), any(), any(), any());
+    }
+
+    @Nested
+    class 정지된_회사의_구성원은 {
+
+        /** 07 §A LOGIN_FAILED 행 · ON-09 — 정지 시 refresh 일괄 폐기가 재로그인으로 무효화되면 안 된다 */
+        @Test
+        void 로그인할_수_없다() {
+            // given — 김서연은 활성 구성원이고 비밀번호도 맞지만, 한빛오피스가 정지됐다
+            given(memberQuery.findCredentialByEmail(EMAIL))
+                    .willReturn(Optional.of(credential(true, passwordEncoder.encode(PASSWORD))));
+            given(companyQuery.isSuspended(COMPANY_ID)).willReturn(true);
+
+            // when — 올바른 비밀번호로 로그인을 시도하면
+            // then — 자격 증명이 틀렸을 때와 똑같은 응답이 나간다 (SC-09)
+            assertThatThrownBy(() -> authService.login(request(false), IP, NOW))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.LOGIN_FAILED);
+
+            // 세션도 만들어지지 않는다
+            verify(refreshTokenRepository, never()).save(any());
+        }
     }
 
     // ── 회전

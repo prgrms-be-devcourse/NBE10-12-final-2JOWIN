@@ -117,6 +117,29 @@ class AuthRotateIntegrationTest {
         assertThat(columnOf(tokenId, "revoked_reason")).isEqualTo("MEMBER_DEACTIVATED");
     }
 
+    /**
+     * 07 §A refresh 행 · ON-09 — 정지 회사는 거부만으로 부족하다. 남은 세션이 살아 있으면
+     * 최대 14일간 재발급이 이어진다. 폐기가 <b>커밋되는가</b>가 관측 대상이라 실 DB로 올린다.
+     */
+    @Test
+    @Timeout(value = 10, threadMode = Timeout.ThreadMode.SEPARATE_THREAD)
+    void 정지된_회사가_재발급하면_남은_세션이_DB에서도_폐기된다() {
+        // given — 구성원은 여전히 활성인데, 소속 회사가 정지됐다
+        jdbc.update("update company set status = 'SUSPENDED' where id = ?", companyId);
+
+        String raw = secureTokenFactory.generate();
+        UUID tokenId = insertToken(raw, "ACTIVE", null);
+
+        // when — 아직 살아 있는 refresh 토큰으로 재발급을 시도하면
+        assertThatThrownBy(() -> authService.rotate(raw, NOW))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+
+        // then — 거부에 그치지 않고 폐기가 커밋된다 (noRollbackFor)
+        assertThat(columnOf(tokenId, "status")).isEqualTo("REVOKED");
+        assertThat(columnOf(tokenId, "revoked_reason")).isEqualTo("COMPANY_SUSPENDED");
+    }
+
     private UUID insertToken(String rawToken, String status, String revokedReason) {
         UUID id = UUID.randomUUID();
         jdbc.update("""
