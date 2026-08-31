@@ -74,8 +74,9 @@ class AuthServiceTest {
     void 정상_로그인하면_세션이_발급되고_성공이_기록된다() {
         given(memberQuery.findCredentialByEmail(EMAIL))
                 .willReturn(Optional.of(credential(true, passwordEncoder.encode(PASSWORD))));
-        given(companyQuery.get(COMPANY_ID))
-                .willReturn(new CompanyQuery.CompanySummary(COMPANY_ID, "한빛오피스", true));
+        given(companyQuery.getIdentity(COMPANY_ID))
+                .willReturn(new CompanyQuery.CompanyIdentity(COMPANY_ID, "한빛오피스"));
+        given(companyQuery.isSuspended(COMPANY_ID)).willReturn(false);
 
         LoginResult result = authService.login(request(true), IP, NOW);
 

@@ -86,6 +86,12 @@ public class AuthService {
             recordFailureAndThrow(request.email(), credential.id(), ipAddress, now);
         }
 
+        // 정지 회사 구성원은 새 세션을 얻지 못한다 — ON-09의 refresh 일괄 폐기가
+        // 재로그인으로 무효화되는 것을 막는다. 응답은 자격 증명 오류와 구별하지 않는다 (07 §A)
+        if (companyQuery.isSuspended(credential.companyId())) {
+            recordFailureAndThrow(request.email(), credential.id(), ipAddress, now);
+        }
+
         loginAttemptService.recordSuccess(
                 request.email(), ActorType.MEMBER, credential.id(), ipAddress, now);
 
@@ -98,7 +104,7 @@ public class AuthService {
         String accessToken = jwtProvider.issue(
                 credential.id(), credential.companyId(), credential.role(), now);
         // 성공이 확정된 뒤에 조회한다 — 실패할 요청에서 이 쿼리가 돌 이유가 없다
-        String companyName = companyQuery.get(credential.companyId()).name();
+        String companyName = companyQuery.getIdentity(credential.companyId()).name();
 
         return new LoginResult(
                 new LoginResponse(accessToken, credential.id(), credential.name(),
@@ -112,10 +118,10 @@ public class AuthService {
      * <p>실패는 원인을 구별하지 않고 전부 REFRESH_TOKEN_NOT_ACTIVE다.
      * 특히 재사용을 감지했다는 사실을 응답으로 알려주지 않는다 (05 §9).
      *
-     * <p><b>noRollbackFor</b> — 재사용 감지·비활성 구성원 경로는 세션을 폐기한 뒤 예외를 던진다.
+     * <p><b>noRollbackFor</b> — 재사용 감지·비활성 구성원·정지 회사 경로는 세션을 폐기한 뒤 예외를 던진다.
      * 기본 규칙(RuntimeException이면 롤백)을 그대로 두면 그 폐기가 함께 사라져
      * 05 §9의 안전망이 코드상 존재하되 작동하지 않는다.
-     * 예외를 던지는 네 자리 모두 커밋해도 안전하다 — 앞의 둘은 쓴 것이 없고, 뒤의 둘은 커밋이 목적이다.
+     * 예외를 던지는 다섯 자리 모두 커밋해도 안전하다 — 앞의 둘은 쓴 것이 없고, 뒤의 셋은 커밋이 목적이다.
      *
      * <p><b>여기에 새 쓰기를 추가할 때는</b> 그것이 실패 응답과 함께 커밋돼도 되는지 먼저 확인한다.
      *
@@ -143,6 +149,13 @@ public class AuthService {
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
         }
 
+        // 위 검사가 통과했으므로 행이 있다 — companyId를 얻으려 여기서 읽고, 아래 claim에도 그대로 쓴다
+        MemberQuery.AuthCredential credential = memberQuery.getCredential(token.getMemberId());
+        if (companyQuery.isSuspended(credential.companyId())) {
+            revokeAllActive(token.getMemberId(), RefreshToken.RevokedReason.COMPANY_SUSPENDED, now);
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+        }
+
         token.markUsed(now);
         token.revoke(RefreshToken.RevokedReason.ROTATED, now);
 
@@ -153,7 +166,6 @@ public class AuthService {
         refreshTokenRepository.save(RefreshToken.issueForMember(
                 token.getMemberId(), secureTokenFactory.hash(newRawToken), expiresAt));
 
-        MemberQuery.AuthCredential credential = memberQuery.getCredential(token.getMemberId());
         String accessToken = jwtProvider.issue(
                 credential.id(), credential.companyId(), credential.role(), now);
 
