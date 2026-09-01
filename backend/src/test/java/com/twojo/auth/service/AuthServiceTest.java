@@ -26,6 +26,7 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
@@ -153,6 +154,30 @@ class AuthServiceTest {
         verify(loginAttemptService, never()).recordFailure(any(), any(), any(), any(), any());
     }
 
+    @Nested
+    class 정지된_회사의_구성원은 {
+
+        /** 07 §A LOGIN_FAILED 행 · ON-09 — 정지 시 refresh 일괄 폐기가 재로그인으로 무효화되면 안 된다 */
+        @Test
+        void 로그인할_수_없다() {
+            // given — 김서연은 활성 구성원이고 비밀번호도 맞지만, 한빛오피스가 정지됐다
+            given(memberQuery.findCredentialByEmail(EMAIL))
+                    .willReturn(Optional.of(credential(true, passwordEncoder.encode(PASSWORD))));
+            given(companyQuery.get(COMPANY_ID))
+                    .willReturn(new CompanyQuery.CompanySummary(
+                            COMPANY_ID, "한빛오피스", "123-45-67890", false));
+
+            // when — 올바른 비밀번호로 로그인을 시도하면
+            // then — 자격 증명이 틀렸을 때와 똑같은 응답이 나간다 (SC-09)
+            assertThatThrownBy(() -> authService.login(request(false), IP, NOW))
+                    .isInstanceOf(BusinessException.class)
+                    .hasFieldOrPropertyWithValue("errorCode", ErrorCode.LOGIN_FAILED);
+
+            // 세션도 만들어지지 않는다
+            verify(refreshTokenRepository, never()).save(any());
+        }
+    }
+
     // ── 회전
 
     @Test
@@ -162,6 +187,7 @@ class AuthServiceTest {
         given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(active));
         given(memberQuery.isActive(MEMBER_ID)).willReturn(true);
         given(memberQuery.getCredential(MEMBER_ID)).willReturn(credential(true, "hash"));
+        given(companyQuery.get(COMPANY_ID)).willReturn(활성_회사());
 
         RotateResult result = authService.rotate("아무-원문", NOW);
 
@@ -178,6 +204,7 @@ class AuthServiceTest {
         given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(active));
         given(memberQuery.isActive(MEMBER_ID)).willReturn(true);
         given(memberQuery.getCredential(MEMBER_ID)).willReturn(credential(true, "hash"));
+        given(companyQuery.get(COMPANY_ID)).willReturn(활성_회사());
 
         RotateResult result = authService.rotate("아무-원문", NOW.plusSeconds(900));
 
@@ -252,6 +279,10 @@ class AuthServiceTest {
 
     private LoginRequest request(boolean rememberMe) {
         return new LoginRequest(EMAIL, PASSWORD, rememberMe);
+    }
+
+    private CompanyQuery.CompanySummary 활성_회사() {
+        return new CompanyQuery.CompanySummary(COMPANY_ID, "한빛오피스", "123-45-67890", true);
     }
 
     private MemberQuery.AuthCredential credential(boolean active, String passwordHash) {
