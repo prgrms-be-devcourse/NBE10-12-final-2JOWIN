@@ -1,6 +1,7 @@
 package com.twojo.deal.service;
 
 import com.twojo.boundary.DealQuery;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,11 @@ public class DealQueryImpl implements DealQuery {
     @Override
     public List<DealSummary> summariesByCustomer(UUID customerId) {
         throw new UnsupportedOperationException("DealQuery.summariesByCustomer — C 2주차 구현 예정");
+    }
+
+    @Override
+    public List<DealSummary> summariesByIds(UUID companyId, Collection<UUID> dealIds) {
+        throw new UnsupportedOperationException("DealQuery.summariesByIds — C 2주차 구현 예정");
     }
 
     @Override
