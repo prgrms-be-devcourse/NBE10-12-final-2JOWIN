@@ -175,6 +175,26 @@ public class AuthService {
         return new RotateResult(new RefreshTokenResponse(accessToken), newRawToken, expiresAt);
     }
 
+    /**
+     * 로그아웃 (AU-02) — 쿠키로 제시된 그 세션 하나만 끊는다.
+     *
+     * <p>다중 기기를 허용하므로(Q-28) 다른 기기의 세션은 건드리지 않는다.
+     * 전 행 폐기는 비밀번호 변경·정지·비활성화의 효과이지 로그아웃의 효과가 아니다 (전이표 §9).
+     *
+     * <p>실패 경로가 없다 — 쿠키가 없거나 이미 폐기된 토큰이어도 "세션 없음"은
+     * 로그아웃의 목표 상태지 오류가 아니다. 07 에러표의 REFRESH_TOKEN_NOT_ACTIVE는
+     * 조건이 '재발급'이며, 로그아웃 행 자체가 표에 없다.
+     */
+    @Transactional
+    public void logout(String rawToken, Instant now) {
+        if (rawToken == null) {
+            return;
+        }
+        refreshTokenRepository
+                .findByTokenHash(secureTokenFactory.hash(rawToken))
+                .ifPresent(token -> token.revoke(RefreshToken.RevokedReason.LOGOUT, now));
+    }
+
     private void recordFailureAndThrow(String email, UUID memberId, String ipAddress, Instant now) {
         loginAttemptService.recordFailure(email, ActorType.MEMBER, memberId, ipAddress, now);
         throw new BusinessException(ErrorCode.LOGIN_FAILED);

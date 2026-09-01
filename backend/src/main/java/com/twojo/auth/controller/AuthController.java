@@ -79,4 +79,26 @@ public class AuthController {
             throw e;
         }
     }
+
+    /**
+     * 로그아웃 (AU-02) — 쿠키가 곧 자격 증명이라 access token을 요구하지 않는다.
+     *
+     * <p>요구하면 access 만료(15분) 뒤에는 로그아웃이 401이 되어, 가장 확실히 끊어야 할
+     * 순간에 못 끊는다. 남의 세션은 그 쿠키 없이는 건드릴 수 없으므로 열어도 범위가 넓어지지
+     * 않는다 (09 "인증 토큰은 본인 것만"). SameSite=Lax + Path 한정이라 CSRF 실익도 없다.
+     *
+     * <p>어떤 경로로 끝나든 204다 — 07 에러표에 로그아웃 행이 없다.
+     * 쿠키는 항상 지운다. 남겨두면 브라우저가 죽은 값을 계속 붙여 보낸다 (07 쿠키 규약표).
+     */
+    @PostMapping("/logout")
+    public ResponseEntity<Void> logout(
+            @CookieValue(name = RefreshCookieFactory.COOKIE_NAME, required = false)
+            String rawToken) {
+
+        authService.logout(rawToken, Instant.now());
+
+        return ResponseEntity.noContent()
+                .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.delete().toString())
+                .build();
+    }
 }
