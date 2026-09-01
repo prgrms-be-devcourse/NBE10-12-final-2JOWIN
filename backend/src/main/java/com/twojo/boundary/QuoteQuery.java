@@ -34,6 +34,11 @@ public interface QuoteQuery {
      * 때문이다(Q-40 순서 합의). issue 구현에서 SENT를 전제로 검증하면 항상 실패한다.
      *
      * <p>토큰 만료 시각(= validUntil 당일 23:59:59)으로의 변환은 D가 한다.
+     *
+     * <p><b>없으면 RESOURCE_NOT_FOUND를 던진다</b> — 호출 맥락이 존재를 보장하는 자리라
+     * ({@code quote_view_token.quote_id} FK · issue는 C의 발송 트랜잭션 안) 없다는 것은
+     * 데이터 이상이다. 호출자는 null을 검사하지 않는다.
+     * 404 문구는 SC-09 통일 문구를 따르므로 고객 열람 경로에서도 존재가 노출되지 않는다.
      */
     PublicQuoteView getPublicView(UUID quoteId);
 
