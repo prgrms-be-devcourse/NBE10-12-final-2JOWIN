@@ -137,6 +137,8 @@ public interface MemberQuery {
     List<MemberSummary> findAllActive(UUID companyId);   // 담당자 선택지 (C)
     boolean isActive(UUID memberId);                     // 배정·이관 대상 검증 (C)
     List<UUID> findAdminIds(UUID companyId);             // Q-26 폴백 수신자 (D)
+    AuthCredential getCredential(UUID memberId);         // 로그인 자격 검증 (A 내부)
+    MemberContact getContact(UUID memberId);             // 담당자 연락처 표시 (D — AP-18)
 }
 ```
 

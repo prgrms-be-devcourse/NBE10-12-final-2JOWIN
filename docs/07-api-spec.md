@@ -1,4 +1,4 @@
-# API 명세서 — v1.6.4
+# API 명세서 — v1.6.5
 
 > 🧭 [문서 지도](README.md) · ← [06 ERD](06-erd.md) · [08 DTO 설계서](08-dto.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.5 | **A 인증 보정(2026-09-01)** — **`CURRENT_PASSWORD_MISMATCH` 신설(422)**: 비밀번호 변경의 현재 비밀번호 불일치에 쓸 코드가 없었다. `LOGIN_FAILED`(401) 재사용은 부록이 401을 AU-12(세션 만료 → 로그인 화면 이동)와 묶어놓은 탓에 **유효한 세션을 끊어버려** 분리한다 · `POST /api/v1/me/password`의 효과·응답 명시 · 로그아웃 접근 범위 각주 · 부록 `REFRESH_TOKEN_NOT_ACTIVE`의 필터 401 겸용 각주 |
 | v1.6.4 | **refresh 전달 = 쿠키 확정(2026-08-27)** — 로그인·재발급·로그아웃에 쿠키 규약 명시(HttpOnly·Secure·SameSite·Path 한정, 구성원/관리자 쿠키 분리). **refresh 원문은 요청·응답 바디에서 사라진다** |
 | v1.6.3 | **화면 설계 공백 반영(2026-08-26)** — 승인·반려 요청에 **응답자 이름·직책**(AP-19, Q-44) · 대시보드 응답 대기 목록에 **열람 여부**(`firstViewedAt` — 미열람/열람 구분이 담당자 행동을 가른다) · 딜 상세와 타임라인의 책임 범위 명시 |
 | v1.6.2 | **Q-36~43 반영(2026-08-26)** — 페이지네이션 표준 명시(Q-39) · **403 `FORBIDDEN` 코드·문구 확정**(Q-43 — 부록·신설 코드 요약에 수록) · 견적 만료 배치 소유 C(Q-37) · 링크 발급은 발송 트랜잭션 내 동기(Q-40) · 고객 문의 조회 API 부재 확정(Q-42) |
@@ -71,15 +72,17 @@
 | --- | --- | --- | --- | --- |
 | POST | /api/v1/auth/login | 로그인 — body에 `rememberMe` · **응답: access는 바디, refresh는 `Set-Cookie`** | — | AU-01·10 |
 | POST | /api/v1/auth/refresh | **요청 바디 없음 — 쿠키가 곧 자격 증명.** **토큰 재발급 (회전 — 기존 refresh 폐기 + 새 발급, 새 쿠키로 교체) · 재발급 시 구성원·회사 상태 검사(비활성·정지면 거부 — 폐기 누락 대비 안전망) · 회전된 토큰 재사용 감지 시 해당 구성원 세션 전체 폐기(사유 REUSE_DETECTED), 응답은 REFRESH_TOKEN_NOT_ACTIVE로 통일(감지 사실 비노출)** | — | AU-03, Q-32 |
-| POST | /api/v1/auth/logout | 로그아웃 — refresh 폐기(사유 LOGOUT) + **쿠키 삭제(`Max-Age=0`)** | 전 구성원 | AU-02 |
+| POST | /api/v1/auth/logout | 로그아웃 — refresh 폐기(사유 LOGOUT) + **쿠키 삭제(`Max-Age=0`)** · **access token 없이도 호출된다 (각주 2)** | 전 구성원 | AU-02 |
 | GET | /api/v1/me | 내 정보 (세션 확인) | 전 구성원 | AU-03·07 |
 | PATCH | /api/v1/me | 프로필 수정 (이름·연락처) | 전 구성원 | AU-07 |
-| POST | /api/v1/me/password | 비밀번호 변경 | 전 구성원 | AU-04 |
+| POST | /api/v1/me/password | 비밀번호 변경 — **효과: 해당 구성원 refresh_token 전 행 폐기(전이표 §9) → 본인도 재로그인해야 한다.** 응답 `204` | 전 구성원 | AU-04 |
 | POST | /public/api/v1/auth/password-reset-request | 재설정 메일 요청 — **미가입 이메일도 동일 응답 (SC-09 인증 확장)** | 비로그인 | AU-05 |
 | POST | /public/api/v1/auth/password-reset | 재설정 실행 (토큰) | 비로그인 | AU-05 |
 | GET · PUT | /api/v1/me/notification-settings | 알림 수신 설정 (메일 채널만, Q-23) | 전 구성원 | NT-07 |
 
-> (각주) 승인 통보의 비밀번호 설정 링크도 위 password-reset 두 엔드포인트를 그대로 쓴다 — `purpose=INITIAL_SETUP`, 수명 7일 (Q-33·34. RESET은 30분 유지).
+> (각주 1) 승인 통보의 비밀번호 설정 링크도 위 password-reset 두 엔드포인트를 그대로 쓴다 — `purpose=INITIAL_SETUP`, 수명 7일 (Q-33·34. RESET은 30분 유지).
+>
+> (각주 2) **로그아웃의 역할 칸 "전 구성원"은 '이 API의 대상'을 뜻하며, 인증을 요구한다는 뜻이 아니다.** 인증을 걸면 access token이 만료된(15분, Q-32) 뒤에는 세션을 끊을 방법이 사라진다 — 자격 증명은 쿠키의 refresh이지 access가 아니다. 폐기할 행이 없어도 `204`로 통일한다(이미 로그아웃된 상태와 구별하지 않는다 — SC-09와 같은 태도).
 
 **refresh 쿠키 규약 (v1.6.4 확정)** — access token은 종전대로 `Authorization: Bearer` 헤더로 보낸다.
 
@@ -100,6 +103,7 @@
 | LOGIN_LOCKED | 429 | 5회 연속 실패 → 10분 제한 (AU-06·09) — **미가입 이메일도 동일 동작 (SC-09 인증 확장)** |
 | **REFRESH_TOKEN_NOT_ACTIVE** | 401 | 폐기·만료된 refresh 토큰으로 재발급 |
 | **RESET_TOKEN_NOT_ACTIVE** | 409 | 사용·만료된 재설정 토큰으로 재설정 실행 |
+| **CURRENT_PASSWORD_MISMATCH** | 422 | 비밀번호 변경 시 현재 비밀번호 불일치 (AU-04) — **401이 아니다.** 세션은 유효하고 값만 틀렸다 (v1.6.5) |
 
 ## A. 구성원 · 초대 — 조민석 (MB)
 
@@ -309,10 +313,13 @@
 | CONTACT_HAS_QUOTES | 409 | B 고객사 (실사용 점검) |
 | CONTACT_NOT_IN_CUSTOMER | 409 | C 견적 (C 리뷰 3-3) |
 | **FORBIDDEN** | **403** | **공통 — 역할 자체로 갈리는 행위 위반 (Q-43)** |
+| **CURRENT_PASSWORD_MISMATCH** | **422** | **A 인증 — 비밀번호 변경의 현재 비밀번호 불일치 (v1.6.5)** |
 
 ## 부록 — 에러별 사용자 안내 문구 (ErrorCode enum message 원본)
 
 💡 프론트는 이 문구를 그대로 노출한다. 404 계열은 SC-09에 따라 **전부 동일 문구** — 존재·권한을 구별해서 말하지 않는다. 낙관적 락 에러명은 `STALE_VERSION`으로 확정.
+
+💡 **`REFRESH_TOKEN_NOT_ACTIVE`는 access token 검증 실패의 401에도 쓴다** (v1.6.5 각주) — 헤더 누락·서명 불일치·만료, 그리고 토큰이 가리키는 구성원이 비활성이거나 회사가 정지된 경우. access token 전용 코드를 따로 두지 않는 이유는 프론트가 취할 행동이 하나뿐이기 때문이다: AU-12에 따라 재발급을 시도하고, 실패하면 로그인 화면으로 보낸다. 코드를 나눠도 분기가 생기지 않는다. **이 401이 세션 문제 전용이라는 점이 `CURRENT_PASSWORD_MISMATCH`를 422로 분리한 근거이기도 하다.**
 
 | 코드 | HTTP | 사용자 안내 문구 |
 | --- | --- | --- |
@@ -320,6 +327,7 @@
 | LOGIN_LOCKED | 429 | 로그인 시도가 너무 많습니다. 10분 후 다시 시도해 주세요. |
 | REFRESH_TOKEN_NOT_ACTIVE | 401 | 세션이 만료되었습니다. 다시 로그인해 주세요. (AU-12: 로그인 화면 이동) |
 | RESET_TOKEN_NOT_ACTIVE | 409 | 이 재설정 링크는 더 이상 유효하지 않습니다. 재설정을 다시 요청해 주세요. |
+| CURRENT_PASSWORD_MISMATCH | 422 | 현재 비밀번호가 올바르지 않습니다. |
 | EMAIL_ALREADY_MEMBER | 422 | 이미 사용 중인 이메일입니다. |
 | APPLICATION_ALREADY_PENDING | 409 | 이미 검토 중인 신청이 있습니다. |
 | APPLICATION_ALREADY_DECIDED | 409 | 이미 처리된 신청입니다. |
