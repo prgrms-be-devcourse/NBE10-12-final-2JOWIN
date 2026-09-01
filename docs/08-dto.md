@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.5
+# DTO 설계서 — v1.6.6
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.6 | **A 인증 보정(2026-09-01)** — `ChangePasswordRequest`에 에러·응답 주석(`CURRENT_PASSWORD_MISMATCH` 422 · 성공 시 전 세션 폐기 + 204, 07 v1.6.5). 경계 계약 `MemberQuery`에 **`MemberContact(name·email·phone)` 추가**(A 구현 · PR #36 — D의 고객 열람 페이지 담당자 표시 AP-18. `MemberSummary`를 넓히지 않고 따로 둔 이유는 `/members/options`가 "이름·id만"이라 연락처가 딸려갈 경로가 아니기 때문) |
 | v1.6.5 | **화면 설계 공백 반영(2026-08-31)** — `PublicQuoteResponse`에 **`companyBusinessNo` 추가**(`10-screen-design.md` §5.6 · GAP-05 — 고객 열람 페이지가 회사명과 사업자번호를 최상단에 함께 표시). 경계 계약 `CompanyQuery.CompanySummary`에 **`businessNo` 동반 추가**(A 구현 — 발신 회사 정보를 받을 통로가 없었음) |
 | v1.6.4 | **refresh 전달 = 쿠키 확정(2026-08-27)** — `LoginResponse`·`RefreshTokenResponse`에서 **refreshToken 필드 제거**, **`RefreshTokenRequest` 폐기**(요청 바디 없음 — 쿠키가 자격 증명). 검증 노트 #8 추가 |
 | v1.6.3 | **화면 설계 공백 반영(2026-08-26)** — **`ApproveQuoteRequest` 신설** · `RejectQuoteRequest`에 응답자 필드 추가(AP-19, Q-44) · `QuoteDetailResponse`에 응답자 표시 필드 · **`WaitingQuote`에 `firstViewedAt`**(대시보드에서 미열람/열람 구분 — `10-screen-design.md` GAP-08) |
@@ -108,6 +109,8 @@ public record UpdateMeRequest(@NotBlank String name, String phone) {}
 public record ChangePasswordRequest(
         @NotBlank String currentPassword,
         @NotBlank @Size(min = 8) String newPassword) {}
+// currentPassword 불일치 → 422 CURRENT_PASSWORD_MISMATCH (401 아님 — 세션은 유효하다, 07 v1.6.5)
+// 성공 시 해당 구성원 refresh_token 전 행 폐기(전이표 §9) → 본인도 재로그인. 응답 204, 본문 없음
 
 public record NotificationSettingResponse(List<Entry> settings) {    // NT-07: 메일 채널만
     public record Entry(String type, boolean emailEnabled) {}         // 행 없으면 기본 ON
