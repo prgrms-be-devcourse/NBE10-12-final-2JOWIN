@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
@@ -277,6 +278,73 @@ class AuthServiceTest {
         // 거부만 하면 다른 기기 토큰이 살아남아 안전망 구실을 못 한다 (05 §9)
         assertThat(otherDevice.getRevokedReason())
                 .isEqualTo(RefreshToken.RevokedReason.MEMBER_DEACTIVATED);
+    }
+
+    // ── 로그아웃
+
+    /** 05 §9 로그아웃 행 · Q-28 — 다중 기기를 허용하므로 끊는 것은 제시된 그 행 하나다 */
+    @Test
+    void 로그아웃해도_다른_기기_세션은_유지된다() {
+        // given — 김서연이 노트북과 휴대폰 두 대에서 로그인해 있다
+        RefreshToken 노트북 =
+                RefreshToken.issueForMember(MEMBER_ID, "hash-laptop", NOW.plusSeconds(3600));
+        RefreshToken 휴대폰 =
+                RefreshToken.issueForMember(MEMBER_ID, "hash-phone", NOW.plusSeconds(3600));
+        given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(노트북));
+
+        // 전 행 폐기로 잘못 구현하면 이 목록을 타고 휴대폰까지 끊긴다 — 그래야 아래 단정이 의미를 갖는다.
+        // 올바른 구현은 이 스텁을 쓰지 않으므로 lenient 로 둔다
+        lenient().when(refreshTokenRepository
+                        .findByMemberIdAndStatus(MEMBER_ID, RefreshToken.Status.ACTIVE))
+                .thenReturn(List.of(노트북, 휴대폰));
+
+        // when — 노트북 쿠키로 로그아웃하면
+        authService.logout("노트북-원문", NOW);
+
+        // then — 휴대폰 세션은 손대지 않는다
+        assertThat(휴대폰.getStatus()).isEqualTo(RefreshToken.Status.ACTIVE);
+    }
+
+    /** 05 §9 — 사유가 틀리면 감사 기록이 거짓말이 된다. 응답이 같아 눈으로는 안 보인다 */
+    @Test
+    void 로그아웃하면_그_행이_LOGOUT으로_폐기된다() {
+        // given — 살아 있는 세션 하나가 쿠키로 제시된다
+        RefreshToken 노트북 =
+                RefreshToken.issueForMember(MEMBER_ID, "hash-laptop", NOW.plusSeconds(3600));
+        given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(노트북));
+
+        // when — 로그아웃하면
+        authService.logout("노트북-원문", NOW);
+
+        // then — 그 행이 LOGOUT 사유로 폐기된다 (전이표 §9 로그아웃 행)
+        assertThat(노트북.getStatus()).isEqualTo(RefreshToken.Status.REVOKED);
+        assertThat(노트북.getRevokedReason()).isEqualTo(RefreshToken.RevokedReason.LOGOUT);
+    }
+
+    /** D2 · 07 에러표에 로그아웃 행이 없다 — 세션 없음은 목표 상태지 실패가 아니다 */
+    @Test
+    void 쿠키가_없으면_아무_것도_조회하지_않고_끝난다() {
+        // when — 브라우저가 2jo_rt 를 안 보냈다 (이미 로그아웃했거나 쿠키가 만료됐다)
+        authService.logout(null, NOW);
+
+        // then — 예외도 조회도 없다. 여기서는 '아무 일도 일어나지 않는 것' 자체가 명세다
+        verify(refreshTokenRepository, never()).findByTokenHash(any());
+    }
+
+    /** 05 §9 · RefreshToken#revoke — 최초 폐기 사유가 감사 근거다 */
+    @Test
+    void 이미_폐기된_토큰으로_로그아웃해도_최초_폐기_사유가_유지된다() {
+        // given — 회전으로 이미 끊긴 행이 낡은 쿠키에 실려 다시 온다
+        RefreshToken 회전됨 =
+                RefreshToken.issueForMember(MEMBER_ID, "hash", NOW.plusSeconds(3600));
+        회전됨.revoke(RefreshToken.RevokedReason.ROTATED, NOW);
+        given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(회전됨));
+
+        // when — 그 쿠키로 로그아웃하면
+        authService.logout("낡은-원문", NOW.plusSeconds(60));
+
+        // then — LOGOUT 이 덮어썼다면 침해 흔적이 지워진다
+        assertThat(회전됨.getRevokedReason()).isEqualTo(RefreshToken.RevokedReason.ROTATED);
     }
 
     private LoginRequest request(boolean rememberMe) {
