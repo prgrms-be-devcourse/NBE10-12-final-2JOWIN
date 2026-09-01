@@ -68,7 +68,7 @@ class AuthServiceTest {
                 refreshTokenRepository, secureTokenFactory,
                 new JwtProvider("test-only-secret-key-at-least-32-bytes-long"), passwordEncoder,
                 // 목으로 감싸면 폐기 케이스가 스텁된 리포지토리에 닿지 않아 검증이 사라진다
-                new SessionRevokeService(refreshTokenRepository));
+                new SessionRevokeService(refreshTokenRepository, memberQuery));
     }
 
     // ── 로그인 성공
