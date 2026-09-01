@@ -18,9 +18,13 @@ import org.springframework.stereotype.Component;
  * 그 클래스를 auth 모듈 안으로 가려 approval에서 import할 수 없어 같은 스펙으로 approval 전용
  * 생성기를 둔다 (스펙 2026-08-31 팀 합의 — SHA-256 · 256비트 랜덤 · salt/secret 없음).
  * 공용 팩토리로의 통합은 별도 작업(E 소유)이다.
+ *
+ * <p>{@code public}이지만 approval 모듈 내부용이다 — {@code approval.service}의 {@code issue()}가
+ * 이 타입을 직접 주입받아야 하므로 패키지 밖에서 보여야 한다. 모듈 밖(auth·quote 등) 접근은
+ * {@code approval.token}이 서브패키지라 Modulith가 그대로 차단한다.
  */
 @Component
-class TokenGenerator {
+public class TokenGenerator {
 
     /** 256비트 — 추측 공격이 성립하지 않는 수준. */
     private static final int TOKEN_BYTES = 32;

@@ -29,12 +29,13 @@ class TokenGeneratorTest {
     }
 
     @Test
-    @DisplayName("generate() 결과는 패딩 없는 URL-safe Base64다")
+    @DisplayName("generate() 결과는 43자, 패딩 없는 URL-safe Base64다")
     void generate_결과는_패딩_없는_URL_safe_Base64다() {
         String raw = tokenGenerator.generate();
 
         assertThat(raw).matches("[A-Za-z0-9_-]+");
         assertThat(raw).doesNotContain("=", "+", "/");
+        assertThat(raw).hasSize(43);   // 32바이트(256비트) → 패딩 없는 Base64 43자. TOKEN_BYTES 회귀 방지
     }
 
     @Test
