@@ -39,7 +39,22 @@ public interface MemberQuery {
      */
     AuthCredential getCredential(UUID memberId);
 
+    /**
+     * 담당자 연락처 — D의 고객 열람 페이지 전용 (AP-18 · 08 §D AssigneeInfo).
+     *
+     * <p>MemberSummary를 넓히지 않고 따로 둔다. 그쪽은 findAllActive가 리스트로 실어 나르고
+     * 07 §A가 /members/options를 "이름·id만"으로 규정한다 — 연락처가 딸려갈 경로가 아니다.
+     * AuthCredential을 auth 전용으로 둔 것과 같은 패턴이다.
+     *
+     * <p>없으면 RESOURCE_NOT_FOUND. 비활성 구성원도 그대로 반환한다 — 던지면 고객 열람
+     * 페이지 전체가 죽는다. 담당자는 MB-14의 이관 강제로 정상적으론 활성이다.
+     */
+    MemberContact getContact(UUID memberId);
+
     record MemberSummary(UUID id, String name, boolean active) {}
+
+    /** 열람 페이지에 표시할 담당자 연락처 (AP-18). 세 필드 전부 표시용이며 판정에 쓰지 않는다. */
+    record MemberContact(String name, String email, String phone) {}
 
     /**
      * 인증에 필요한 최소 정보.

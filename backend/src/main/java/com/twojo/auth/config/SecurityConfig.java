@@ -49,8 +49,10 @@ public class SecurityConfig {
         return stateless(http)
                 .securityMatcher("/api/v1/**")
                 .authorizeHttpRequests(auth -> auth
+                        // 로그아웃도 쿠키가 곧 자격 증명이다 — access 만료 뒤에야말로 확실히 끊어야 한다
                         .requestMatchers(HttpMethod.POST,
-                                "/api/v1/auth/login", "/api/v1/auth/refresh").permitAll()
+                                "/api/v1/auth/login", "/api/v1/auth/refresh",
+                                "/api/v1/auth/logout").permitAll()
                         .anyRequest().authenticated())
                 .addFilterBefore(
                         new JwtAuthenticationFilter(jwtProvider, memberQuery, companyQuery),

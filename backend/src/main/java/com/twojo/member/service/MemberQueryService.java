@@ -89,10 +89,22 @@ public class MemberQueryService implements MemberQuery {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
+    /** 열람 페이지 담당자 표시 — 없으면 데이터 이상이다 (deal.assignee_member_id FK 보장). */
+    @Override
+    public MemberContact getContact(UUID memberId) {
+        return memberRepository.findById(memberId)
+                .map(this::toContact)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
     private AuthCredential toCredential(Member member) {
         return new AuthCredential(
                 member.getId(), member.getCompanyId(), member.getName(), member.getRole(),
                 member.isActive(), member.getPasswordHash());
+    }
+
+    private MemberContact toContact(Member member) {
+        return new MemberContact(member.getName(), member.getEmail(), member.getPhone());
     }
 
     private MemberSummary toSummary(Member member) {

@@ -1,6 +1,7 @@
 package com.twojo.auth.config;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -97,5 +98,14 @@ class SecurityChainIntegrationTest {
                         .header(HttpHeaders.AUTHORIZATION, "Bearer " + 구성원_토큰))
                 .andExpect(status().isUnauthorized())
                 .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_NOT_ACTIVE"));
+    }
+
+    /** 07 §A · D1 — 쿠키가 자격 증명이라 access 만료 뒤에도 끊을 수 있어야 한다 */
+    @Test
+    void 로그아웃은_access_token_없이_호출할_수_있다() throws Exception {
+        // when — Authorization 헤더도 쿠키도 없이 로그아웃을 부르면
+        mockMvc.perform(post("/api/v1/auth/logout"))
+                // then — 401 이 아니라 204 다. 체인의 permitAll 목록에서 빠지면 여기서 깨진다
+                .andExpect(status().isNoContent());
     }
 }

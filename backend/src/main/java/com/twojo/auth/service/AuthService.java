@@ -38,6 +38,7 @@ public class AuthService {
     private final SecureTokenFactory secureTokenFactory;
     private final JwtProvider jwtProvider;
     private final PasswordEncoder passwordEncoder;
+    private final SessionRevokeService sessionRevokeService;
 
     /**
      * 미가입·미설정·비활성 경로에서 대조할 더미 해시 — BCrypt 비용을 균등하게 맞추기 위한 것이다.
@@ -135,7 +136,8 @@ public class AuthService {
         if (token.isRotated()) {
             // 한 번 쓴 토큰이 다시 왔다 — 정상 사용에서는 일어날 수 없다.
             // 훔쳐간 쪽과 진짜 사용자를 구별할 수 없으므로 이 구성원의 세션을 전부 끊는다
-            revokeAllActive(token.getMemberId(), RefreshToken.RevokedReason.REUSE_DETECTED, now);
+            sessionRevokeService.revokeAllActive(
+                    token.getMemberId(), RefreshToken.RevokedReason.REUSE_DETECTED, now);
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
         }
         if (!token.isUsableAt(now)) {
@@ -144,14 +146,16 @@ public class AuthService {
 
         // 폐기 누락 대비 안전망 — 비활성화 시점에 이미 끊겼어야 하지만 한 번 더 본다 (05 §9)
         if (!memberQuery.isActive(token.getMemberId())) {
-            revokeAllActive(token.getMemberId(), RefreshToken.RevokedReason.MEMBER_DEACTIVATED, now);
+            sessionRevokeService.revokeAllActive(
+                    token.getMemberId(), RefreshToken.RevokedReason.MEMBER_DEACTIVATED, now);
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
         }
 
         // 위 검사가 통과했으므로 행이 있다 — companyId를 얻으려 여기서 읽고, 아래 claim에도 그대로 쓴다
         MemberQuery.AuthCredential credential = memberQuery.getCredential(token.getMemberId());
         if (!companyQuery.get(credential.companyId()).active()) {
-            revokeAllActive(token.getMemberId(), RefreshToken.RevokedReason.COMPANY_SUSPENDED, now);
+            sessionRevokeService.revokeAllActive(
+                    token.getMemberId(), RefreshToken.RevokedReason.COMPANY_SUSPENDED, now);
             throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
         }
 
@@ -172,17 +176,23 @@ public class AuthService {
     }
 
     /**
-     * 활성 행을 전부 폐기한다 — 영속 엔티티라 더티 체킹으로 반영된다.
+     * 로그아웃 (AU-02) — 쿠키로 제시된 그 세션 하나만 끊는다.
      *
-     * <p>별도 빈 + REQUIRES_NEW로 분리하지 않는다. 분리하면 rotate()가 잡은 행 락을 쥔 채
-     * 새 트랜잭션이 같은 행을 UPDATE하려 들어 무한 대기한다 (비활성 구성원 경로).
-     * 락 대기 사이클이 아니라서 PostgreSQL 데드락 감지에도 걸리지 않는다.
-     * 커밋 보장은 rotate()의 noRollbackFor가 맡는다.
+     * <p>다중 기기를 허용하므로(Q-28) 다른 기기의 세션은 건드리지 않는다.
+     * 전 행 폐기는 비밀번호 변경·정지·비활성화의 효과이지 로그아웃의 효과가 아니다 (전이표 §9).
+     *
+     * <p>실패 경로가 없다 — 쿠키가 없거나 이미 폐기된 토큰이어도 "세션 없음"은
+     * 로그아웃의 목표 상태지 오류가 아니다. 07 에러표의 REFRESH_TOKEN_NOT_ACTIVE는
+     * 조건이 '재발급'이며, 로그아웃 행 자체가 표에 없다.
      */
-    private void revokeAllActive(UUID memberId, RefreshToken.RevokedReason reason, Instant now) {
+    @Transactional
+    public void logout(String rawToken, Instant now) {
+        if (rawToken == null) {
+            return;
+        }
         refreshTokenRepository
-                .findByMemberIdAndStatus(memberId, RefreshToken.Status.ACTIVE)
-                .forEach(t -> t.revoke(reason, now));
+                .findByTokenHash(secureTokenFactory.hash(rawToken))
+                .ifPresent(token -> token.revoke(RefreshToken.RevokedReason.LOGOUT, now));
     }
 
     private void recordFailureAndThrow(String email, UUID memberId, String ipAddress, Instant now) {

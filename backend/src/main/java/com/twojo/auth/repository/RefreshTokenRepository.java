@@ -28,4 +28,10 @@ public interface RefreshTokenRepository extends JpaRepository<RefreshToken, UUID
      * 벌크 UPDATE 대신 로드해서 revoke()를 부른다 — 상태 전이는 엔티티 메서드로 (14 §1.2).
      */
     List<RefreshToken> findByMemberIdAndStatus(UUID memberId, RefreshToken.Status status);
+
+    /**
+     * 회사 정지 시 폐기 대상 — 여러 구성원의 활성 세션을 한 번에 로드한다 (전이표 §9, ON-09).
+     * refresh_token에 company_id가 없어(06 ERD) 구성원 id 목록을 IN 절로 받는다.
+     */
+    List<RefreshToken> findByMemberIdInAndStatus(List<UUID> memberIds, RefreshToken.Status status);
 }
