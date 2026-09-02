@@ -186,6 +186,17 @@ export const viewTokens: Record<string, { quoteId: string; respondable: boolean 
   'demo-mirae-05': { quoteId: quote(5), respondable: false }, // 만료 — 410 처리 데모
 }
 
+// ── 초대 1건 — 시드 invitation과 같은 값 (/invite/:token) ────────────────────
+/** raw 토큰 → 초대. 시드는 해시(seed-invite-hash-0001)만 갖고 원문은 메일에만 있다 */
+export const invitations: Record<string, { companyName: string; email: string; role: string; expiresAt: string }> = {
+  'demo-invite': {
+    companyName: COMPANY.name,
+    email: 'newbie@hanbit.co.kr',
+    role: 'SALES_REP',
+    expiresAt: '2026-09-02T14:59:59Z', // 시드 2026-09-02 23:59:59+09
+  },
+}
+
 // ── 주문 3건 — OrderResponse (이달 성사 합계 48,400,000) ─────────────────────
 export const orders = [
   { id: order(1), orderNo: 'O-2608-001', quoteId: quote(1), quoteNo: 'Q-2608-001', dealId: deal(14), dealTitle: '신영건설 지점 집기', customerId: customer(4), customerName: '신영건설', supplyAmount: 22000000, vatAmount: 2200000, totalAmount: 24200000, startDate: '2026-09-01', deliveryDate: '2026-09-12', createdAt: '2026-08-20T07:00:00Z' },
