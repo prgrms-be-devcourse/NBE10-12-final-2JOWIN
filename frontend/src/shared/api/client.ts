@@ -4,15 +4,15 @@ import type { ErrorResponse } from './types'
 /**
  * API 클라이언트 — 12-frontend-plan.md §6.3의 8개 항목을 여기서 처리한다.
  *
- * 가장 중요한 것은 **재발급 큐잉**이다. access가 만료된 뒤 여러 요청이 동시에 401을 받으면,
+ * 가장 중요한 것은 재발급 큐잉이다. access가 만료된 뒤 여러 요청이 동시에 401을 받으면,
  * 각자 refresh를 호출하는 순간 회전된 토큰이 동시에 쓰인다 → 서버가 재사용으로 판단해
- * **세션 전체를 폐기한다**(REUSE_DETECTED, 전이표 §9). 그래서 refresh는 한 번만 부르고
+ * 세션 전체를 폐기한다(REUSE_DETECTED, 전이표 §9). 그래서 refresh는 한 번만 부르고
  * 나머지는 그 약속을 기다렸다가 새 토큰으로 재시도한다.
  *
  * 토큰 취급 규칙 (§6.3-6·7·8):
- *  - refresh는 **HttpOnly 쿠키**(`2jo_rt`)라 JS가 접근할 수 없다. 그게 목적이다
- *  - access는 **메모리에만** 둔다 — localStorage에 넣는 코드는 리뷰에서 막는다
- *  - 새로고침하면 access가 사라지므로, 부팅 시 `restoreSession()`으로 한 번 복구한다
+ *  - refresh는 HttpOnly 쿠키(`2jo_rt`)라 JS가 접근할 수 없다. 그게 목적이다
+ *  - access는 메모리에만 둔다 — localStorage에 넣는 코드는 리뷰에서 막는다
+ *  - 새로고침하면 access가 사라진다. 첫 요청의 401을 인터셉터가 refresh로 복구한다
  */
 
 export const API_BASE_URL: string = import.meta.env.VITE_API_BASE_URL ?? '/api/v1'
@@ -25,7 +25,9 @@ export const api = axios.create({
 })
 
 /** 계정 없는 고객이 쓰는 경로 — 토큰이 곧 인증이라 Authorization도 쿠키도 붙이지 않는다 */
-export const publicApi = axios.create({ baseURL: '/public/api/v1' })
+export const PUBLIC_API_BASE_URL: string = import.meta.env.VITE_PUBLIC_API_BASE_URL ?? '/public/api/v1'
+
+export const publicApi = axios.create({ baseURL: PUBLIC_API_BASE_URL })
 
 // ── access token (메모리) ────────────────────────────────────────────────────
 
@@ -67,15 +69,6 @@ function refreshAccessToken(): Promise<string> {
   return refreshing
 }
 
-/** 부팅 시 1회 — 쿠키가 살아 있으면 로그인 상태가 이어진다 (§6.3-7) */
-export async function restoreSession(): Promise<boolean> {
-  try {
-    await refreshAccessToken()
-    return true
-  } catch {
-    return false
-  }
-}
 
 // ── 인터셉터 ────────────────────────────────────────────────────────────────
 

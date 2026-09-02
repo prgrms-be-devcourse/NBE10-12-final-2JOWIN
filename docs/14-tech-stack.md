@@ -31,7 +31,7 @@
 | 에러 처리 | ErrorCode → 사용자 문구는 **API 부록 문구를 그대로 노출**. 404는 통일 문구, 409 STALE_VERSION은 "새로고침 후 재시도" 플로우 | 07-api-spec.md 부록, SC-09 |
 | 세션 처리 | access 15분 만료 → refresh 회전 호출, REFRESH_TOKEN_NOT_ACTIVE(401) 수신 시 로그인 화면 이동 | AU-12, Q-32 |
 | 화면 3종 분리 | 구성원 앱 / 관리자 페이지(별도 경로, AU-08) / 고객 열람 페이지(비로그인, 토큰 링크) — 라우팅·번들 분리 권장 | AU-08, SC-07 |
-| **UI 라이브러리** | **Radix Themes 확정** — 디자이너 없이 4주를 가야 하므로 색·간격·타이포·컴포넌트가 완비된 스타일드 라이브러리를 쓴다. 토큰: **accent `indigo` · gray `slate` · radius `medium`**. Dialog·Select·Tabs·DropdownMenu의 포커스 트랩·키보드 동작을 Primitives가 처리하므로 확인 모달 3종(발송·승인·비활성화)의 접근성 비용이 사라진다 | 10-screen-design.md §2 · `wireframes/v2` |
+| **UI 라이브러리** | **Radix Themes 확정** — 디자이너 없이 4주를 가야 하므로 색·간격·타이포·컴포넌트가 완비된 스타일드 라이브러리를 쓴다. 토큰: **accent `blue` · gray `slate` · radius `medium`**(2026-09-02 indigo→blue, 10 §2.2). Dialog·Select·Tabs·DropdownMenu의 포커스 트랩·키보드 동작을 Primitives가 처리하므로 확인 모달 3종(발송·승인·비활성화)의 접근성 비용이 사라진다 | 10-screen-design.md §2 · `wireframes/v2` |
 | 인앱 알림 | 폴링 기반 (실시간 푸시는 NT-09 미룸) — **주기 30초 확정** (열람 알림의 체감 즉시성과 서버 부하의 절충. 탭 비활성 시 중단) | Q-23 |
 
 ### 1.2 백엔드 — Java + Spring

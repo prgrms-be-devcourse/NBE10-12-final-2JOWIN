@@ -1,7 +1,7 @@
 /**
  * 에러 코드 → 사용자 문구 (docs/07-api-spec.md 부록 = ErrorCode enum message 원본).
  *
- * **이 파일은 손으로 쓰지 않는다.** backend/src/main/java/com/twojo/global/error/ErrorCode.java에서
+ * 이 파일은 손으로 쓰지 않는다. backend/src/main/java/com/twojo/global/error/ErrorCode.java에서
  * 그대로 옮긴 것이고, 프론트에서 문구를 새로 쓰지 않는다 (12-frontend-plan.md §6.3-3).
  * 백엔드 enum이 바뀌면 이 파일도 함께 고친다 — 어긋나면 화면에 다른 말이 뜬다.
  *
