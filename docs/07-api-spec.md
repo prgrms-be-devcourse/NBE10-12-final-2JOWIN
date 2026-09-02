@@ -1,4 +1,4 @@
-# API 명세서 — v1.6.5
+# API 명세서 — v1.6.6
 
 > 🧭 [문서 지도](README.md) · ← [06 ERD](06-erd.md) · [08 DTO 설계서](08-dto.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.6 | **A 인증 보정 2차(2026-09-02)** — `POST /public/api/v1/auth/password-reset`의 응답 `204` 명시(v1.6.5에서 `/me/password`만 적고 이쪽이 비어 있었다. 08에 Response record가 없어 바디 없음이 전제였다) · 재설정 메일 요청 행에 **NT-14** 연결(03 v1.6.4 신설) |
 | v1.6.5 | **A 인증 보정(2026-09-01)** — **`CURRENT_PASSWORD_MISMATCH` 신설(422)**: 비밀번호 변경의 현재 비밀번호 불일치에 쓸 코드가 없었다. `LOGIN_FAILED`(401) 재사용은 부록이 401을 AU-12(세션 만료 → 로그인 화면 이동)와 묶어놓은 탓에 **유효한 세션을 끊어버려** 분리한다 · `POST /api/v1/me/password`의 효과·응답 명시 · 로그아웃 접근 범위 각주 · **비밀번호 변경 시도 제한 미도입 근거 각주** · 부록 `REFRESH_TOKEN_NOT_ACTIVE`의 필터 401 겸용 각주 |
 | v1.6.4 | **refresh 전달 = 쿠키 확정(2026-08-27)** — 로그인·재발급·로그아웃에 쿠키 규약 명시(HttpOnly·Secure·SameSite·Path 한정, 구성원/관리자 쿠키 분리). **refresh 원문은 요청·응답 바디에서 사라진다** |
 | v1.6.3 | **화면 설계 공백 반영(2026-08-26)** — 승인·반려 요청에 **응답자 이름·직책**(AP-19, Q-44) · 대시보드 응답 대기 목록에 **열람 여부**(`firstViewedAt` — 미열람/열람 구분이 담당자 행동을 가른다) · 딜 상세와 타임라인의 책임 범위 명시 |
@@ -76,8 +77,8 @@
 | GET | /api/v1/me | 내 정보 (세션 확인) | 전 구성원 | AU-03·07 |
 | PATCH | /api/v1/me | 프로필 수정 (이름·연락처) | 전 구성원 | AU-07 |
 | POST | /api/v1/me/password | 비밀번호 변경 — **효과: 해당 구성원 refresh_token 전 행 폐기(전이표 §9) → 본인도 재로그인해야 한다.** 응답 `204` · **시도 제한 없음 (각주 3)** | 전 구성원 | AU-04 |
-| POST | /public/api/v1/auth/password-reset-request | 재설정 메일 요청 — **미가입 이메일도 동일 응답 (SC-09 인증 확장)** | 비로그인 | AU-05 |
-| POST | /public/api/v1/auth/password-reset | 재설정 실행 (토큰) | 비로그인 | AU-05 |
+| POST | /public/api/v1/auth/password-reset-request | 재설정 메일 요청 — **미가입 이메일도 동일 응답 (SC-09 인증 확장)** · 안내 메일은 **NT-14** · 응답 `202` | 비로그인 | AU-05 |
+| POST | /public/api/v1/auth/password-reset | 재설정 실행 (토큰) — **효과: 토큰 사용됨(USED) + 해당 구성원 refresh_token 전 행 폐기 (전이표 §10)**. 응답 `204` | 비로그인 | AU-05 |
 | GET · PUT | /api/v1/me/notification-settings | 알림 수신 설정 (메일 채널만, Q-23) | 전 구성원 | NT-07 |
 
 > (각주 1) 승인 통보의 비밀번호 설정 링크도 위 password-reset 두 엔드포인트를 그대로 쓴다 — `purpose=INITIAL_SETUP`, 수명 7일 (Q-33·34. RESET은 30분 유지).
