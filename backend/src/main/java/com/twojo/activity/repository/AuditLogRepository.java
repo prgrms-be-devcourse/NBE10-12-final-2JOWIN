@@ -1,11 +1,8 @@
 package com.twojo.activity.repository;
 
 import com.twojo.activity.entity.AuditLog;
-import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -16,10 +13,12 @@ import org.springframework.data.jpa.repository.JpaRepository;
  */
 public interface AuditLogRepository extends JpaRepository<AuditLog, UUID> {
 
-    /** 목록 (GET /audit-logs) — 기간 필터 + 발생 시각 내림차순. */
-    Page<AuditLog> findByCompanyIdAndOccurredAtBetweenOrderByOccurredAtDesc(
-            UUID companyId, Instant from, Instant to, Pageable pageable);
-
     /** 상세 (GET /audit-logs/{id}) — 회사 스코프. 못 찾으면 404로 변환한다 (SC-09). */
     Optional<AuditLog> findByIdAndCompanyId(UUID id, UUID companyId);
+
+    // 목록(GET /audit-logs?entityType=&from=&to=)은 여기 없다.
+    // 세 파라미터가 전부 선택이라 메서드 이름으로 파생되는 쿼리로는 표현할 수 없다 —
+    // Between은 null을 못 받아 기간 미지정 호출이 막히고, entityType 조건도 붙일 수 없다.
+    // Specification이나 @Query가 필요한데, 소비처(감사 로그 조회 API)가 붙을 때
+    // 실제 파라미터를 보고 짜는 편이 맞다. (docs/07 §B)
 }

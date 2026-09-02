@@ -20,7 +20,4 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
 
     /** 후속 필요 (DB-05) — 미완료만, 마감 임박순. 동률은 id로 안정화한다. */
     List<Task> findByDealIdInAndDoneAtIsNullOrderByDueDateAscIdAsc(Collection<UUID> dealIds);
-
-    /** 딜의 할 일 목록 — 완료분 포함, 마감 임박순. */
-    List<Task> findByDealIdOrderByDueDateAsc(UUID dealId);
 }
