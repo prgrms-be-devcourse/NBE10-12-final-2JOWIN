@@ -407,6 +407,7 @@ C → D: Deal 실패(lose) 시 ViewTokenCommand.expire(DEAL_LOST)   ← 역방�
 | C | `SalesStatsQuery` (대시보드 집계 — DB-01~08) (v2.0.1) | D |
 | D | `ViewTokenCommand` (issue·expire) | C |
 | D | `ViewTokenQuery` (existsForContact — CU-14) (v2.0.1) | B |
+| D | `MailCommand` (schedule — 메일 예약 통로; NT-02 견적 발송·NT-14 재설정 안내) | A, D |
 
 ### 7.3 규칙
 

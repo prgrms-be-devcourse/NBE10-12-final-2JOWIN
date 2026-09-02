@@ -22,15 +22,22 @@ import java.util.UUID;
  *       계약은 {@code body}를 {@code email_log}에 쓰지 않는다 — 발송 시점에만 쓰고 버린다.</li>
  * </ul>
  *
- * <p><b>멱등</b> — 같은 {@code (type, refId, recipientEmail)} 행이 이미 있으면 그 행을 <b>항상 SCHEDULED로
- * (되)돌리고 발송 이벤트를 재발행</b>한다. 이미 SCHEDULED여도 재발행한다. 재요청은 "확실히 다시 보낸다"는
- * 의도라(D 수신인 변경 재발송 AP-13) 이게 맞다. 이중 발송 방어는 디스패처가 행의 {@code status}로 한다.
+ * <p><b>멱등</b> — 같은 {@code (type, refId, recipientEmail)} 행이 이미 있으면 그 행을 SCHEDULED로
+ * (되)돌리고 발송 이벤트를 재발행한다. 이미 SCHEDULED여도 재발행한다 — 재요청은 "확실히 다시 보낸다"는
+ * 의도다(D 수신인 변경 재발송 AP-13). 이중 발송 방어는 디스패처가 행의 {@code status}로 한다.
+ *
+ * <p>되돌림 대상은 <b>SCHEDULED·FAILED 행</b>이다. SENT 행까지 되돌릴지는 아직 정하지 않았다 —
+ * {@code EmailLog}는 "SENT는 뒤집지 않는다"가 원칙이고(엔티티 {@code markSent}·{@code markFailed}),
+ * docs/05에 {@code email_log} 전이 절이 없다. SENT 재발송이 필요해지면 후속 메일 파이프라인 이슈에서
+ * docs/05에 {@code email_log} 전이 절을 신설하며 확정한다.
  *
  * <p><b>{@code companyId} null 규칙</b> — NT-13(가입 승인·반려 통보) 계열만 null이다({@code email_log}
  * DDL 주석: "플랫폼 발송(NT-13)은 null"). 그 외(견적 발송·재설정)는 값 필수 — 재설정 메일도 이미 가입된
  * 구성원에게만 나가므로 소속 회사가 있다.
  *
- * <p>시그니처·enum을 바꾸려면 소유자(E) + 소비자(D·A) 합의가 다시 필요하다.
+ * <p>{@code schedule} 시그니처와 {@code TemplateType} 상수의 <b>이름 변경·삭제</b>는 소유자(E) + 소비자(D·A)
+ * 합의가 필요하다. {@code TemplateType} <b>값 추가는 D 단독</b>으로 한다 — D가 notification 소유이고,
+ * 추가는 기존 소비자에 영향이 없다.
  */
 public interface MailCommand {
 
