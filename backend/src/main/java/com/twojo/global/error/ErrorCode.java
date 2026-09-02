@@ -23,6 +23,7 @@ public enum ErrorCode {
     LOGIN_LOCKED(HttpStatus.TOO_MANY_REQUESTS, "로그인 시도가 너무 많습니다. 10분 후 다시 시도해 주세요."),
     REFRESH_TOKEN_NOT_ACTIVE(HttpStatus.UNAUTHORIZED, "세션이 만료되었습니다. 다시 로그인해 주세요."),  // AU-12
     RESET_TOKEN_NOT_ACTIVE(HttpStatus.CONFLICT, "이 재설정 링크는 더 이상 유효하지 않습니다. 재설정을 다시 요청해 주세요."),
+    CURRENT_PASSWORD_MISMATCH(HttpStatus.UNPROCESSABLE_ENTITY, "현재 비밀번호가 올바르지 않습니다."),  // AU-04, 07 v1.6.5
 
     // ── A 온보딩
     EMAIL_ALREADY_MEMBER(HttpStatus.UNPROCESSABLE_ENTITY, "이미 사용 중인 이메일입니다."),
