@@ -1,15 +1,16 @@
 import { useState, type FormEvent } from 'react'
 import { Box, Button, Card, Checkbox, Flex, Heading, Link, Text, TextField } from '@radix-ui/themes'
+import { BRAND, Logo } from '../../../shared/brand'
 import { useNavigate } from 'react-router'
-import { ErrorCallout } from '../../shared/ui'
-import { ApiError } from '../../shared/api/client'
+import { ErrorCallout } from '../../../shared/ui'
+import { ApiError } from '../../../shared/api/client'
 import { login } from '../api'
 
 /**
  * 로그인 — 구성원 앱의 입구 (커트라인 1번 · 07-api-spec.md §A).
  *
  * 화면이 지는 책임:
- *  - 이메일은 서비스 전체에서 유일하므로 **회사 선택 절차가 없다** (Q-14)
+ *  - 이메일은 서비스 전체에서 유일하므로 회사 선택 절차가 없다 (Q-14)
  *  - `rememberMe`는 refresh 쿠키 수명을 가른다 — 14일 vs 브라우저 종료 시 소멸 (AU-10, Q-32)
  *  - 실패 응답을 구별해 말하지 않는다 — 미가입·비활성·정지 회사 전부 LOGIN_FAILED (SC-09)
  *  - 5회 연속 실패는 429 LOGIN_LOCKED (AU-06·09) — 부록 문구에 이미 "10분 후"가 들어 있다
@@ -43,11 +44,12 @@ export function LoginPage() {
     <Box className="center-page">
       <Box width="100%" style={{ maxWidth: 380 }} className="enter">
         <Flex direction="column" align="center" gap="1" mb="5">
-          <Text size="6" weight="bold" style={{ letterSpacing: '-0.03em' }}>
-            2JO
-          </Text>
-          <Text size="2" color="gray">
-            견적을 보내고, 승인까지 추적합니다
+          <Logo height={32} />
+          <Heading size="5" align="center" mt="3" style={{ letterSpacing: '-0.01em' }}>
+            {BRAND.headline}
+          </Heading>
+          <Text size="2" color="gray" align="center">
+            {BRAND.tagline}
           </Text>
         </Flex>
 

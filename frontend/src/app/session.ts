@@ -1,15 +1,10 @@
 import { createContext, useContext } from 'react'
 
 /**
- * 로그인 세션 — 화면이 역할을 읽는 단일 지점.
+ * 로그인 세션 — 화면이 역할을 읽는 단일 지점. 값은 AuthGuard가 /me 응답으로 채운다.
  *
- * **권한 없는 기능은 비활성화가 아니라 숨긴다** (10-screen-design.md §3.2).
+ * 권한 없는 기능은 비활성화가 아니라 숨긴다 (10-screen-design.md §3.2).
  * 눌러서 403을 만나게 하지 않는다 — 서버는 그래도 검사한다(FORBIDDEN).
- *
- * TODO(E · A 연동): 지금은 목 값이다. A의 로그인·재발급이 붙으면
- *  - access token은 **메모리에만** 두고(localStorage 금지 — 12 §6.3-7)
- *  - 앱 부팅 시 /auth/refresh 1회로 세션을 복구한다
- * 화면 코드는 이 훅만 보므로, 교체해도 화면은 고치지 않는다.
  */
 
 export type Role = 'COMPANY_ADMIN' | 'SALES_REP'

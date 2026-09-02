@@ -3,15 +3,15 @@ import { useQuery } from '@tanstack/react-query'
 import { useParams } from 'react-router'
 import { Badge, Box, Button, Card, Flex, Heading, Separator, Text, TextField } from '@radix-ui/themes'
 import { CheckCircledIcon, EnvelopeClosedIcon } from '@radix-ui/react-icons'
-import { ErrorCallout } from '../../shared/ui'
-import { messageOf } from '../../shared/api/errors'
-import { ApiError } from '../../shared/api/client'
+import { ErrorCallout } from '../../../shared/ui'
+import { messageOf } from '../../../shared/api/errors'
+import { ApiError } from '../../../shared/api/client'
 import { acceptInvitation, fetchInvitation } from '../api'
 
 /**
  * 초대 수락 — 계정 만들기 (MB-03·04).
  *
- * 초대받은 사람은 아직 구성원이 아니므로 **로그인 화면을 거치지 않는다.**
+ * 초대받은 사람은 아직 구성원이 아니므로 로그인 화면을 거치지 않는다.
  * 화면이 답해야 하는 것 셋: 누가 불렀는가 · 무슨 역할인가 · 언제까지 유효한가.
  *
  * 만료·취소된 초대는 `INVITATION_NOT_PENDING`(409) —
@@ -98,12 +98,12 @@ export function InviteAcceptPage() {
         <Card size="4">
           {/* 누가 불렀는가 — 초대 메일의 맥락을 화면에서 다시 확인시킨다 */}
           <Flex direction="column" gap="2" align="center" py="2">
-            <EnvelopeClosedIcon width="22" height="22" color="var(--indigo-9)" />
+            <EnvelopeClosedIcon width="22" height="22" color="var(--blue-9)" />
             <Heading size="4" align="center">
               {invitation.companyName}에서 초대했습니다
             </Heading>
             <Flex align="center" gap="2">
-              <Badge color="indigo" variant="soft" radius="full">
+              <Badge color="blue" variant="soft" radius="full">
                 {invitation.role === 'COMPANY_ADMIN' ? '기업 관리자' : '영업 담당자'}
               </Badge>
               <Text size="2" color="gray">

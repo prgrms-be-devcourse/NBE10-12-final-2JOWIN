@@ -10,20 +10,20 @@ import { dateLong, dateShort, daysUntil } from '../../../shared/lib/format'
 import { messageOf } from '../../../shared/api/errors'
 import type { ApproveQuoteRequest, CreateInquiryRequest, RejectQuoteRequest } from '../../../shared/api/types'
 import { ApiError } from '../../../shared/api/client'
-import { approveQuote, createInquiry, fetchPublicQuote, rejectQuote } from '../../api'
-import { ApproveDialog, InquiryDialog, RejectDialog } from './RespondDialogs'
+import { approveQuote, createInquiry, fetchPublicQuote, rejectQuote } from '../api'
+import { ApproveDialog, InquiryDialog, RejectDialog } from '../components/RespondDialogs'
 
 /**
- * 고객 열람 페이지 — **제품의 얼굴** (10-screen-design.md §5.6 · 커트라인 8번).
+ * 고객 열람 페이지 — 제품의 얼굴 (10-screen-design.md §5.6 · 커트라인 8번).
  *
  * 고객사 담당자는 계정이 없고, 이 화면을 평생 한 번만 볼 수도 있다.
- * 그래서 웹앱이 아니라 **받은 문서**처럼 만든다 — 상단 내비도 탭도 없다(§1).
+ * 그래서 웹앱이 아니라 받은 문서처럼 만든다 — 상단 내비도 탭도 없다(§1).
  *
  * 화면이 지는 책임:
- *  - **발신 회사를 최상단에 크게** — 누가 보냈는지 0.5초 안에 알아야 한다 (GAP-05)
- *  - 담당자는 Deal의 **현재** 담당자다 — 발송자 스냅샷이 아니다 (AP-18)
+ *  - 발신 회사를 최상단에 크게 — 누가 보냈는지 0.5초 안에 알아야 한다 (GAP-05)
+ *  - 담당자는 Deal의 현재 담당자다 — 발송자 스냅샷이 아니다 (AP-18)
  *  - 금액 3분리 — 공급가액·부가세·합계 (QT-25)
- *  - 응답 완료·정지 회사면 버튼을 막고 **이유를 말한다** (AP-11, SC-10)
+ *  - 응답 완료·정지 회사면 버튼을 막고 이유를 말한다 (AP-11, SC-10)
  *  - 만료 링크는 410 — 재발송을 요청하라고 안내한다 (AP-05)
  */
 
@@ -87,8 +87,11 @@ export function QuoteViewPage() {
       <Card size="4" className="enter-slow">
         {/* 발신 회사 — 고객이 가장 먼저 봐야 하는 것 (GAP-05) */}
         <Flex direction="column" align="center" gap="2" py="4">
-          <Avatar size="4" radius="full" color="indigo" fallback={quote.companyName.slice(0, 1)} />
+          <Avatar size="4" radius="full" color="blue" fallback={quote.companyName.slice(0, 1)} />
           <Heading size="5">{quote.companyName}</Heading>
+          <Text size="2" color="gray">
+            사업자등록번호 {quote.companyBusinessNo}
+          </Text>
         </Flex>
 
         <Separator size="4" my="4" />
@@ -163,12 +166,12 @@ export function QuoteViewPage() {
         )}
 
         {/* 담당자 — Deal의 현재 담당자 (AP-18) */}
-        <Card variant="surface" mt="5" style={{ background: 'var(--indigo-2)' }}>
+        <Card variant="surface" mt="5" style={{ background: 'var(--blue-2)' }}>
           <Text as="div" size="1" color="gray" mb="2">
             문의하실 곳
           </Text>
           <Flex align="center" gap="3" wrap="wrap">
-            <Avatar size="2" radius="full" color="indigo" fallback={quote.assignee.name.slice(0, 1)} />
+            <Avatar size="2" radius="full" color="blue" fallback={quote.assignee.name.slice(0, 1)} />
             <Text size="2" weight="medium">
               {quote.assignee.name}
             </Text>

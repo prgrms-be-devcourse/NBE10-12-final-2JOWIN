@@ -3,17 +3,14 @@ import { Flex, Spinner } from '@radix-ui/themes'
 import { Navigate } from 'react-router'
 import type { ReactNode } from 'react'
 import { SessionContext, type Session } from './session'
-import { fetchMe } from './api'
+import { fetchMe } from '../domains/auth/api'
 
 /**
  * 인증 가드 — 세션이 없으면 로그인으로 보낸다.
  *
- * **세션을 화면에 심어두지 않고 `GET /api/v1/me`로 받아온다.** 목이 켜져 있으면 MSW가,
- * 실 API로 바꾸면 서버가 답하므로 **이 코드는 전환할 때 고치지 않는다** (12-frontend-plan.md §5.1).
- *
- * TODO(E · A 연동): A의 refresh가 붙으면 부팅 시 `restoreSession()`을 먼저 부른다 —
- * access는 메모리에만 있어 새로고침하면 사라지고, 쿠키가 살아 있으면 재발급으로 복구된다(§6.3-7).
- * 지금은 목이 항상 응답하므로 /me 하나로 충분하다.
+ * 세션은 `GET /api/v1/me`로 받아온다. 새로고침 직후에는 access가 없어 /me가 401을 받지만,
+ * 클라이언트 인터셉터가 refresh 쿠키로 재발급 후 재시도하므로 별도 복구 단계가 없다 (12 §6.3-7).
+ * refresh까지 실패하면 여기서 로그인으로 보낸다 (AU-12).
  */
 export function AuthGuard({ children }: { children: ReactNode }) {
   const { data, isPending, isError } = useQuery({

@@ -2,12 +2,12 @@ import { useState, type FormEvent } from 'react'
 import { Box, Button, Callout, Card, Flex, Heading, Text, TextField } from '@radix-ui/themes'
 import { CheckCircledIcon } from '@radix-ui/react-icons'
 import { useSearchParams } from 'react-router'
-import { ErrorCallout } from '../../shared/ui'
-import { ApiError } from '../../shared/api/client'
+import { ErrorCallout } from '../../../shared/ui'
+import { ApiError } from '../../../shared/api/client'
 import { resetPassword } from '../api'
 
 /**
- * 비밀번호 설정 — 재설정(AU-05)과 최초 설정(Q-33·34)이 **같은 화면**이다.
+ * 비밀번호 설정 — 재설정(AU-05)과 최초 설정(Q-33·34)이 같은 화면이다.
  *
  * 링크의 `purpose`가 수명을 가른다: `RESET` 30분 · `INITIAL_SETUP` 7일.
  * 승인 통보 메일의 "비밀번호 설정" 링크도 이 화면으로 온다 — 가입 승인 시 계정은
