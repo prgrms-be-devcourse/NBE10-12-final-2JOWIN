@@ -1,4 +1,4 @@
-# 데이터 모델(ERD) — v1.6.3
+# 데이터 모델(ERD) — v1.6.4
 
 > 🧭 [문서 지도](README.md) · ← [05 상태 전이표](05-state-transitions.md) · [07 API 명세서](07-api-spec.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 | 근거 |
 | --- | --- | --- |
+| v1.6.4 | **NT-14 반영(2026-09-02)** — `email_log.template_type`의 값 집합에 NT-14(비밀번호 재설정 안내) 추가. 컬럼은 `VARCHAR(30)`에 CHECK가 없어 **스키마 변경은 없다** — 값 목록 주석만 갱신한다 | NT-14 (03 v1.6.4), AU-05 |
 | v1.6.3 | **AP-19·Q-44 반영(2026-08-26)** — quote에 `responder_name`·`responder_title` 추가(고객 응답자의 자기 신고 신원). 계정 없는 응답자라 인증할 수 없으므로 **검증 없는 신고값**이며, 이 사실이 화면·문서에 명시된다 | AP-19, Q-44 (`10-screen-design.md` GAP-09) |
 | v1.6.1 | 검수 보정(2026-08-26) — AU-09 잠금 판정 서술 정정(**10분은 판정 윈도우가 아니라 잠금 지속 시간** — 마지막 성공 이후 연속 실패 5회 + 마지막 실패로부터 10분간 차단) · audit_log payload 규약에 견적·주문 이벤트 **dealId 필수** 추가(AC-06 Deal 타임라인 병합 키) | 검수 — AU-09 원문·AC-06 정합 |
 | v1.6 | **document_sequence에서 APPLICATION 제외** — doc_type = QUOTE/ORDER 2값, company_id NOT NULL 복귀, 유니크는 일반 UNIQUE로 충분. **application.application_no 컬럼 제거**(신청은 v1에서 번호 미사용, 관리자는 id로 식별. 접수번호가 필요해지면 요구사항(ON-xx)부터 추가 후 전역 스코프로 별도 설계) | A 합의 — 승인 전엔 회사가 없어 행 생성 불가, 스코프 불일치, 미사용 값 |
@@ -60,7 +61,7 @@
 | 이력 | `audit_log` | 자동 이벤트·변경 감사 (AC-07·11) |
 | 공통 | `document_sequence` | 표시 번호 채번 — 회사·문서종류·월별 last_seq (FOR UPDATE) |
 | 알림 | `notification` | 인앱 알림 (Q-23, NT-03~05·08·10·12) |
-| 알림 | `email_log` | 시스템 메일 발송 기록 — 중복 발송 방지 (NT-01~06·10·13, 설정 on 건 포함) |
+| 알림 | `email_log` | 시스템 메일 발송 기록 — 중복 발송 방지 (NT-01~06·10·13·14, 설정 on 건 포함) |
 | 알림 | `notification_setting` | 구성원별 메일 수신 설정 (NT-07) |
 
 ## ERD 다이어그램
@@ -291,7 +292,7 @@ erDiagram
     email_log {
         uuid id PK
         uuid company_id FK "플랫폼 발송은 null"
-        string template_type "NT-01~06·10·13 전체"
+        string template_type "NT-01~06·10·13·14 전체"
         string recipient_email
         string ref_type
         uuid ref_id
