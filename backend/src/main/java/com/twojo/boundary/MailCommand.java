@@ -3,7 +3,8 @@ package com.twojo.boundary;
 import java.util.UUID;
 
 /**
- * 시스템 메일 예약 계약 — 구현: D(notification 모듈). approval(열람 링크 발급)·auth(비밀번호 재설정)가 호출한다.
+ * 시스템 메일 예약 계약 — 구현: D(notification 모듈).
+ * approval(열람 링크 발급)·auth(비밀번호 재설정)·onboarding(가입 승인 통보)이 호출한다.
  *
  * <p><b>왜 계약 하나로 모으나</b> — {@code email_log}는 notification 모듈 소유인데, 메일을 예약하는 흐름은
  * approval({@code ViewTokenCommand.issue})·auth(AU-05 재설정 요청)에 있다. 모듈이 서로의 내부
@@ -29,7 +30,8 @@ import java.util.UUID;
  * <p>되돌림 대상은 <b>SCHEDULED·FAILED 행</b>이다. SENT 행까지 되돌릴지는 아직 정하지 않았다 —
  * {@code EmailLog}는 "SENT는 뒤집지 않는다"가 원칙이고(엔티티 {@code markSent}·{@code markFailed}),
  * docs/05에 {@code email_log} 전이 절이 없다. SENT 재발송이 필요해지면 후속 메일 파이프라인 이슈에서
- * docs/05에 {@code email_log} 전이 절을 신설하며 확정한다.
+ * docs/05에 {@code email_log} 전이 절을 신설하며 확정한다 — 최초 {@code sent_at}(NT-12 운영 지표,
+ * 03 §2.13) 보존 여부도 그때 함께 정한다.
  *
  * <p><b>{@code companyId} null 규칙</b> — NT-13(가입 승인·반려 통보) 계열만 null이다({@code email_log}
  * DDL 주석: "플랫폼 발송(NT-13)은 null"). 그 외(견적 발송·재설정)는 값 필수 — 재설정 메일도 이미 가입된
@@ -50,6 +52,9 @@ public interface MailCommand {
      *
      * <p>{@code refId}는 연관 엔티티 id다 — 견적 발송이면 {@code quote_id}, 재설정이면 재설정 토큰 id.
      * 멱등 키 {@code (type, refId, recipientEmail)}의 일부다.
+     *
+     * <p>{@code recipientEmail}은 정규화된 값(trim·소문자)이어야 한다 — 이것도 멱등 키의 일부라,
+     * 같은 수신자가 다른 표기로 들어오면 별개 행이 되어 재발송이 기존 행을 덮지 못한다. 정규화는 호출자 책임이다.
      *
      * <p>{@code subject}·{@code body}는 렌더 완료본이다. {@code body}(링크·원문 토큰 포함)는
      * {@code email_log}에 저장하지 않는다(docs/14-tech-stack.md §2-1·§7.3).
@@ -74,6 +79,9 @@ public interface MailCommand {
 
         /** NT-02 견적 발송 안내 — 고객사 담당자 수신 (approval, {@code ViewTokenCommand.issue}) */
         QUOTE_SENT("QUOTE"),
+
+        /** NT-13 가입 승인 통보 — 신청자 수신 (onboarding, ON-07). Q-33: 승인 메일에 비밀번호 설정 링크 */
+        SIGNUP_APPROVED("APPLICATION"),
 
         /** NT-14 비밀번호 재설정 안내 — 기존 구성원 수신 (auth, AU-05) */
         PASSWORD_RESET("PASSWORD_RESET_TOKEN");
