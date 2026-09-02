@@ -26,6 +26,17 @@ class TaskTest {
     }
 
     @Test
+    @DisplayName("update()는 null로 온 필드를 바꾸지 않는다 — 08 §B에 주석이 없는 유일한 예외")
+    void update_nullFieldsUnchanged() {
+        Task task = 할일();
+
+        task.update(null, LocalDate.of(2026, 9, 15));
+
+        assertThat(task.getDueDate()).isEqualTo(LocalDate.of(2026, 9, 15));
+        assertThat(task.getContent()).isEqualTo("견적서 재발송");
+    }
+
+    @Test
     @DisplayName("complete()를 재호출해도 최초 완료 시각을 유지한다 (멱등)")
     void complete_idempotent() {
         Task task = 할일();
