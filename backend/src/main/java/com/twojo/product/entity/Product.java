@@ -8,6 +8,7 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import java.util.Objects;
 import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
@@ -41,4 +42,53 @@ public class Product extends BaseTimeEntity {
 
     @Column(columnDefinition = "text")
     private String description;
+
+    /**
+     * 상품 등록 (PR-01·02) — 새 상품은 항상 판매 중으로 시작한다.
+     * {@code unitPrice}는 세전이다 (Q-46).
+     */
+    public static Product create(UUID companyId, String name, String unit,
+                                 Long unitPrice, String description) {
+        Product product = new Product();
+        product.companyId = Objects.requireNonNull(companyId, "companyId");
+        product.name = Objects.requireNonNull(name, "name");
+        product.unit = Objects.requireNonNull(unit, "unit");
+        product.unitPrice = Objects.requireNonNull(unitPrice, "unitPrice");
+        product.description = description;
+        product.status = Status.ACTIVE;
+        return product;
+    }
+
+    /**
+     * 상품 수정 (PR-04·08) — <b>온 값을 그대로 반영한다.</b>
+     * 08 §B에 "null 필드는 미변경" 주석이 없고 설명을 뺀 셋이 전부 필수라,
+     * 수정 폼이 기존 값을 채워 전체를 보내는 것을 전제한다.
+     *
+     * <p>이름 중복 검사와 역할 검사는 서비스가 한다 — 엔티티는 값만 바꾼다.
+     */
+    public void update(String name, String unit, Long unitPrice, String description) {
+        this.name = Objects.requireNonNull(name, "name");
+        this.unit = Objects.requireNonNull(unit, "unit");
+        this.unitPrice = Objects.requireNonNull(unitPrice, "unitPrice");
+        this.description = description;
+    }
+
+    /**
+     * 판매 중지 (PR-05) — 이미 중지된 상품이면 그대로 두므로 재호출이 안전하다.
+     *
+     * <p>던질 에러 코드가 07 부록·ErrorCode 어디에도 없어 예외 대신 무동작으로 둔다.
+     * 차단이 필요해지면 서비스에서 사전 검사한다 (2JO-후속작업 1번).
+     * 중지해도 <b>기존 견적은 그대로다</b> — 견적이 값을 복사해 두기 때문이다 (PR-07).
+     */
+    public void discontinue() {
+        this.status = Status.DISCONTINUED;
+    }
+
+    /**
+     * 판매 재개 — 중지한 이름으로 재등록하면 {@code UNIQUE(company_id, name)}에 걸리므로
+     * (중지 상품도 포함) 이쪽이 정식 경로다.
+     */
+    public void reactivate() {
+        this.status = Status.ACTIVE;
+    }
 }
