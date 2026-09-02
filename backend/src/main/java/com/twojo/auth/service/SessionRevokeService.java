@@ -45,6 +45,21 @@ public class SessionRevokeService implements SessionRevoker {
     }
 
     /**
+     * 비밀번호 변경·재설정 — 그 구성원의 세션을 전부 끊는다 (AU-04·05).
+     *
+     * <p><b>본인이 지금 쓰고 있는 세션도 예외가 아니다.</b> 05 §9가 "해당 구성원 전 행 일괄"로
+     * 규정한다. 남길 세션을 고르는 순간, 비밀번호를 바꾼 이유가 유출 의심일 때 공격자의 세션이
+     * 살아남을 수 있다 — 어느 쪽이 본인인지 서버는 구별하지 못한다.
+     *
+     * <p>비밀번호 교체 자체는 여기서 하지 않는다. member 소유 테이블이라 MemberCommand의 몫이고,
+     * 둘을 같은 트랜잭션으로 묶는 것은 호출자가 한다.
+     */
+    @Override
+    public void revokeOnPasswordChange(UUID memberId, Instant now) {
+        revokeAllActive(memberId, RefreshToken.RevokedReason.PASSWORD_CHANGED, now);
+    }
+
+    /**
      * 구성원 비활성화 — 그 구성원의 세션만 전부 끊는다 (MB-09·10).
      * 담당 Deal 이관은 member 모듈의 몫이고, 여기는 "즉시 차단"의 실체만 맡는다.
      */

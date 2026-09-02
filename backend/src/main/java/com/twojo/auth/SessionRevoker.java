@@ -19,6 +19,12 @@ import java.util.UUID;
  */
 public interface SessionRevoker {
 
+    /**
+     * 비밀번호 변경·재설정 — 해당 구성원의 전 행 (AU-04·05).
+     * <b>본인이 지금 쓰고 있는 세션도 포함한다</b> — 전이표 §9가 예외를 두지 않는다.
+     */
+    void revokeOnPasswordChange(UUID memberId, Instant now);
+
     /** 구성원 비활성화 — 해당 구성원의 전 행 (MB-09·10 "즉시 차단"의 실체) */
     void revokeOnDeactivation(UUID memberId, Instant now);
 
