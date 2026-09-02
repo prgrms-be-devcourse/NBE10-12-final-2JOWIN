@@ -2,6 +2,7 @@ package com.twojo.notification.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.twojo.boundary.MailCommand;
 import com.twojo.notification.entity.EmailLog.Status;
 import java.time.Instant;
 import java.util.UUID;
@@ -11,7 +12,23 @@ import org.junit.jupiter.api.Test;
 class EmailLogTest {
 
     private static EmailLog scheduled() {
-        return EmailLog.schedule(UUID.randomUUID(), "QUOTE_SENT", "a@b.com", "QUOTE", UUID.randomUUID());
+        return EmailLog.schedule(UUID.randomUUID(), MailCommand.TemplateType.QUOTE_SENT, "a@b.com", UUID.randomUUID());
+    }
+
+    @Test
+    @DisplayName("schedule()은 templateType이 정한 ref_type을 채운다 (파라미터로 받지 않는다)")
+    void schedule_derivesRefTypeFromTemplateType() {
+        EmailLog log = scheduled();
+
+        assertThat(log.getTemplateType()).isEqualTo(MailCommand.TemplateType.QUOTE_SENT);
+        assertThat(log.getRefType()).isEqualTo("QUOTE");
+    }
+
+    @Test
+    @DisplayName("TemplateType.refType()은 email_log.ref_type에 들어가는 값을 반환한다")
+    void templateType_refType() {
+        assertThat(MailCommand.TemplateType.QUOTE_SENT.refType()).isEqualTo("QUOTE");
+        assertThat(MailCommand.TemplateType.PASSWORD_RESET.refType()).isEqualTo("PASSWORD_RESET_TOKEN");
     }
 
     @Test

@@ -1,5 +1,6 @@
 package com.twojo.notification.entity;
 
+import com.twojo.boundary.MailCommand;
 import com.twojo.global.jpa.BaseTimeEntity;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -32,7 +33,8 @@ public class EmailLog extends BaseTimeEntity {
 
     private UUID companyId;   // 플랫폼 발송(NT-13)은 null
 
-    private String templateType;   // NT-01~06·10·13
+    @Enumerated(EnumType.STRING)
+    private MailCommand.TemplateType templateType;   // NT-01~06·10·13
 
     private String recipientEmail;
 
@@ -45,14 +47,18 @@ public class EmailLog extends BaseTimeEntity {
 
     private Instant sentAt;
 
-    /** 발송 예약 — SCHEDULED 상태로 생성. companyId는 플랫폼 전역 메일(NT-13)이면 null. */
-    public static EmailLog schedule(UUID companyId, String templateType, String recipientEmail,
-                                    String refType, UUID refId) {
+    /**
+     * 발송 예약 — SCHEDULED 상태로 생성. companyId는 플랫폼 전역 메일(NT-13)이면 null.
+     * {@code ref_type}은 파라미터가 아니라 {@code templateType}이 결정한다 ({@link MailCommand.TemplateType#refType()}) —
+     * type과 어긋난 ref_type 쌍을 만들 여지를 없앤다.
+     */
+    public static EmailLog schedule(UUID companyId, MailCommand.TemplateType templateType, String recipientEmail,
+                                    UUID refId) {
         EmailLog log = new EmailLog();
         log.companyId = companyId;   // NT-13 플랫폼 발송은 null 허용
         log.templateType = Objects.requireNonNull(templateType, "templateType");
         log.recipientEmail = Objects.requireNonNull(recipientEmail, "recipientEmail");
-        log.refType = refType;
+        log.refType = templateType.refType();
         log.refId = refId;
         log.status = Status.SCHEDULED;
         return log;
