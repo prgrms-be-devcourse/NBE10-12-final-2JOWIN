@@ -1,17 +1,22 @@
 import { Card, Flex, Heading, Text } from '@radix-ui/themes'
 
-/** 스캐폴드 확인용 임시 화면 — 실제 화면이 붙으면 삭제한다. */
+/**
+ * 아직 붙지 않은 화면 자리 — 담당자가 실제 화면으로 교체한다.
+ * 레이아웃 안에 들어가므로 자체 높이를 강제하지 않는다.
+ */
 export function Placeholder({ title, note }: { title: string; note?: string }) {
   return (
-    <Flex align="center" justify="center" style={{ minHeight: '100vh' }}>
-      <Card size="3">
-        <Heading size="5">2JO · {title}</Heading>
+    <Card size="3" className="enter-fade">
+      <Flex direction="column" align="center" gap="2" py="8">
+        <Heading size="5" color="gray">
+          {title}
+        </Heading>
         {note && (
-          <Text as="p" size="2" color="gray" mt="2">
+          <Text size="2" color="gray">
             {note}
           </Text>
         )}
-      </Card>
-    </Flex>
+      </Flex>
+    </Card>
   )
 }

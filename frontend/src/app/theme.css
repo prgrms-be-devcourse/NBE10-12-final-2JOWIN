@@ -1,0 +1,193 @@
+/*
+ * Radix Themes 위의 최소 조정 (10-screen-design.md §2.2).
+ *
+ * 여기 있는 것 외에는 토큰을 덮어쓰지 않는다 — Themes를 택한 이유가
+ * "색·간격 체계를 직접 설계하지 않는다"이므로, 조정이 늘면 그 이유가 사라진다.
+ */
+
+:root,
+.radix-themes {
+  /* 한글 폴백 — Radix 기본 스택 앞에 한글 글꼴을 세운다 */
+  --default-font-family: -apple-system, BlinkMacSystemFont, 'Apple SD Gothic Neo',
+    'Malgun Gothic', 'Noto Sans KR', 'Segoe UI', Roboto, sans-serif;
+  --heading-font-family: var(--default-font-family);
+
+  /*
+   * 모션 — 업무 도구의 애니메이션은 "느껴지되 기다려지지 않는" 선을 지킨다.
+   * 하루에 수백 번 보는 화면이라, 200ms를 넘기면 그때부터는 방해가 된다.
+   */
+  --motion-fast: 120ms;   /* 호버·포커스처럼 손끝에 붙어야 하는 것 */
+  --motion-base: 180ms;   /* 진입·전환의 기본 */
+  --motion-slow: 280ms;   /* 문서처럼 읽히는 화면(고객 열람)의 첫 등장 */
+
+  /* 빠르게 출발해 부드럽게 멈춘다 — 되돌아오거나 튕기지 않는다 */
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+html,
+body,
+#root,
+/* Theme 컴포넌트가 만드는 래퍼 — 여기가 빠지면 100% 높이 체인이 끊겨
+   화면 하나짜리 페이지(로그인·안내)의 세로 중앙 정렬이 무너진다 */
+.radix-themes {
+  height: 100%;
+  margin: 0;
+}
+
+/* 금액·수량은 자릿수가 흔들리면 비교가 안 된다 */
+table td,
+table th {
+  font-variant-numeric: tabular-nums;
+}
+
+/* 배지 안의 아이콘과 글자 정렬 — Badge는 기본이 baseline이라 아이콘이 살짝 뜬다 */
+.rt-Badge > svg {
+  flex-shrink: 0;
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 모션
+ *
+ * 규칙 셋:
+ *  1. 움직이는 거리는 8px을 넘지 않는다 — 시선이 따라가야 할 만큼 크면 산만하다
+ *  2. 한 화면에서 동시에 움직이는 덩어리는 하나다 — 요소마다 날아들면 AI 데모처럼 보인다
+ *  3. 되돌릴 수 없는 행동(승인·발송)에는 애니메이션을 붙이지 않는다 — 확인은 즉각적이어야 한다
+ * ───────────────────────────────────────────────────────────── */
+
+@keyframes enter-up {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+}
+
+@keyframes enter-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+/** 화면·카드가 처음 나타날 때. 컨테이너 하나에만 건다 */
+.enter {
+  animation: enter-up var(--motion-base) var(--ease-out) both;
+}
+
+.enter-slow {
+  animation: enter-up var(--motion-slow) var(--ease-out) both;
+}
+
+.enter-fade {
+  animation: enter-fade var(--motion-base) var(--ease-out) both;
+}
+
+/**
+ * 목록의 순차 등장 — 간격 40ms, 최대 6개까지만.
+ * 그 이상 늘리면 마지막 줄을 기다리게 된다.
+ */
+.stagger > * {
+  animation: enter-up var(--motion-base) var(--ease-out) both;
+}
+.stagger > *:nth-child(1) { animation-delay: 0ms; }
+.stagger > *:nth-child(2) { animation-delay: 40ms; }
+.stagger > *:nth-child(3) { animation-delay: 80ms; }
+.stagger > *:nth-child(4) { animation-delay: 120ms; }
+.stagger > *:nth-child(5) { animation-delay: 160ms; }
+.stagger > *:nth-child(n + 6) { animation-delay: 200ms; }
+
+/** 누를 수 있는 카드 — 1px만 뜬다. 그림자로 거리를 말하고 크기는 건드리지 않는다 */
+.lift {
+  transition:
+    transform var(--motion-fast) var(--ease-out),
+    box-shadow var(--motion-fast) var(--ease-out);
+}
+.lift:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-4);
+}
+.lift:active {
+  transform: translateY(0);
+  transition-duration: 60ms;
+}
+
+/** 표의 행 강조 — 색만 바뀐다 */
+.row-hover {
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+
+/** 상단 내비 링크 — 호버는 배경만 옅게. 활성 배경(indigo)은 인라인이라 이긴다 */
+.nav-link {
+  transition: background-color var(--motion-fast) var(--ease-out);
+}
+.nav-link:hover {
+  background-color: var(--gray-a3);
+}
+
+/* 밑줄이 좌에서 우로 자라는 링크 — 내비게이션에만 */
+.underline-grow {
+  position: relative;
+}
+.underline-grow::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -2px;
+  height: 1.5px;
+  background: currentColor;
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform var(--motion-base) var(--ease-out);
+}
+.underline-grow:hover::after {
+  transform: scaleX(1);
+}
+
+/**
+ * 움직임을 줄여 달라고 설정한 사용자에게는 전부 끈다 (10-screen-design.md §2.6 접근성).
+ * 전정 장애가 있으면 화면의 움직임이 실제로 어지럼을 유발한다.
+ */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * 고객 열람 페이지 — 앱이 아니라 '받은 문서'로 보이게 (§1)
+ * ───────────────────────────────────────────────────────────── */
+
+.customer-page {
+  min-height: 100%;
+  background: var(--gray-2);
+  padding: var(--space-6) var(--space-4);
+}
+
+/* 로그인·안내처럼 화면 하나가 카드 한 장인 경우 */
+.center-page {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: var(--space-5);
+  background: var(--gray-2);
+}
+
+@media print {
+  .customer-page {
+    background: #fff;
+    padding: 0;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .enter,
+  .enter-slow,
+  .enter-fade,
+  .stagger > * {
+    animation: none !important;
+  }
+}
