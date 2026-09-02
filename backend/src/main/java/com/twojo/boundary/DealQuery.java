@@ -11,10 +11,25 @@ import java.util.UUID;
  */
 public interface DealQuery {
 
-    /** D 알림 수신자 결정(Q-26) · B 접근 판정 */
+    /**
+     * 담당 구성원 (D 알림 수신자 결정 Q-26 · 열람 페이지 현재 담당자 AP-18 · B 접근 판정).
+     *
+     * <p><b>살아있는 Deal은 담당자가 항상 있다</b> — {@code deal.assignee_member_id}가
+     * {@code NOT NULL}이고 복합 FK로 member를 참조한다. 소비자는 null을 방어하지 않아도 된다.
+     *
+     * <p>없거나 소프트 삭제된 Deal이면 {@code RESOURCE_NOT_FOUND}를 던진다 —
+     * "누구에게 알릴 것인가"에 답이 없으면 호출자가 진행할 수 없기 때문이다.
+     * <b>{@link #isOpen}이 같은 상황에서 {@code false}를 돌려주는 것과 다르다</b>:
+     * 거기서는 "여기에 견적을 더 붙여도 되는가"를 묻고, 없는 Deal의 답은 자연스럽게 "안 된다"이다.
+     */
     UUID assigneeIdOf(UUID dealId);
 
-    /** 진행 중(리드~협상) 여부 */
+    /**
+     * 진행 중(리드~협상) 여부.
+     *
+     * <p><b>없거나 소프트 삭제된 Deal은 {@code false}다</b> (예외 아님) — 위 {@code assigneeIdOf}와
+     * 다루는 방식이 다른 이유는 그 javadoc에 있다.
+     */
     boolean isOpen(UUID dealId);
 
     /** B의 CU-08 판정 — 고객사 삭제 차단 (v2.0.1 보강) */
