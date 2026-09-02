@@ -2,6 +2,7 @@ package com.twojo.auth.service;
 
 import com.twojo.auth.SessionRevoker;
 import com.twojo.auth.dto.ChangePasswordRequest;
+import com.twojo.auth.dto.ExecutePasswordResetRequest;
 import com.twojo.auth.dto.RequestPasswordResetRequest;
 import com.twojo.auth.entity.PasswordResetToken;
 import com.twojo.auth.repository.PasswordResetTokenRepository;
@@ -93,5 +94,28 @@ public class PasswordService {
                 memberId, PasswordResetToken.Purpose.RESET, secureTokenFactory.hash(rawToken), now));
 
         // 메일 예약이 들어올 자리 — 링크 URL = baseUrl + rawToken
+    }
+
+    /**
+     * 재설정 실행 (AU-05) — 토큰을 검증해 USED로 넘기고 비밀번호를 설정한다 (05 §10).
+     *
+     * <p>현재 비밀번호를 묻지 않는다 — 토큰 자체가 자격 증명이다. memberId도 요청이 아니라
+     * 토큰 행에서 온다.
+     *
+     * <p>RESET·INITIAL_SETUP 공용이라 purpose를 보지 않는다 (Q-33). 수명 차이는 발급 시점에
+     * expiresAt으로 이미 반영됐고 검증은 그 값으로 끝난다. INITIAL_SETUP이면 이 호출로
+     * password_hash가 NULL에서 벗어난다.
+     */
+    public void executeReset(ExecutePasswordResetRequest request, Instant now) {
+        PasswordResetToken token = passwordResetTokenRepository
+                .findByTokenHash(secureTokenFactory.hash(request.token()))
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESET_TOKEN_NOT_ACTIVE));
+
+        // 못 쓰는 행이면 use()의 가드가 같은 예외를 던진다 — 없는 토큰과 구별해 알리지 않는다
+        token.use(now);
+
+        UUID memberId = token.getMemberId();
+        memberCommand.changePassword(memberId, passwordEncoder.encode(request.newPassword()), now);
+        sessionRevoker.revokeOnPasswordChange(memberId, now);
     }
 }
