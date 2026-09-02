@@ -2,11 +2,16 @@ package com.twojo.auth.service;
 
 import com.twojo.auth.SessionRevoker;
 import com.twojo.auth.dto.ChangePasswordRequest;
+import com.twojo.auth.dto.RequestPasswordResetRequest;
+import com.twojo.auth.entity.PasswordResetToken;
+import com.twojo.auth.repository.PasswordResetTokenRepository;
+import com.twojo.auth.token.SecureTokenFactory;
 import com.twojo.boundary.MemberCommand;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -14,7 +19,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 비밀번호 변경 (AU-04).
+ * 비밀번호 변경·재설정 (AU-04·05).
  *
  * <p>교체와 세션 폐기를 한 트랜잭션으로 묶는다 — 05 §9가 둘을 한 전이의 원인과 효과로
  * 규정하므로, 갈라지면 "비밀번호는 바뀌었는데 옛 세션이 살아 있는" 상태가 생긴다.
@@ -31,6 +36,8 @@ public class PasswordService {
     private final MemberCommand memberCommand;
     private final SessionRevoker sessionRevoker;
     private final PasswordEncoder passwordEncoder;
+    private final PasswordResetTokenRepository passwordResetTokenRepository;
+    private final SecureTokenFactory secureTokenFactory;
 
     /**
      * 현재 비밀번호를 확인하고 교체한 뒤, 그 구성원의 세션을 전부 끊는다 (AU-04 · 05 §9).
@@ -50,5 +57,41 @@ public class PasswordService {
 
         memberCommand.changePassword(memberId, passwordEncoder.encode(request.newPassword()), now);
         sessionRevoker.revokeOnPasswordChange(memberId, now);
+    }
+
+    /**
+     * 재설정 요청 (AU-05) — RESET 토큰(30분)을 하나 발급한다.
+     *
+     * <p><b>미가입 이메일도 응답이 같다</b> (SC-09 인증 확장). 인증 없이 누구나 부를 수 있는
+     * 엔드포인트라, 응답이 갈리면 이메일 목록을 넣어 가입 여부를 훑을 수 있다.
+     *
+     * <p><b>메일 발송은 아직 없다.</b> 예약 통로(email_log)가 D 소유인데 계약이 없어
+     * 이번 사이클은 발급까지만 한다 (#42). 계약이 생기면 rawToken을 링크에 넣어
+     * 예약하는 호출이 아래 자리에 들어간다 — 원문을 반환하지 않는 것은 D의
+     * ViewTokenCommand.issue와 같은 모양이다 (14 §7.3 토큰 로그 노출 금지).
+     */
+    public void requestReset(RequestPasswordResetRequest request, Instant now) {
+        Optional<MemberQuery.AuthCredential> credential =
+                memberQuery.findCredentialByEmail(request.email());
+
+        if (credential.isEmpty()) {
+            return;
+        }
+        UUID memberId = credential.get().id();
+
+        // 활성 1개 유지 (05 §10) — 기존 행이 없으면(첫 요청) 아무 일도 하지 않는다
+        passwordResetTokenRepository
+                .findByMemberIdAndStatus(memberId, PasswordResetToken.Status.ACTIVE)
+                .ifPresent(PasswordResetToken::expire);
+
+        // 만료 UPDATE를 먼저 내보낸다. Hibernate는 INSERT를 UPDATE보다 앞에 내보내므로
+        // 이 줄이 없으면 새 ACTIVE가 먼저 들어가 uk_password_reset_token_active에 걸린다
+        passwordResetTokenRepository.flush();
+
+        String rawToken = secureTokenFactory.generate();
+        passwordResetTokenRepository.save(PasswordResetToken.issue(
+                memberId, PasswordResetToken.Purpose.RESET, secureTokenFactory.hash(rawToken), now));
+
+        // 메일 예약이 들어올 자리 — 링크 URL = baseUrl + rawToken
     }
 }
