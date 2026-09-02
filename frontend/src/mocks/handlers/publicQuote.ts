@@ -8,7 +8,7 @@ import type { PublicQuoteResponse } from '../../shared/api/types'
  * 데모 링크:
  *  - `/q/demo-dodam-14`      메인 시나리오 — 응답 가능 (S-01 3막)
  *  - `/q/demo-hanul-16`      단가 재조정안 — 응답 가능
- *  - `/q/demo-shinyoung-01`  응답 완료 — **열람은 되고 재응답만 막힌다** (AP-11, 전이표 §7)
+ *  - `/q/demo-shinyoung-01`  응답 완료 — 열람은 되고 재응답만 막힌다 (AP-11, 전이표 §7)
  *  - `/q/demo-mirae-05`      만료 — 410 LINK_EXPIRED (AP-05)
  *  - 그 외 문자열            404 — 존재 여부를 노출하지 않는다 (SC-09)
  */
@@ -38,6 +38,7 @@ function build(token: string): PublicQuoteResponse | null {
     quoteNo: quote.quoteNo,
     status: quote.status,
     companyName: COMPANY.name,
+    companyBusinessNo: COMPANY.businessNo,
     assignee: {
       // AP-18 — 발송자가 아니라 Deal의 현재 담당자
       name: assignee?.name ?? '',

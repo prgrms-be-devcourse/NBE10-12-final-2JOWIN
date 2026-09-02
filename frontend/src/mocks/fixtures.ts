@@ -1,5 +1,5 @@
 /**
- * 목 픽스처 — 백엔드 시드(backend/src/main/resources/db/seed/R__demo_seed.sql)와 **같은 ID·같은 수치**.
+ * 목 픽스처 — 백엔드 시드(backend/src/main/resources/db/seed/R__demo_seed.sql)와 같은 ID·같은 수치.
  * "이 한 세트가 목 데이터이자 백엔드 시드이자 시연 데이터다" (docs/12-frontend-plan.md §5.2)
  * 필드 형태는 docs/08-dto.md의 Response record와 1:1 (UUID=string, 금액=number 원, 시각=ISO-8601).
  * 한쪽을 수정하면 반드시 함께 수정한다.

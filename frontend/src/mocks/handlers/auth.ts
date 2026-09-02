@@ -2,16 +2,16 @@ import { http, HttpResponse } from 'msw'
 import { demoAccounts, invitations } from '../fixtures'
 
 /**
- * 인증 목 — **도메인 핸들러의 견본**이다 (12-frontend-plan.md §5).
+ * 인증 목 — 도메인 핸들러의 견본이다 (12-frontend-plan.md §5).
  *
  * 각 도메인 담당은 이 파일을 본떠 `handlers/{도메인}.ts`를 만들고 `index.ts`에서 합친다.
  * 지켜야 할 것 다섯:
  *  1. 응답 형태는 `docs/08-dto.md`의 record와 1:1 — 느슨하게 흉내내면 실 API 전환 때 터진다
- *  2. **데이터는 `fixtures.ts`에서만 가져온다** — 핸들러에 값을 적지 않는다.
+ *  2. 데이터는 `fixtures.ts`에서만 가져온다 — 핸들러에 값을 적지 않는다.
  *     픽스처는 백엔드 시드와 같은 세트이고, 한쪽을 고치면 반드시 함께 고친다 (§5.2)
  *  3. 에러는 공통 `ErrorResponse`(code·message·fieldErrors) 형태로 낸다
- *  4. **실패 경로를 목에 넣는다** — 성공만 흉내내면 화면의 에러 처리가 검증되지 않는다
- *  5. **API 명세서에 있는 경로만 만든다** — 표에 없는 엔드포인트는 v1에 없다 (07-api-spec.md)
+ *  4. 실패 경로를 목에 넣는다 — 성공만 흉내내면 화면의 에러 처리가 검증되지 않는다
+ *  5. API 명세서에 있는 경로만 만든다 — 표에 없는 엔드포인트는 v1에 없다 (07-api-spec.md)
  */
 
 const LOCK_THRESHOLD = 5 // AU-06·09 — 5회 연속 실패 → 10분 제한
@@ -45,7 +45,7 @@ export const authHandlers = [
   /**
    * 재발급 — 쿠키가 곧 자격 증명이라 목에서는 성공시킨다 (AU-03, Q-32).
    *
-   * **만료 경로를 시험하려면** 이 응답을 아래로 바꾼다:
+   * 만료 경로를 시험하려면 이 응답을 아래로 바꾼다:
    * `error('REFRESH_TOKEN_NOT_ACTIVE', '세션이 만료되었습니다. 다시 로그인해 주세요.', 401)`
    * 클라이언트가 로그인 화면으로 보내는지(AU-12) 확인할 수 있다.
    */

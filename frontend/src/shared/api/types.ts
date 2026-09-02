@@ -34,7 +34,9 @@ export interface PublicQuoteResponse {
   status: string
   /** 발송 회사 — 고객이 "누가 보냈는지"를 0.5초 안에 알아야 한다 (GAP-05) */
   companyName: string
-  /** Deal의 **현재** 담당자를 동적 조회한다 — 발송자 스냅샷이 아니다 (AP-18) */
+  /** 발송 회사 사업자등록번호 — 회사명과 함께 최상단 표시 (10 §5.6, 08 v1.6.5) */
+  companyBusinessNo: string
+  /** Deal의 현재 담당자를 동적 조회한다 — 발송자 스냅샷이 아니다 (AP-18) */
   assignee: { name: string; email: string; phone: string }
   vatMode: string
   terms: string | null
@@ -65,3 +67,78 @@ export interface CreateInquiryRequest {
 }
 
 // TODO: 각 도메인 담당이 자기 도메인 DTO를 docs/08-dto.md에서 옮겨 적는다.
+
+// ── 고객사 (B 도메인 · 08-dto.md §B) — 예제 화면(domains/customer)이 쓴다
+export interface CustomerResponse {
+  id: string
+  name: string
+  industry: string | null
+  size: string | null
+  note: string | null
+  /** 등록자 — 기록용이고 권한 판정에 쓰지 않는다 (SC-03) */
+  createdByMemberId: string
+  createdAt: string
+}
+
+export interface ContactResponse {
+  id: string
+  name: string
+  title: string | null
+  phone: string | null
+  email: string
+  /** 고객사당 대표 1명 — 견적 수신인 기본값 (CU-11, Q-07) */
+  primary: boolean
+}
+
+/** 08-dto.md `CustomerDetailResponse.DealSummary` — 고객사 상세의 딜 이력 (CU-12) */
+export interface CustomerDealSummary {
+  id: string
+  title: string
+  stage: string
+  expectedAmount: number | null
+  /** 성사 후 표시 금액 = 주문 합계 (DL-18). 성사 전에는 null */
+  wonAmount: number | null
+  createdAt: string
+}
+
+export interface CustomerDetailResponse extends CustomerResponse {
+  createdByMemberName: string
+  contacts: ContactResponse[]
+  deals: CustomerDealSummary[]
+}
+
+export interface CreateCustomerRequest {
+  name: string
+  industry?: string | null
+  size?: string | null
+  note?: string | null
+}
+export type UpdateCustomerRequest = CreateCustomerRequest
+
+export interface CreateContactRequest {
+  name: string
+  title?: string | null
+  phone?: string | null
+  email: string
+}
+/** PATCH — 보내지 않은(undefined) 필드는 미변경 */
+export interface UpdateContactRequest {
+  name?: string
+  title?: string | null
+  phone?: string | null
+  email?: string
+}
+
+// ── 활동 (B 도메인 · 08-dto.md §B) — 고객사 단위 이력 (AC-10)
+export interface ActivityResponse {
+  id: string
+  /** MANUAL = 사람이 기록 · AUTO = 시스템 기록 (AC-07) */
+  type: 'MANUAL' | 'AUTO'
+  channel: string | null
+  content: string
+  authorMemberId: string
+  authorMemberName: string
+  /** 퇴사·비활성 작성자 표시용 */
+  authorActive: boolean
+  occurredAt: string
+}
