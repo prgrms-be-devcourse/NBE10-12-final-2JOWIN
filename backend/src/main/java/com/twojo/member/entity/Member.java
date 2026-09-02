@@ -59,4 +59,15 @@ public class Member extends BaseTimeEntity {
     public boolean hasPassword() {
         return passwordHash != null;
     }
+
+    /**
+     * 비밀번호 교체 — 변경(AU-04)·최초 설정(AU-05) 공용.
+     *
+     * <p>password_changed_at은 "이 시각 이후 발급된 토큰만 유효"의 기준이다 (06).
+     * 최초 설정이면 이 호출로 passwordHash가 NULL에서 벗어나 hasPassword()가 true가 된다 (Q-33).
+     */
+    public void changePassword(String newPasswordHash, Instant changedAt) {
+        this.passwordHash = newPasswordHash;
+        this.passwordChangedAt = changedAt;
+    }
 }
