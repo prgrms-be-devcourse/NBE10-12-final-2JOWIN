@@ -6,16 +6,20 @@ import static org.mockito.BDDMockito.given;
 
 import com.twojo.approval.entity.QuoteViewToken;
 import com.twojo.approval.repository.QuoteViewTokenRepository;
+import com.twojo.approval.token.TokenGenerator;
+import com.twojo.boundary.CustomerQuery;
+import com.twojo.boundary.MailCommand;
+import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.ViewTokenCommand;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -29,12 +33,25 @@ import org.mockito.junit.jupiter.MockitoExtension;
 class ViewTokenCommandImplTest {
 
     private static final UUID QUOTE_ID = UUID.fromString("a0000000-0000-4000-8000-000000000001");
+    private static final String BASE_URL = "http://localhost:5173";
 
     @Mock
     private QuoteViewTokenRepository quoteViewTokenRepository;
+    @Mock
+    private QuoteQuery quoteQuery;
+    @Mock
+    private CustomerQuery customerQuery;
+    @Mock
+    private MailCommand mailCommand;
 
-    @InjectMocks
     private ViewTokenCommandImpl viewTokenCommand;
+
+    @BeforeEach
+    void setUp() {
+        // TokenGenerator는 의존성이 없어 실객체 — @InjectMocks는 String baseUrl을 못 채워 생성자에서 NPE.
+        viewTokenCommand = new ViewTokenCommandImpl(
+                quoteViewTokenRepository, quoteQuery, customerQuery, new TokenGenerator(), mailCommand, BASE_URL);
+    }
 
     private static QuoteViewToken activeToken() {
         return QuoteViewToken.issue(QUOTE_ID, UUID.randomUUID(), "hash", Instant.now().plusSeconds(3600));
