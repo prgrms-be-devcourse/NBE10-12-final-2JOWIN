@@ -15,7 +15,7 @@ import { deals, quotes } from '../mocks/fixtures'
 /**
  * 공통 컴포넌트 갤러리 — `/_ui`.
  *
- * 화면을 만들기 전에 여기서 고른다. **같은 뜻을 다른 모양으로 만들지 않는 것**이 목적이고,
+ * 화면을 만들기 전에 여기서 고른다. 같은 뜻을 다른 모양으로 만들지 않는 것이 목적이고,
  * 여기 없는 것이 필요하면 화면에서 새로 만들지 말고 `shared/ui`에 추가한다.
  * (10-screen-design.md §6 · 12-frontend-plan.md §6.5)
  */
@@ -32,7 +32,7 @@ export function UiGallery() {
         actions={<Button variant="soft">문서 보기</Button>}
       />
 
-      <Callout.Root color="indigo" mb="5">
+      <Callout.Root color="blue" mb="5">
         <Callout.Icon><InfoCircledIcon /></Callout.Icon>
         <Callout.Text>
           정본은 <Code>docs/10-screen-design.md</Code>다. 이 페이지는 그것을 코드로 옮긴 것이고,
@@ -42,7 +42,7 @@ export function UiGallery() {
 
       <Section title="1. 색의 뜻 — 하나의 색은 하나의 뜻만" note="§2.3">
         <Grid columns={{ initial: '2', sm: '5' }} gap="3">
-          <Swatch color="indigo" meaning="기본 · 주요 동작" where="주요 버튼, 활성 탭" />
+          <Swatch color="blue" meaning="기본 · 주요 동작" where="주요 버튼, 활성 탭" />
           <Swatch color="amber" meaning="주목 · 봐야 할 것" where="열람됨, 되돌릴 수 없는 안내" />
           <Swatch color="green" meaning="성공 · 성사" where="성사 단계, 이달 성사 금액" />
           <Swatch color="red" meaning="위험 · 이미 늦은 것" where="비활성화, 마감 초과, 미읽음" />
@@ -213,7 +213,7 @@ export function UiGallery() {
 
       <Section title="9. 하지 않는 것">
         <Flex direction="column" gap="2">
-          <Dont>임의 hex 색 — <Code>#4F46E5</Code> 대신 <Code>color="indigo"</Code></Dont>
+          <Dont>임의 hex 색 — <Code>#4F46E5</Code> 대신 <Code>color="blue"</Code></Dont>
           <Dont>에러 문구 새로 쓰기 — <Code>shared/api/errors.ts</Code>에서 가져온다</Dont>
           <Dont>화면에서 <Code>fetch</Code> 직접 호출 — <Code>domains/도메인/api.ts</Code> 안에서만</Dont>
           <Dont>화면에서 타입 새로 정의 — <Code>shared/api/types.ts</Code>가 DTO 미러</Dont>
@@ -247,7 +247,7 @@ function Row({ label, children }: { label: string; children: ReactNode }) {
   )
 }
 
-function Swatch({ color, meaning, where }: { color: 'indigo' | 'amber' | 'green' | 'red' | 'gray'; meaning: string; where: string }) {
+function Swatch({ color, meaning, where }: { color: 'blue' | 'amber' | 'green' | 'red' | 'gray'; meaning: string; where: string }) {
   return (
     <Card size="1">
       <Box height="28px" mb="2" style={{ background: `var(--${color}-9)`, borderRadius: 'var(--radius-2)' }} />

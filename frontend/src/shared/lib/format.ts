@@ -1,7 +1,7 @@
 /**
  * 표시 포맷 — 금액·날짜의 단일 지점.
  *
- * 저장·전송은 UTC(ISO-8601), **표시 변환은 프론트 책임**이다 (backend application.yml).
+ * 저장·전송은 UTC(ISO-8601), 표시 변환은 프론트 책임이다 (backend application.yml).
  * 화면에서 toLocaleString을 직접 부르지 않는다 — 자릿수·구분자가 화면마다 달라진다.
  */
 
@@ -17,7 +17,7 @@ export const wonText = (won: number): string => `${money(won)}원`
 
 /**
  * 4,840만 — 대시보드 요약처럼 자리가 좁을 때만.
- * 견적서·주문 등 **금액이 근거가 되는 곳에는 쓰지 않는다** (반올림이 숨는다).
+ * 견적서·주문 등 금액이 근거가 되는 곳에는 쓰지 않는다 (반올림이 숨는다).
  */
 export function moneyShort(won: number): string {
   if (won >= 100_000_000) return `${trimZero(won / 100_000_000)}억`

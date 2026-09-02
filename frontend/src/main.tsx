@@ -30,8 +30,8 @@ async function enableMocking() {
 enableMocking().then(() => {
   createRoot(document.getElementById('root')!).render(
     <StrictMode>
-      {/* 토큰 확정: accent indigo · gray slate · radius medium · light 고정 (10-screen-design.md §2.2, §9) */}
-      <Theme accentColor="indigo" grayColor="slate" radius="medium" appearance="light">
+      {/* 토큰 확정: accent blue · gray slate · radius medium · light 고정 (10-screen-design.md §2.2, §9) */}
+      <Theme accentColor="blue" grayColor="slate" radius="medium" appearance="light">
         <QueryClientProvider client={queryClient}>
           <RouterProvider router={router} />
         </QueryClientProvider>

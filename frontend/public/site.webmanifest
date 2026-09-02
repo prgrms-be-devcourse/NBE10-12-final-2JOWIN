@@ -1,0 +1,13 @@
+{
+  "name": "2JO",
+  "short_name": "2JO",
+  "description": "견적을 보내고, 승인까지 추적합니다",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#0b1323",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" }
+  ]
+}

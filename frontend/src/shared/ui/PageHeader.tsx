@@ -17,7 +17,9 @@ export function PageHeader({ title, badge, description, actions }: Props) {
     <Flex justify="between" align="start" gap="4" mb="5">
       <Flex direction="column" gap="1">
         <Flex align="center" gap="2">
-          <Heading size="6">{title}</Heading>
+          <Heading size="7" style={{ letterSpacing: '-0.01em' }}>
+            {title}
+          </Heading>
           {badge}
         </Flex>
         {description && (

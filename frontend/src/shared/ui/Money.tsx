@@ -19,7 +19,7 @@ interface Props {
 /**
  * 금액 표시 (08-dto.md §0 — 원 단위 정수).
  *
- * 숫자는 **tabular-nums**로 낸다 — 표에서 자릿수가 흔들리면 금액 비교가 안 된다.
+ * 숫자는 tabular-nums로 낸다 — 표에서 자릿수가 흔들리면 금액 비교가 안 된다.
  * 금액이 근거가 되는 자리(견적서·주문)에는 `short`를 쓰지 않는다. 반올림이 숨는다.
  */
 export function Money({ value, short = false, unit = false, size, weight, color, style }: Props) {

@@ -115,14 +115,6 @@ table th {
   transition: background-color var(--motion-fast) var(--ease-out);
 }
 
-/** 상단 내비 링크 — 호버는 배경만 옅게. 활성 배경(indigo)은 인라인이라 이긴다 */
-.nav-link {
-  transition: background-color var(--motion-fast) var(--ease-out);
-}
-.nav-link:hover {
-  background-color: var(--gray-a3);
-}
-
 /* 밑줄이 좌에서 우로 자라는 링크 — 내비게이션에만 */
 .underline-grow {
   position: relative;
@@ -190,4 +182,80 @@ table th {
   .stagger > * {
     animation: none !important;
   }
+}
+
+/* 아이콘 셀 — 아이콘 하나짜리 버튼 공통 (40px 정사각, radius-3). 사이드바 로고·접기, 상단 바 알림 */
+.icon-cell {
+  --cell: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: var(--cell);
+  height: var(--cell);
+  flex-shrink: 0;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  border-radius: var(--radius-3);
+  background: transparent;
+  color: var(--gray-11);
+  cursor: pointer;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+.icon-cell:hover {
+  background-color: var(--gray-a3);
+  color: var(--gray-12);
+}
+.icon-cell:active {
+  background-color: var(--gray-a4);
+}
+.icon-cell:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: -2px;
+}
+
+/* 사이드바 메뉴 — 활성 표시는 NavLink의 .active. 인라인 style 함수는 Tooltip(asChild) props 병합에서 유실되므로 CSS로 둔다 */
+.sidebar-link {
+  display: flex;
+  align-items: center;
+  height: 40px;
+  border-radius: var(--radius-3);
+  font-size: var(--font-size-3);
+  font-weight: 400;
+  color: var(--gray-12);
+  text-decoration: none;
+  overflow: hidden;
+  transition:
+    background-color var(--motion-fast) var(--ease-out),
+    color var(--motion-fast) var(--ease-out);
+}
+.sidebar-link:hover {
+  background-color: var(--gray-a3);
+}
+.sidebar-link:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: -2px;
+}
+.sidebar-link.active {
+  background-color: var(--accent-a3);
+  color: var(--accent-11);
+  font-weight: 500;
+}
+.sidebar-link__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  color: var(--accent-9);
+}
+.sidebar-link.active .sidebar-link__icon {
+  color: var(--accent-11);
+}
+.sidebar-link__label {
+  white-space: nowrap;
+  transition: opacity var(--motion-fast) var(--ease-out);
 }

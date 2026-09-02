@@ -10,10 +10,10 @@ import type { DealStage, QuoteStatus } from './status'
 /**
  * 상태 표시는 전부 Badge (10-screen-design.md §6.1).
  *
- * **색만으로 정보를 전달하지 않는다** (§2.6) — 색 + 아이콘 + 텍스트 셋을 항상 함께 낸다.
+ * 색만으로 정보를 전달하지 않는다 (§2.6) — 색 + 아이콘 + 텍스트 셋을 항상 함께 낸다.
  * 색각 이상 사용자에게 색은 없는 정보이고, 흑백 인쇄되는 견적서에서도 마찬가지다.
  *
- * 색의 뜻은 하나씩만 (§2.3): indigo=진행 · amber=봐야 할 것 · green=성사 · red=늦은 것 · gray=중립
+ * 색의 뜻은 하나씩만 (§2.3): blue=진행 · amber=봐야 할 것 · green=성사 · red=늦은 것 · gray=중립
  */
 
 type Color = ComponentProps<typeof Badge>['color']
@@ -21,17 +21,17 @@ type Color = ComponentProps<typeof Badge>['color']
 
 
 const DEAL: Record<DealStage, { label: string; color: Color; icon?: ReactNode }> = {
-  LEAD: { label: '리드', color: 'indigo' },
-  CONSULT: { label: '상담', color: 'indigo' },
-  QUOTE: { label: '견적', color: 'indigo' },
-  NEGOTIATION: { label: '협상', color: 'indigo' },
+  LEAD: { label: '리드', color: 'blue' },
+  CONSULT: { label: '상담', color: 'blue' },
+  QUOTE: { label: '견적', color: 'blue' },
+  NEGOTIATION: { label: '협상', color: 'blue' },
   WON: { label: '성사', color: 'green', icon: <CheckCircledIcon /> },
   LOST: { label: '실패', color: 'gray', icon: <CrossCircledIcon /> },
 }
 
 const QUOTE: Record<QuoteStatus, { label: string; color: Color; icon: ReactNode }> = {
   DRAFT: { label: '작성 중', color: 'gray', icon: <Pencil1Icon /> },
-  SENT: { label: '발송됨', color: 'indigo', icon: <PaperPlaneIcon /> },
+  SENT: { label: '발송됨', color: 'blue', icon: <PaperPlaneIcon /> },
   VIEWED: { label: '열람됨', color: 'amber', icon: <EyeOpenIcon /> },
   APPROVED: { label: '승인됨', color: 'green', icon: <CheckCircledIcon /> },
   REJECTED: { label: '반려됨', color: 'gray', icon: <CrossCircledIcon /> },
