@@ -1,23 +1,43 @@
 package com.twojo.notification.service;
 
 import com.twojo.boundary.MailCommand;
+import com.twojo.notification.entity.EmailLog;
+import com.twojo.notification.repository.EmailLogRepository;
 import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
+import org.springframework.transaction.annotation.Transactional;
 
 /**
- * {@link MailCommand} 스텁 — 빈 자리만 채운다.
+ * {@link MailCommand} 실구현 — {@code email_log}에 SCHEDULED 행을 만들고 {@link MailScheduled}를
+ * 같은 트랜잭션에서 발행한다. 실제 발송은 {@link MailScheduledListener}가 커밋 후 비동기로 태운다.
  *
- * <p>approval({@code ViewTokenCommand.issue})·auth(AU-05)가 이 빈을 주입받아야 컨텍스트가 뜬다.
- * 실구현은 메일 파이프라인 이슈에서 이 {@code throw}를 대체한다 — {@code email_log} SCHEDULED 행
- * 기록(멱등) + 발송 이벤트 발행. 조용히 성공하면 링크만 만들어지고 안내 메일이 안 나간 채로 발송이
- * 끝나므로, 크게 터지는 편이 안전하다 (D가 {@code ViewTokenCommand.issue}를 throw로 둔 것과 같은 판단).
+ * <p><b>{@code @Transactional(MANDATORY)}</b> — 호출자 트랜잭션에 합류를 강제한다. 트랜잭션 밖에서
+ * 불리면 {@code save()}는 자기 트랜잭션으로 커밋되지만 {@code publishEvent()}는 활성 동기화가 없어
+ * {@code @TransactionalEventListener}가 조용히 버린다(커밋된 SCHEDULED 행 + 안 나가는 메일 + 흔적 없음).
+ * MANDATORY면 그 전에 {@code IllegalTransactionStateException}으로 즉시 터진다.
+ *
+ * <p>{@code refId}가 발송마다 유일하므로(계약) 사전 중복 체크 없이 항상 INSERT한다. 혹시 겹치면
+ * {@code uk_email_log_dedup} 위반이 호출자 커밋 시점에 전파돼 롤백된다. 동기 실패는 삼키지 않는다.
+ *
+ * <p>{@code body}(원문 토큰 포함)는 {@code email_log}에 저장하지 않는다(docs/14 §2-1·§7.3) —
+ * 이벤트에만 실어 디스패처가 1회 소비한다.
  */
 @Service
+@RequiredArgsConstructor
 class MailCommandImpl implements MailCommand {
 
+    private final EmailLogRepository emailLogRepository;
+    private final ApplicationEventPublisher eventPublisher;
+
     @Override
+    @Transactional(propagation = Propagation.MANDATORY)
     public void schedule(TemplateType type, UUID companyId, String recipientEmail,
                          UUID refId, String subject, String body) {
-        throw new UnsupportedOperationException("MailCommand.schedule — 메일 파이프라인 이슈에서 구현 예정");
+        EmailLog row = emailLogRepository.save(
+                EmailLog.schedule(companyId, type, recipientEmail, refId));
+        eventPublisher.publishEvent(new MailScheduled(row.getId(), subject, body));
     }
 }
