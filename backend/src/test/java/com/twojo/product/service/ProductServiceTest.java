@@ -146,4 +146,21 @@ class ProductServiceTest {
         then(productRepository).should()
                 .findByCompanyIdAndStatus(eq(COMPANY_ID), eq(Product.Status.ACTIVE), any());
     }
+
+    /**
+     * <b>약한 검증이다.</b> flush 시점이 실제로 맞는지는 못 보고 메서드 이름만 못 박는다 —
+     * 진짜 검증은 DB가 필요한데 회사 행을 만들 수단이 없다 (B 공유문서 5번).
+     * 그래도 가장 현실적인 회귀(누가 {@code save}로 되돌리는 것)는 이걸로 잡힌다.
+     */
+    @Test
+    @DisplayName("저장은 saveAndFlush로 한다 — save는 예외가 커밋 시점에 터져 409 변환이 죽는다")
+    void create_usesSaveAndFlush() {
+        given(productRepository.existsByCompanyIdAndName(COMPANY_ID, "A4 복사용지")).willReturn(false);
+        given(productRepository.saveAndFlush(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+        productService.create(ADMIN, 등록요청());
+
+        then(productRepository).should().saveAndFlush(any());
+        then(productRepository).should(never()).save(any());
+    }
 }
