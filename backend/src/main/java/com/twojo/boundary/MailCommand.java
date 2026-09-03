@@ -60,6 +60,10 @@ public interface MailCommand {
      * {@code password_reset_token} id(둘 다 발송마다 새로 발급 → {@code email_log} 행도 발송마다 하나).
      * 멱등 키 {@code (type, refId, recipientEmail)}의 일부다.
      *
+     * <p>{@code refId}는 <b>null이면 안 된다</b>. {@code email_log.ref_id}는 nullable이지만
+     * PostgreSQL UNIQUE는 NULL을 서로 다른 값으로 취급하므로, null이 들어오면 {@code uk_email_log_dedup}이
+     * 조용히 무력화된다.
+     *
      * <p>{@code recipientEmail}은 정규화된 값(trim·소문자)이어야 한다 — 멱등 키의 일부이자
      * {@code email_log.recipient_email}에 그대로 저장돼 NT-12 수신자 판정·집계에 쓰인다. 정규화는 호출자 책임이다.
      *
