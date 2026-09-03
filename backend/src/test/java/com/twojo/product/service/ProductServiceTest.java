@@ -3,6 +3,7 @@ package com.twojo.product.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.never;
@@ -25,6 +26,8 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
 
 /**
  * 상품 서비스 — 역할 판정(PR-09) · 이름 중복(PR-02) · 회사 스코프(SC-01) · PATCH 부분 수정(08 §B).
@@ -123,12 +126,24 @@ class ProductServiceTest {
     }
 
     @Test
-    @DisplayName("판매 중지는 상태만 바꾼다 — 관리자면 통과")
-    void discontinue_admin_changesStatus() {
-        Product product = 상품();
-        given(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).willReturn(Optional.of(product));
+    @DisplayName("status가 없으면 필터 없는 조회를 부른다 — 판매 중지 상품도 함께 나온다")
+    void list_withoutStatus() {
+        given(productRepository.findByCompanyId(eq(COMPANY_ID), any())).willReturn(Page.empty());
 
-        assertThat(productService.discontinue(ADMIN, PRODUCT_ID).status())
-                .isEqualTo(Product.Status.DISCONTINUED.name());
+        productService.list(ADMIN, null, PageRequest.of(0, 20));
+
+        then(productRepository).should().findByCompanyId(eq(COMPANY_ID), any());
+    }
+
+    @Test
+    @DisplayName("status를 주면 그 상태로 거른다 — 회사 조건은 그대로 붙는다 (SC-01)")
+    void list_withStatus() {
+        given(productRepository.findByCompanyIdAndStatus(eq(COMPANY_ID), eq(Product.Status.ACTIVE), any()))
+                .willReturn(Page.empty());
+
+        productService.list(ADMIN, Product.Status.ACTIVE, PageRequest.of(0, 20));
+
+        then(productRepository).should()
+                .findByCompanyIdAndStatus(eq(COMPANY_ID), eq(Product.Status.ACTIVE), any());
     }
 }
