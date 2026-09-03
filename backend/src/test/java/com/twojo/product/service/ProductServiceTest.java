@@ -13,6 +13,7 @@ import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.product.dto.CreateProductRequest;
+import com.twojo.product.dto.ProductResponse;
 import com.twojo.product.dto.UpdateProductRequest;
 import com.twojo.product.entity.Product;
 import com.twojo.product.repository.ProductRepository;
@@ -24,13 +25,12 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.DataIntegrityViolationException;
 
 /**
- * 상품 서비스 — 역할 판정(PR-09)·이름 중복(PR-02)·회사 스코프(SC-01)를 검증한다.
+ * 상품 서비스 — 역할 판정(PR-09) · 이름 중복(PR-02) · 회사 스코프(SC-01) · PATCH 부분 수정(08 §B).
  *
- * <p>편집 4종이 기업 관리자 전용이라 <b>같은 요청을 두 역할로 돌려 답이 갈리는지</b>를 본다.
- * 역할 위반은 404가 아니라 403이다 (Q-43) — 리소스 범위 위반과 구분되는 지점이다.
+ * <p>역할 위반은 403, 리소스 범위 위반은 404다 (Q-43).
+ * DB 제약이 개입하는 경로는 목으로 재현되지 않아 {@link ProductServiceIntegrationTest}가 맡는다.
  */
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
@@ -63,11 +63,11 @@ class ProductServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.FORBIDDEN);
 
-        then(productRepository).should(never()).save(any());
+        then(productRepository).should(never()).saveAndFlush(any());
     }
 
     @Test
-    @DisplayName("영업 담당자는 판매 중지도 할 수 없다 — 편집 4종 전부 관리자 전용")
+    @DisplayName("영업 담당자는 판매 중지도 할 수 없다 — 조회보다 역할 검사가 먼저다")
     void discontinue_salesRep_forbidden() {
         assertThatThrownBy(() -> productService.discontinue(SALES, PRODUCT_ID))
                 .isInstanceOf(BusinessException.class)
@@ -87,19 +87,7 @@ class ProductServiceTest {
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.PRODUCT_NAME_DUPLICATED);
 
-        then(productRepository).should(never()).save(any());
-    }
-
-    @Test
-    @DisplayName("사전 검사를 통과해도 DB UNIQUE에 걸리면 409로 바꾼다 — 동시 등록 대비")
-    void create_uniqueViolation_convertedToConflict() {
-        given(productRepository.existsByCompanyIdAndName(COMPANY_ID, "A4 복사용지")).willReturn(false);
-        given(productRepository.save(any())).willThrow(new DataIntegrityViolationException("uk_product_name"));
-
-        assertThatThrownBy(() -> productService.create(ADMIN, 등록요청()))
-                .isInstanceOf(BusinessException.class)
-                .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(ErrorCode.PRODUCT_NAME_DUPLICATED);
+        then(productRepository).should(never()).saveAndFlush(any());
     }
 
     @Test
@@ -113,6 +101,24 @@ class ProductServiceTest {
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
                 .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+    }
+
+    @Test
+    @DisplayName("단가만 보내면 이름·단위·설명은 그대로다 — 중복 검사도 돌지 않는다 (08 §B)")
+    void update_onlyUnitPrice_keepsOtherFields() {
+        Product product = 상품();
+        given(productRepository.findByIdAndCompanyId(PRODUCT_ID, COMPANY_ID)).willReturn(Optional.of(product));
+        given(productRepository.saveAndFlush(product)).willReturn(product);
+
+        ProductResponse response =
+                productService.update(ADMIN, PRODUCT_ID, new UpdateProductRequest(null, null, 31_000L, null));
+
+        assertThat(response.unitPrice()).isEqualTo(31_000L);
+        assertThat(response.name()).isEqualTo("A4 복사용지");
+        assertThat(response.unit()).isEqualTo("박스");
+        assertThat(response.description()).isEqualTo("80g 2500매");
+
+        then(productRepository).should(never()).existsByCompanyIdAndNameAndIdNot(any(), any(), any());
     }
 
     @Test

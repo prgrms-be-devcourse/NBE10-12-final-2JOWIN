@@ -20,11 +20,8 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 상품 카탈로그 (PR-01~10) — 회사 공유 자원이라 담당 개념이 없고, 편집은 기업 관리자만 가능하다.
  *
- * <p><b>역할 위반은 404가 아니라 403이다</b> (Q-43). 상품 등록 기능이 있다는 건 누구나 알고
- * 등록은 특정 리소스를 지목하지 않으므로, 리소스 존재를 감출 이유가 없다. 반면 타사 상품 조회·수정은
- * 그대로 404다 (SC-09) — 그쪽은 존재 여부가 새면 안 된다.
- *
- * <p>상품에는 삭제가 없다. 판매 중지로 대체한다 (11 §1.5) — 과거 견적이 참조하기 때문이다.
+ * <p>역할 위반은 403, 타사·미존재 리소스는 404다 (Q-43 · SC-09).
+ * 삭제는 없다 — 판매 중지로 대체한다 (11 §1.5).
  */
 @Service
 @RequiredArgsConstructor
@@ -33,7 +30,7 @@ public class ProductService {
 
     private final ProductRepository productRepository;
 
-    /** 목록 (PR-03·10) — 전 구성원이 볼 수 있다. {@code status}가 null이면 판매 중지 상품도 함께 나온다. */
+    /** 목록 (PR-03·10) — 전 구성원. {@code status}가 null이면 판매 중지 상품도 함께 나온다. */
     public PageResponse<ProductResponse> list(AccessContext ctx, Product.Status status, Pageable pageable) {
         return PageResponse.from(
                 status == null
@@ -42,7 +39,7 @@ public class ProductService {
                                 .map(ProductService::toResponse));
     }
 
-    /** 등록 (PR-01·02) — 이름은 회사 내 유일하다. */
+    /** 등록 (PR-01·02) — 이름은 회사 내 유일하다 (판매 중지 포함). */
     @Transactional
     public ProductResponse create(AccessContext ctx, CreateProductRequest request) {
         requireAdmin(ctx);
@@ -57,15 +54,17 @@ public class ProductService {
     }
 
     /**
-     * 수정 (PR-04·08) — 단가·이름을 바꿔도 기존 견적은 안 움직인다.
-     * 견적이 작성 시점에 값을 복사해 두기 때문이다 (QT-24, PR-07·08).
+     * 수정 (PR-04·08) — null로 온 필드는 미변경이다 (08 §B).
+     * 단가·이름을 바꿔도 기존 견적은 안 움직인다 — 견적이 값을 복사해 두기 때문이다 (QT-24).
      */
     @Transactional
     public ProductResponse update(AccessContext ctx, UUID productId, UpdateProductRequest request) {
         requireAdmin(ctx);
         Product product = findInScope(ctx, productId);
 
-        if (productRepository.existsByCompanyIdAndNameAndIdNot(ctx.companyId(), request.name(), productId)) {
+        // 이름을 안 보냈으면 검사하지 않는다 — 07 §B "이름 변경 시 중복 검사"
+        if (request.name() != null
+                && productRepository.existsByCompanyIdAndNameAndIdNot(ctx.companyId(), request.name(), productId)) {
             throw new BusinessException(ErrorCode.PRODUCT_NAME_DUPLICATED);
         }
 
@@ -82,10 +81,7 @@ public class ProductService {
         return toResponse(product);
     }
 
-    /**
-     * 판매 재개 — 중지한 이름으로 재등록하면 {@code UNIQUE(company_id, name)}에 걸리므로
-     * (중지 상품도 포함) 이쪽이 정식 경로다.
-     */
+    /** 판매 재개 — 중지한 이름은 UNIQUE에 걸려 재등록이 막히므로 이쪽이 정식 경로다. */
     @Transactional
     public ProductResponse reactivate(AccessContext ctx, UUID productId) {
         requireAdmin(ctx);
@@ -95,10 +91,8 @@ public class ProductService {
     }
 
     /**
-     * 카탈로그 편집은 기업 관리자만 (PR-09, 권한 매트릭스).
-     *
-     * <p>컨트롤러가 아니라 여기서 판정한다 — 다른 호출 경로가 생겼을 때 웹 계층에만 걸린 검사는
-     * 그대로 뚫린다. 역할로 갈리는 행위의 실패는 404가 아니라 <b>403</b>이다 (Q-43).
+     * 카탈로그 편집은 기업 관리자만 (PR-09).
+     * 컨트롤러가 아니라 여기서 판정한다 — 웹 계층 검사는 다른 호출 경로가 생기면 뚫린다.
      */
     private void requireAdmin(AccessContext ctx) {
         if (ctx.role() != Role.COMPANY_ADMIN) {
@@ -113,16 +107,17 @@ public class ProductService {
     }
 
     /**
-     * 사전 검사를 통과했는데도 DB에서 걸리는 경우를 409로 바꾼다 — 두 사람이 동시에 같은 이름으로
-     * 등록하면 둘 다 사전 검사를 통과하고 나중 것이 UNIQUE 위반으로 실패한다.
+     * 사전 검사를 통과했는데도 DB UNIQUE에 걸리는 동시 요청을 409로 바꾼다.
      *
-     * <p><b>{@code GlobalExceptionHandler}가 아니라 여기서 잡는다.</b> 그쪽은 global 소유라
-     * 승인이 필요하고, {@code DataIntegrityViolationException}은 모든 도메인의 모든 제약 위반에서
-     * 나므로 거기서 상품명 중복을 던지면 남의 제약 위반까지 상품 에러가 된다.
+     * <p><b>{@code save()}가 아니라 {@code saveAndFlush()}다.</b> {@code save()}는 INSERT를
+     * 커밋 시점까지 미루므로 예외가 이 try 블록 밖에서 터져 500이 된다.
+     *
+     * <p>{@code GlobalExceptionHandler}가 아니라 여기서 잡는다 — 그 예외는 모든 도메인의 모든
+     * 제약 위반에서 나므로, 어느 제약인지 아는 자리에서 잡아야 한다.
      */
     private Product saveOrConflict(Product product) {
         try {
-            return productRepository.save(product);
+            return productRepository.saveAndFlush(product);
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(ErrorCode.PRODUCT_NAME_DUPLICATED);
         }

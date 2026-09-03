@@ -27,35 +27,23 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 상품 카탈로그 (07 §B · PR).
  *
- * <p>{@link AccessContext}는 인증 필터가 심은 principal에서 타입으로 주입된다 (PR #30) —
- * 요청에 회사 식별자가 실리지 않는다. <b>역할 판정(PR-09)은 서비스가 한다</b> —
- * 웹 계층에만 걸린 검사는 다른 호출 경로가 생겼을 때 그대로 뚫린다.
- *
- * <p>삭제 엔드포인트가 없다 — 상품은 판매 중지로 대체한다 (11 §1.5).
+ * <p>{@link AccessContext}는 인증 필터가 심은 principal에서 타입으로 주입된다 (PR #30).
+ * 역할 판정(PR-09)은 서비스가 한다. 삭제 엔드포인트는 없다 — 판매 중지로 대체한다 (11 §1.5).
  */
 @RestController
 @RequestMapping("/api/v1/products")
 @RequiredArgsConstructor
 public class ProductController {
 
-    /** Q-39 — 0-base · 기본 20(파라미터 기본값) · 최대 100(초과 시 절삭) */
+    /** Q-39 — 0-base · 기본 20 · 최대 100(초과 시 절삭) */
     private static final int MAX_PAGE_SIZE = 100;
 
-    /**
-     * 목록 기본 정렬은 엔드포인트가 고정한다 — 클라이언트가 지정하지 않는다 (Q-39).
-     * 카탈로그는 <b>찾는 대상</b>이라 이름순이다. 딜·활동의 {@code createdAt DESC}와 다른 이유다 —
-     * 사용자가 상품을 찾을 때 등록 순서를 기억하지 않는다.
-     */
+    /** 카탈로그는 찾는 대상이라 이름순이다 — 딜·활동의 {@code createdAt DESC}와 다르다 (Q-39). */
     private static final Sort DEFAULT_SORT = Sort.by(Sort.Direction.ASC, "name");
 
     private final ProductService productService;
 
-    /**
-     * 목록 (PR-03·10) — 전사 공유라 전 구성원이 본다.
-     *
-     * <p>{@code status}를 비우면 판매 중지 상품도 함께 나온다. 견적 작성 화면처럼 판매 중인 것만
-     * 필요한 자리에서는 {@code ?status=ACTIVE}로 거른다.
-     */
+    /** 목록 (PR-03·10) — 전 구성원. {@code status}를 비우면 판매 중지 상품도 함께 나온다. */
     @GetMapping
     public PageResponse<ProductResponse> list(
             AccessContext ctx,
@@ -72,7 +60,7 @@ public class ProductController {
         return productService.create(ctx, request);
     }
 
-    /** 수정 (PR-04·08) — 기업 관리자만. 단가·이름을 바꿔도 기존 견적은 안 움직인다 (QT-24) */
+    /** 수정 (PR-04·08) — 기업 관리자만. null 필드는 미변경 (08 §B) */
     @PatchMapping("/{productId}")
     public ProductResponse update(AccessContext ctx, @PathVariable UUID productId,
                                   @Valid @RequestBody UpdateProductRequest request) {
@@ -85,7 +73,7 @@ public class ProductController {
         return productService.discontinue(ctx, productId);
     }
 
-    /** 판매 재개 — 기업 관리자만. 중지한 이름은 재등록이 막히므로(UNIQUE) 이쪽이 정식 경로다 */
+    /** 판매 재개 — 기업 관리자만. 중지한 이름은 재등록이 막히므로 이쪽이 정식 경로다 */
     @PostMapping("/{productId}/reactivate")
     public ProductResponse reactivate(AccessContext ctx, @PathVariable UUID productId) {
         return productService.reactivate(ctx, productId);
