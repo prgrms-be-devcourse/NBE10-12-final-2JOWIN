@@ -20,8 +20,9 @@ import org.springframework.stereotype.Component;
  * 공용 팩토리로의 통합은 별도 작업(E 소유)이다.
  *
  * <p>{@code public}이지만 approval 모듈 내부용이다 — {@code approval.service}의 {@code issue()}가
- * 이 타입을 직접 주입받아야 하므로 패키지 밖에서 보여야 한다. 모듈 밖(auth·quote 등) 접근은
- * {@code approval.token}이 서브패키지라 Modulith가 그대로 차단한다.
+ * 이 타입을 주입받아 {@code generate()}·{@code hash()}를 호출해야 하므로 클래스·메서드 모두
+ * 패키지 밖에서 보여야 한다. 모듈 밖(auth·quote 등) 접근은 {@code approval.token}이 서브패키지라
+ * Modulith가 그대로 차단한다.
  */
 @Component
 public class TokenGenerator {
@@ -32,7 +33,7 @@ public class TokenGenerator {
     private final SecureRandom secureRandom = new SecureRandom();
 
     /** 원문 발급 — 링크 URL에 그대로 실을 수 있게 패딩 없는 URL-safe Base64. */
-    String generate() {
+    public String generate() {
         byte[] bytes = new byte[TOKEN_BYTES];
         secureRandom.nextBytes(bytes);
         return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes);
@@ -45,7 +46,7 @@ public class TokenGenerator {
      * 솔트가 섞이면 해시가 매번 달라져 {@code token_hash}로 조회하는 것 자체가 불가능해지기 때문이다.
      * 발급 시 저장할 값과 열람 시 조회할 값을 같은 메서드로 만들어 둘이 어긋나지 않게 한다.
      */
-    String hash(String rawToken) {
+    public String hash(String rawToken) {
         try {
             MessageDigest digest = MessageDigest.getInstance("SHA-256");
             return HexFormat.of().formatHex(digest.digest(rawToken.getBytes(StandardCharsets.UTF_8)));
