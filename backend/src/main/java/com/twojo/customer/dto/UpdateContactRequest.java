@@ -4,15 +4,10 @@ import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Pattern;
 
 /**
- * 고객사 담당자 수정 요청.
+ * 고객사 담당자 수정 요청 — <b>PATCH: null 필드는 미변경</b> (08 §B, v1.6 보강).
  *
- * <p><b>PATCH: null 필드는 미변경</b> (08 §B 주석 — v1.6 보강) — 필드 하나만 골라 보내는 화면을
- * 전제하므로, 안 보낸 필드는 건드리지 않는다.
- * (고객사·상품·활동·할 일도 같은 규약이다)
- *
- * <p>{@code name}·{@code email}은 NOT NULL 컬럼이라 {@code @Pattern}으로 공백을 막는다.
- * {@code @NotBlank}는 null까지 거절해 부분 수정을 막고, {@code @Email}만으로는 빈 문자열이
- * 통과한다. {@code title}·{@code phone}은 nullable이라 빈 문자열로 비울 수 있다.
+ * <p>직책·전화번호는 빈 문자열로 비운다. 이름·이메일은 NOT NULL이라 비울 수 없다 —
+ * {@code @Email}만으로는 빈 문자열이 통과해 {@code @Pattern}을 함께 건다.
  *
  * <p>대표 지정은 이 요청이 아니라 {@code POST .../contacts/{cid}/set-primary}다 (CU-11).
  * 지정 시 기존 대표가 자동 해제되며, <b>대표 해제만 하는 동작은 없다</b> — 대표 0명을 막기 위해서다.
