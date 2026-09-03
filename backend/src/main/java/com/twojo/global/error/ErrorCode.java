@@ -52,11 +52,17 @@ public enum ErrorCode {
     DEAL_WON_REQUIRES_ORDER(HttpStatus.CONFLICT, "성사는 승인된 견적을 주문으로 전환할 때 자동으로 처리됩니다."),
     DEAL_ALREADY_WON(HttpStatus.CONFLICT, "성사된 Deal은 단계를 변경할 수 없습니다."),
     DEAL_HAS_QUOTES(HttpStatus.CONFLICT, "견적이 연결된 Deal은 삭제할 수 없습니다."),
+    // 종결(WON·LOST) Deal의 전이 — DEAL_ALREADY_WON은 문구가 성사 전용이라 LOST에 쓰면 거짓말이 된다
+    DEAL_NOT_OPEN(HttpStatus.CONFLICT, "진행 중인 Deal만 단계를 변경할 수 있습니다."),
 
     // ── C 견적
     QUOTE_NOT_DRAFT(HttpStatus.CONFLICT, "작성 중인 견적만 수정·발송할 수 있습니다."),
     QUOTE_EMPTY_ITEMS(HttpStatus.CONFLICT, "견적 항목을 1개 이상 추가해 주세요."),
     QUOTE_NOT_WITHDRAWABLE(HttpStatus.CONFLICT, "이 상태의 견적은 회수할 수 없습니다."),
+    // 판정 축은 링크가 아니라 견적 상태 — 수동 만료(AP-14) 뒤 다른 수신인에게 다시 보내는 흐름을 막지 않는다
+    QUOTE_NOT_RESENDABLE(HttpStatus.CONFLICT, "이 상태의 견적은 재발송할 수 없습니다."),
+    // 입력은 @Future로 막지만 저장된 값이 낡는 것은 못 막는다 — 발송 시점 재검증 (Q-17)
+    QUOTE_VALID_UNTIL_PASSED(HttpStatus.CONFLICT, "유효기간이 지났습니다. 유효기간을 다시 지정한 뒤 발송해 주세요."),
     QUOTE_DEAL_CLOSED(HttpStatus.CONFLICT, "종결된 Deal에는 견적을 작성할 수 없습니다. 새 Deal을 만들어 진행해 주세요."),
     CONTACT_NOT_IN_CUSTOMER(HttpStatus.CONFLICT, "이 Deal의 고객사에 소속된 담당자만 수신인으로 지정할 수 있습니다."),
     STALE_VERSION(HttpStatus.CONFLICT, "다른 사용자가 먼저 수정했습니다. 새로고침 후 다시 시도해 주세요."),

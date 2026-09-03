@@ -1,4 +1,4 @@
-# API 명세서 — v1.6.6
+# API 명세서 — v1.6.7
 
 > 🧭 [문서 지도](README.md) · ← [06 ERD](06-erd.md) · [08 DTO 설계서](08-dto.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.7 | **C 도메인 에러 코드 3건 신설(2026-09-02)** — 전이표에는 불가로 적혀 있는데 던질 코드가 없던 자리를 채운다. **`DEAL_NOT_OPEN`**(LOST Deal의 단계 변경·WON Deal의 재개 — `DEAL_ALREADY_WON`은 문구가 성사 전용이라 LOST에 쓰면 거짓말이 된다) · **`QUOTE_NOT_RESENDABLE`**(종결 견적 재발송 — `QUOTE_NOT_WITHDRAWABLE`과 대칭) · **`QUOTE_VALID_UNTIL_PASSED`**(유효기간 지난 견적 발송 — 입력은 `@Future`로 막지만 저장 값이 낡는 것은 못 막는다). 발견 경로: Deal 구현(#46) 및 D의 `issue()` 실구현 리뷰(#54) |
 | v1.6.6 | **A 인증 보정 2차(2026-09-02)** — `POST /public/api/v1/auth/password-reset`의 응답 `204` 명시(v1.6.5에서 `/me/password`만 적고 이쪽이 비어 있었다. 08에 Response record가 없어 바디 없음이 전제였다) · 재설정 메일 요청 행에 **NT-14** 연결(03 v1.6.4 신설) |
 | v1.6.5 | **A 인증 보정(2026-09-01)** — **`CURRENT_PASSWORD_MISMATCH` 신설(422)**: 비밀번호 변경의 현재 비밀번호 불일치에 쓸 코드가 없었다. `LOGIN_FAILED`(401) 재사용은 부록이 401을 AU-12(세션 만료 → 로그인 화면 이동)와 묶어놓은 탓에 **유효한 세션을 끊어버려** 분리한다 · `POST /api/v1/me/password`의 효과·응답 명시 · 로그아웃 접근 범위 각주 · **비밀번호 변경 시도 제한 미도입 근거 각주** · 부록 `REFRESH_TOKEN_NOT_ACTIVE`의 필터 401 겸용 각주 |
 | v1.6.4 | **refresh 전달 = 쿠키 확정(2026-08-27)** — 로그인·재발급·로그아웃에 쿠키 규약 명시(HttpOnly·Secure·SameSite·Path 한정, 구성원/관리자 쿠키 분리). **refresh 원문은 요청·응답 바디에서 사라진다** |
@@ -209,6 +210,7 @@
 | DEAL_WON_REQUIRES_ORDER | 409 | 협상→성사 수동 이동 (DL-09 — 성사는 주문 전환 자동만) |
 | DEAL_ALREADY_WON | 409 | 성사 Deal의 단계 변경·실패 처리. **단, 주문 전환의 자동 성사는 멱등 — 이 에러를 던지지 않는다 (Q-25)** |
 | DEAL_HAS_QUOTES | 409 | 견적 연결된 Deal 삭제 (DL-17) |
+| **DEAL_NOT_OPEN** | 409 | **실패(LOST) Deal의 단계 변경·실패 처리, 성사(WON) Deal의 재개.** 전이표 §5상 LOST에서 나가는 전이는 재개뿐이고 WON에서 나가는 전이는 없는데, 그 조합에 던질 코드가 없었다 (v1.6.7) |
 | STALE_VERSION | 409 | version 불일치 (낙관적 락) — 재조회 후 재시도 안내 |
 
 ## C. 견적 — 최선진 (QT + AP-13·14)
@@ -238,6 +240,8 @@
 | QUOTE_NOT_WITHDRAWABLE | 409 | 작성 중·종결 상태 회수 |
 | **QUOTE_DEAL_CLOSED** | 409 | **종결(성사·실패) Deal에서 견적 작성·발송·복제 (Q-25) — 추가 거래는 새 Deal로** |
 | **CONTACT_NOT_IN_CUSTOMER** | 409 | **견적의 고객사 소속이 아닌 담당자를 수신인 지정 (/send · /view-token/resend) — quote→deal→customer_id와 contact→customer_id 일치 검증. 복합 FK 불가 영역이라 서비스 검증이 유일 방어 (ERD "DB로 못 막는 것")** |
+| **QUOTE_NOT_RESENDABLE** | 409 | **발송됨·열람됨이 아닌 견적의 수신인 변경 재발송 (`/view-token/resend`, AP-13).** 전이표 §7의 재발송 전이는 출발이 활성 링크뿐이다. 판정 축은 링크가 아니라 **견적 상태** — 수동 만료(AP-14) 뒤 다른 수신인에게 다시 보내는 정상 흐름을 막지 않기 위해서다 (v1.6.7) |
+| **QUOTE_VALID_UNTIL_PASSED** | 409 | **유효기간이 지난 견적의 발송·재발송 (`/send` · `/view-token/resend`).** 입력은 `@Future`로 막지만(08) 저장된 값이 시간이 지나며 낡는다 — 만료 배치(Q-37)는 발송됨·열람됨만 대상이라 오래된 작성 중 견적은 그대로 남는다. 재검증이 없으면 **열자마자 만료된 링크**가 나간다 (v1.6.7) |
 | STALE_VERSION | 409 | version 불일치 (낙관적 락) |
 
 ## C. 주문 — 최선진 (OD)
@@ -313,6 +317,9 @@
 | COMPANY_SUSPENDED | 409 | D 고객 열람 |
 | REFRESH_TOKEN_NOT_ACTIVE | 401 | A 인증 (v1.5) |
 | RESET_TOKEN_NOT_ACTIVE | 409 | A 인증 (v1.5) |
+| **DEAL_NOT_OPEN** | **409** | **C Deal (v1.6.7)** |
+| **QUOTE_NOT_RESENDABLE** | **409** | **C 견적 (v1.6.7)** |
+| **QUOTE_VALID_UNTIL_PASSED** | **409** | **C 견적 (v1.6.7)** |
 | CONTACT_HAS_QUOTES | 409 | B 고객사 (실사용 점검) |
 | CONTACT_NOT_IN_CUSTOMER | 409 | C 견적 (C 리뷰 3-3) |
 | **FORBIDDEN** | **403** | **공통 — 역할 자체로 갈리는 행위 위반 (Q-43)** |
@@ -346,6 +353,8 @@
 | QUOTE_EMPTY_ITEMS | 409 | 견적 항목을 1개 이상 추가해 주세요. |
 | PRODUCT_DISCONTINUED | 409 | 판매 중지된 상품은 견적에 추가할 수 없습니다. |
 | QUOTE_NOT_WITHDRAWABLE | 409 | 이 상태의 견적은 회수할 수 없습니다. |
+| **QUOTE_NOT_RESENDABLE** | **409** | **이 상태의 견적은 재발송할 수 없습니다.** |
+| **QUOTE_VALID_UNTIL_PASSED** | **409** | **유효기간이 지났습니다. 유효기간을 다시 지정한 뒤 발송해 주세요.** |
 | QUOTE_DEAL_CLOSED | 409 | 종결된 Deal에는 견적을 작성할 수 없습니다. 새 Deal을 만들어 진행해 주세요. |
 | CONTACT_NOT_IN_CUSTOMER | 409 | 이 Deal의 고객사에 소속된 담당자만 수신인으로 지정할 수 있습니다. |
 | QUOTE_NOT_APPROVED | 409 | 승인된 견적만 주문으로 전환할 수 있습니다. |
@@ -359,6 +368,7 @@
 | ACTIVITY_NOT_AUTHOR | 404 | 요청한 대상을 찾을 수 없습니다. (SC-09 — 404 문구 통일) |
 | DEAL_WON_REQUIRES_ORDER | 409 | 성사는 승인된 견적을 주문으로 전환할 때 자동으로 처리됩니다. |
 | DEAL_ALREADY_WON | 409 | 성사된 Deal은 단계를 변경할 수 없습니다. |
+| **DEAL_NOT_OPEN** | **409** | **진행 중인 Deal만 단계를 변경할 수 있습니다.** |
 | DEAL_HAS_QUOTES | 409 | 견적이 연결된 Deal은 삭제할 수 없습니다. |
 | VALIDATION_FAILED | 400 | 입력값을 확인해 주세요. (fieldErrors 참조) |
 
