@@ -20,3 +20,6 @@ app:
   # 전체 컨텍스트 로드 시 CorsConfigurationSource 빈이 이 값을 요구한다 — 없으면 주입이 실패한다
   cors:
     allowed-origins: http://localhost:5173
+  # ViewTokenCommandImpl이 @Value로 요구한다 — 없으면 contextLoads가 깨진다
+  view-link:
+    base-url: http://localhost:5173
