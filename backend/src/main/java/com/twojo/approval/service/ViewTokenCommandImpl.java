@@ -89,14 +89,16 @@ class ViewTokenCommandImpl implements ViewTokenCommand {
 
         Instant expiresAt = toExpiresAt(view.validUntil());
         String rawToken = tokenGenerator.generate();
-        quoteViewTokenRepository.save(QuoteViewToken.issue(
+        QuoteViewToken issued = quoteViewTokenRepository.save(QuoteViewToken.issue(
                 quoteId, recipientContactId, tokenGenerator.hash(rawToken), expiresAt));
 
         String subject = "[" + view.quoteNo() + "] 견적서 열람 안내";
         String body = renderBody(contact.name(), rawToken, view.validUntil());
         String recipientEmail = contact.email().trim().toLowerCase(Locale.ROOT);   // 멱등 키 일부 — 호출자 정규화 책임
 
-        mailCommand.schedule(MailCommand.TemplateType.QUOTE_SENT, companyId, recipientEmail, quoteId, subject, body);
+        // refId = 방금 발급한 열람 링크 토큰 id — 발송마다 유일해 email_log 행이 발송마다 새로 생긴다 (MailCommand 계약)
+        mailCommand.schedule(
+                MailCommand.TemplateType.QUOTE_SENT, companyId, recipientEmail, issued.getId(), subject, body);
     }
 
     @Override

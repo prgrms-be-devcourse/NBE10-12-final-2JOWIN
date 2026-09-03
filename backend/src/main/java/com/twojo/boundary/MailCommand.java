@@ -31,8 +31,11 @@ import java.util.UUID;
  *
  * <p>{@code UNIQUE(template_type, ref_id, recipient_email)}는 06 §제약조건대로 <b>NT-05(리마인드)·
  * NT-06(임박) 배치 재실행 시 이중 발송을 DB가 차단</b>한다 — 그쪽은 토큰이 없어 {@code refId}가
- * 재실행 간 고정(견적 등)이다. 재실행 충돌 시의 멱등 처리(이미 SENT면 스킵 등)는 해당
- * {@code TemplateType} 값을 추가할 때 06·docs/05와 함께 정한다.
+ * 재실행 간 고정(견적 등)이다. 이 백스톱은 <b>단건 호출자</b> 전제다: (1) {@code refId}가 UUID라 회차를
+ * 못 접어, 같은 견적에 D-7·D-3 리마인드를 한 {@code TemplateType}으로 둘 다 보내면 두 번째가 막힌다 —
+ * 회차별 {@code TemplateType} 분리나 스키마 변경이 필요하다. (2) 배치가 한 트랜잭션에서 여러 건을
+ * 예약하다 한 건이 충돌하면 전체가 롤백되므로 건별 트랜잭션이나 {@code ON CONFLICT DO NOTHING}이 필요하다.
+ * 재실행 충돌 시의 멱등 처리는 해당 {@code TemplateType} 값을 추가할 때 06·docs/05와 함께 정한다.
  *
  * <p>디스패처는 이와 별개로, 한 대기 행이 AFTER_COMMIT 이벤트와 SCHEDULED 재처리 배치로 두 번
  * 디스패치되는 것을 행의 {@code status}로 막는다({@code SCHEDULED}가 아니면 스킵). {@code email_log}
@@ -64,6 +67,11 @@ public interface MailCommand {
      * PostgreSQL UNIQUE는 NULL을 서로 다른 값으로 취급하므로, null이 들어오면 {@code uk_email_log_dedup}이
      * 조용히 무력화된다.
      *
+     * <p>중복은 <b>동기적으로 보고되지 않는다</b>: 정상 흐름에선 {@code refId}가 발송마다 유일해 겹칠 일이
+     * 없지만, 겹치면 {@code save()}가 아니라 바깥 트랜잭션 <b>커밋 시점</b>에 {@code DataIntegrityViolationException}으로
+     * 터진다 — 호출자가 {@code schedule()}을 {@code try/catch}로 감싸도 잡히지 않는다. 또한 {@code schedule()}은
+     * 수신 거부(NT-07 {@code notification_setting})를 필터링하지 않는다 — 발송 여부 판단은 호출자 책임이다.
+     *
      * <p>{@code recipientEmail}은 정규화된 값(trim·소문자)이어야 한다 — 멱등 키의 일부이자
      * {@code email_log.recipient_email}에 그대로 저장돼 NT-12 수신자 판정·집계에 쓰인다. 정규화는 호출자 책임이다.
      *
@@ -84,14 +92,14 @@ public interface MailCommand {
      * 하나를 공유해도 엔티티가 계약에 묶이는 비용이 그만큼 작다. approval·auth도 호출자로 같은 값 집합을 써서
      * 한 곳에 두는 편이 낫다.
      *
-     * <p>{@link #refType()}는 {@code email_log.ref_type}에 그대로 들어가는 문자열이다 — {@code refId}가
-     * 가리키는 대상의 거친 분류이지 정확한 테이블명은 아니다({@code QUOTE_SENT}의 {@code "QUOTE"} ↔
-     * {@code refId}는 {@code quote_view_token} id).
+     * <p>{@link #refType()}는 {@code email_log.ref_type}에 그대로 들어가는 문자열 — {@code refId}가 가리키는
+     * 토큰/엔티티 계열을 나타낸다({@code QUOTE_SENT} → {@code quote_view_token}, {@code PASSWORD_RESET}
+     * → {@code password_reset_token}, {@code SIGNUP_APPROVED} → {@code application}).
      */
     enum TemplateType {
 
         /** NT-02 견적 발송 안내 — 고객사 담당자 수신 (approval, {@code ViewTokenCommand.issue}) */
-        QUOTE_SENT("QUOTE"),
+        QUOTE_SENT("QUOTE_VIEW_TOKEN"),
 
         /** NT-13 가입 승인 통보 — 신청자 수신 (onboarding, ON-07). Q-33: 승인 메일에 비밀번호 설정 링크 */
         SIGNUP_APPROVED("APPLICATION"),

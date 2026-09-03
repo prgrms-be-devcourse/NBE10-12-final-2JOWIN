@@ -21,13 +21,13 @@ class EmailLogTest {
         EmailLog log = scheduled();
 
         assertThat(log.getTemplateType()).isEqualTo(MailCommand.TemplateType.QUOTE_SENT);
-        assertThat(log.getRefType()).isEqualTo("QUOTE");
+        assertThat(log.getRefType()).isEqualTo("QUOTE_VIEW_TOKEN");
     }
 
     @Test
     @DisplayName("TemplateType.refType()은 email_log.ref_type에 들어가는 값을 반환한다")
     void templateType_refType() {
-        assertThat(MailCommand.TemplateType.QUOTE_SENT.refType()).isEqualTo("QUOTE");
+        assertThat(MailCommand.TemplateType.QUOTE_SENT.refType()).isEqualTo("QUOTE_VIEW_TOKEN");
         assertThat(MailCommand.TemplateType.SIGNUP_APPROVED.refType()).isEqualTo("APPLICATION");
         assertThat(MailCommand.TemplateType.PASSWORD_RESET.refType()).isEqualTo("PASSWORD_RESET_TOKEN");
     }

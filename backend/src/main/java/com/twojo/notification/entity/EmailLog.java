@@ -59,7 +59,8 @@ public class EmailLog extends BaseTimeEntity {
         log.templateType = Objects.requireNonNull(templateType, "templateType");
         log.recipientEmail = Objects.requireNonNull(recipientEmail, "recipientEmail");
         log.refType = templateType.refType();
-        log.refId = refId;
+        // null이면 uk_email_log_dedup이 무력화된다 (PG UNIQUE는 NULL을 서로 다른 값으로 봄) — 마지막 방어선
+        log.refId = Objects.requireNonNull(refId, "refId");
         log.status = Status.SCHEDULED;
         return log;
     }
