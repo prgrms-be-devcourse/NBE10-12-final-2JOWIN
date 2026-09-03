@@ -58,18 +58,24 @@ public class Customer extends BaseTimeEntity {
     }
 
     /**
-     * 고객사 수정 (CU-06) — <b>온 값을 그대로 반영한다.</b>
+     * 고객사 수정 (CU-06) — <b>null로 온 필드는 바꾸지 않는다</b> (08 §B의 PATCH 주석).
      *
-     * <p>08 §B의 {@code UpdateCustomerRequest}에는 "PATCH: null 필드는 미변경" 주석이 없고
-     * {@code name}이 {@code @NotBlank}라, 수정 폼이 기존 값을 채워 전체를 보내는 것을 전제한다.
-     * 그래야 비고 같은 선택 항목을 비워서 지울 수 있다.
-     * ({@link CustomerContact#update}는 반대 — 보낸 필드만 바꾼다)
+     * <p>선택 항목을 비우는 경로는 빈 문자열이다. null은 "안 보냈다"는 뜻이라
+     * 지우기와 구별된다. 이름이 공백만인 경우는 DTO의 {@code @Pattern}이 막는다.
      */
     public void update(String name, String industry, String size, String note) {
-        this.name = Objects.requireNonNull(name, "name");
-        this.industry = industry;
-        this.size = size;
-        this.note = note;
+        if (name != null) {
+            this.name = name;
+        }
+        if (industry != null) {
+            this.industry = industry;
+        }
+        if (size != null) {
+            this.size = size;
+        }
+        if (note != null) {
+            this.note = note;
+        }
     }
 
     /**

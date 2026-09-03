@@ -1,5 +1,6 @@
 package com.twojo.activity.dto;
 
+import jakarta.validation.constraints.Pattern;
 import java.time.LocalDate;
 
 /**
@@ -14,6 +15,6 @@ import java.time.LocalDate;
  * 흘리는 쪽이다. 되돌리기를 지원한다면 {@code Task.reopen()}과 에러 코드가 함께 가야 한다.
  */
 public record UpdateTaskRequest(
-        String content,
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String content,
         LocalDate dueDate,
         Boolean done) {}

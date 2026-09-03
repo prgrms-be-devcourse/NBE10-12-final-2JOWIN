@@ -52,9 +52,9 @@ public class CustomerContact extends BaseTimeEntity {
     }
 
     /**
-     * 담당자 수정 — <b>null로 온 필드는 바꾸지 않는다</b> (08 §B의 PATCH 주석 · 11 §1.3).
+     * 담당자 수정 — <b>null로 온 필드는 바꾸지 않는다</b> (08 §B의 PATCH 주석).
      * 필드 하나만 골라 보내는 화면을 전제하므로, 안 보낸 값을 지우면 안 된다.
-     * (고객사·상품은 반대로 전체 대입이다 — 수정 폼이 기존 값을 채워 전부 보낸다)
+     * (고객사·상품·활동·할 일도 같은 규약이다)
      */
     public void update(String name, String title, String phone, String email) {
         if (name != null) {

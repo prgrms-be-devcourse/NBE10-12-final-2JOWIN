@@ -60,17 +60,26 @@ public class Product extends BaseTimeEntity {
     }
 
     /**
-     * 상품 수정 (PR-04·08) — <b>온 값을 그대로 반영한다.</b>
-     * 08 §B에 "null 필드는 미변경" 주석이 없고 설명을 뺀 셋이 전부 필수라,
-     * 수정 폼이 기존 값을 채워 전체를 보내는 것을 전제한다.
+     * 상품 수정 (PR-04·08) — <b>null로 온 필드는 바꾸지 않는다</b> (08 §B의 PATCH 주석).
+     * 단가 하나만 바꾸는 요청이 이름·단위까지 함께 보내도록 강요하지 않는다.
+     * 설명은 빈 문자열로 비운다 — null은 "안 보냈다"는 뜻이다.
      *
-     * <p>이름 중복 검사와 역할 검사는 서비스가 한다 — 엔티티는 값만 바꾼다.
+     * <p>이름·단위가 공백만인 경우는 DTO의 {@code @Pattern}이 막는다.
+     * 이름 중복 검사와 역할 검사는 서비스가 한다 — 엔티티는 값만 바꾼다.
      */
     public void update(String name, String unit, Long unitPrice, String description) {
-        this.name = Objects.requireNonNull(name, "name");
-        this.unit = Objects.requireNonNull(unit, "unit");
-        this.unitPrice = Objects.requireNonNull(unitPrice, "unitPrice");
-        this.description = description;
+        if (name != null) {
+            this.name = name;
+        }
+        if (unit != null) {
+            this.unit = unit;
+        }
+        if (unitPrice != null) {
+            this.unitPrice = unitPrice;
+        }
+        if (description != null) {
+            this.description = description;
+        }
     }
 
     /**

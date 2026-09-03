@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.6
+# DTO 설계서 — v1.6.7
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.7 | **B PATCH 규약 정합(2026-09-03)** — §B Update record 5종의 필수 문자열 필드를 `@NotBlank`/`@NotNull` → **`@Pattern(regexp = "(?s).*\\S.*")`**로 교체. `@NotBlank`는 null까지 거절해 07 §B가 PATCH로 규정한 부분 수정을 막았다(`{"note":"메모만"}`이 400). Bean Validation은 `@Pattern`에서 null을 검사하지 않아 "안 보내면 미변경 · 보냈으면 공백 불가"가 그대로 표현된다. `(?s)`는 개행 포함 값이 거절되지 않게 한다. 대상은 **NOT NULL 컬럼 대응 필드만** — nullable 필드는 빈 문자열로 비우는 경로를 남겼다. `UpdateContactRequest.email`은 `@Email`만으로 빈 문자열이 통과해 `@Pattern`을 병기 |
 | v1.6.6 | **A 인증 보정(2026-09-01)** — `ChangePasswordRequest`에 에러·응답 주석(`CURRENT_PASSWORD_MISMATCH` 422 · 성공 시 전 세션 폐기 + 204, 07 v1.6.5). 경계 계약 `MemberQuery`에 **`MemberContact(name·email·phone)` 추가**(A 구현 · PR #36 — D의 고객 열람 페이지 담당자 표시 AP-18. `MemberSummary`를 넓히지 않고 따로 둔 이유는 `/members/options`가 "이름·id만"이라 연락처가 딸려갈 경로가 아니기 때문) |
 | v1.6.5 | **화면 설계 공백 반영(2026-08-31)** — `PublicQuoteResponse`에 **`companyBusinessNo` 추가**(`10-screen-design.md` §5.6 · GAP-05 — 고객 열람 페이지가 회사명과 사업자번호를 최상단에 함께 표시). 경계 계약 `CompanyQuery.CompanySummary`에 **`businessNo` 동반 추가**(A 구현 — 발신 회사 정보를 받을 통로가 없었음) |
 | v1.6.4 | **refresh 전달 = 쿠키 확정(2026-08-27)** — `LoginResponse`·`RefreshTokenResponse`에서 **refreshToken 필드 제거**, **`RefreshTokenRequest` 폐기**(요청 바디 없음 — 쿠키가 자격 증명). 검증 노트 #8 추가 |
@@ -162,8 +163,9 @@ public record CreateCustomerRequest(
         @NotBlank String name,
         String industry, String size, String note) {}                 // CU-02
 
-public record UpdateCustomerRequest(
-        @NotBlank String name, String industry, String size, String note) {}
+public record UpdateCustomerRequest(                                   // PATCH: null 필드는 미변경
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String name,   // 안 보내면 미변경 · 보냈으면 공백 불가
+        String industry, String size, String note) {}
 
 public record CustomerResponse(
         UUID id, String name, String industry, String size, String note,
@@ -184,9 +186,10 @@ public record CreateContactRequest(
         @NotBlank String name, String title, String phone,
         @NotBlank @Email String email) {}                             // CU-10
 
-public record UpdateContactRequest(                                   // v1.6 보강 — PATCH: null 필드는 미변경
-        String name, String title, String phone,
-        @Email String email) {}
+public record UpdateContactRequest(                                   // v1.6 보강 · PATCH: null 필드는 미변경
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String name,   // NOT NULL 컬럼 — 안 보내면 미변경 · 보냈으면 공백 불가
+        String title, String phone,                                   // nullable — 빈 문자열로 비운다
+        @Email @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String email) {}
 // 대표 지정은 이 PATCH가 아니라 별도 엔드포인트 POST .../contacts/{cid}/set-primary (CU-11, body 없음) —
 // 지정 시 기존 대표 자동 해제. 대표 해제만 하는 동작은 없음(대표 0명 방지)
 
@@ -201,9 +204,10 @@ public record CreateProductRequest(
         @NotNull @PositiveOrZero Long unitPrice,
         String description) {}
 
-public record UpdateProductRequest(
-        @NotBlank String name, @NotBlank String unit,
-        @NotNull @PositiveOrZero Long unitPrice, String description) {}
+public record UpdateProductRequest(                                    // PATCH: null 필드는 미변경
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String name,   // 안 보내면 미변경 · 보냈으면 공백 불가
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String unit,
+        @PositiveOrZero Long unitPrice, String description) {}
 
 public record ProductResponse(
         UUID id, String name, String unit, Long unitPrice,
@@ -215,9 +219,9 @@ public record CreateActivityRequest(
         @NotBlank String content,
         @NotNull Instant occurredAt) {}
 
-public record UpdateActivityRequest(                                  // v1.6 보강 — PATCH: null 필드는 미변경
-        String channel,                  // CALL / MEETING / EMAIL
-        String content,
+public record UpdateActivityRequest(                                  // v1.6 보강 · PATCH: null 필드는 미변경
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String channel,  // CALL / MEETING / EMAIL
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String content,
         Instant occurredAt) {}           // 작성자 본인만 (AC-04) — 타인 것은 404 ACTIVITY_NOT_AUTHOR
 
 public record ActivityResponse(
@@ -228,7 +232,9 @@ public record ActivityResponse(
 
 public record CreateTaskRequest(@NotBlank String content, @NotNull LocalDate dueDate) {}
 
-public record UpdateTaskRequest(String content, LocalDate dueDate, Boolean done) {}
+public record UpdateTaskRequest(                                       // PATCH: null 필드는 미변경
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String content,
+        LocalDate dueDate, Boolean done) {}
 
 public record TaskResponse(
         UUID id, UUID dealId, String content, LocalDate dueDate,

@@ -19,6 +19,29 @@ class CustomerTest {
     }
 
     @Test
+    @DisplayName("update()는 null로 온 필드를 바꾸지 않는다 (PATCH — 08 §B)")
+    void update_skipsNulls() {
+        Customer customer = 고객사();
+
+        customer.update(null, null, null, "메모만 교체");
+
+        assertThat(customer.getName()).isEqualTo("도담건설");
+        assertThat(customer.getIndustry()).isEqualTo("제조");
+        assertThat(customer.getSize()).isEqualTo("중소");
+        assertThat(customer.getNote()).isEqualTo("메모만 교체");
+    }
+
+    @Test
+    @DisplayName("update()는 빈 문자열은 반영한다 — 선택 항목을 비우는 경로다")
+    void update_appliesBlank() {
+        Customer customer = 고객사();
+
+        customer.update(null, null, null, "");
+
+        assertThat(customer.getNote()).isEmpty();
+    }
+
+    @Test
     @DisplayName("softDelete()를 재호출해도 최초 삭제 시각을 유지한다 (멱등)")
     void softDelete_idempotent() {
         Customer customer = 고객사();
