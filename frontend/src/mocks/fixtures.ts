@@ -1,5 +1,5 @@
 /**
- * 목 픽스처 — 백엔드 시드(backend/src/main/resources/db/seed/R__demo_seed.sql)와 **같은 ID·같은 수치**.
+ * 목 픽스처 — 백엔드 시드(backend/src/main/resources/db/seed/R__demo_seed.sql)와 같은 ID·같은 수치.
  * "이 한 세트가 목 데이터이자 백엔드 시드이자 시연 데이터다" (docs/12-frontend-plan.md §5.2)
  * 필드 형태는 docs/08-dto.md의 Response record와 1:1 (UUID=string, 금액=number 원, 시각=ISO-8601).
  * 한쪽을 수정하면 반드시 함께 수정한다.
@@ -184,6 +184,17 @@ export const viewTokens: Record<string, { quoteId: string; respondable: boolean 
   'demo-hanul-16': { quoteId: quote(16), respondable: true },
   'demo-shinyoung-01': { quoteId: quote(1), respondable: false }, // 응답 완료 — 열람만 가능 (AP-11)
   'demo-mirae-05': { quoteId: quote(5), respondable: false }, // 만료 — 410 처리 데모
+}
+
+// ── 초대 1건 — 시드 invitation과 같은 값 (/invite/:token) ────────────────────
+/** raw 토큰 → 초대. 시드는 해시(seed-invite-hash-0001)만 갖고 원문은 메일에만 있다 */
+export const invitations: Record<string, { companyName: string; email: string; role: string; expiresAt: string }> = {
+  'demo-invite': {
+    companyName: COMPANY.name,
+    email: 'newbie@hanbit.co.kr',
+    role: 'SALES_REP',
+    expiresAt: '2026-09-02T14:59:59Z', // 시드 2026-09-02 23:59:59+09
+  },
 }
 
 // ── 주문 3건 — OrderResponse (이달 성사 합계 48,400,000) ─────────────────────
