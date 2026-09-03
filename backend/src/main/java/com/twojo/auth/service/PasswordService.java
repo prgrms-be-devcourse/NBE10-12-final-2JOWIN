@@ -45,6 +45,15 @@ public class PasswordService {
 
     private static final String MAIL_SUBJECT = "[2JO] 비밀번호 재설정 안내";
 
+    private static final String MAIL_BODY = """
+            비밀번호를 재설정하려면 아래 링크를 여세요.
+
+            {link}
+
+            이 링크는 {expiresAt} (KST)까지 유효합니다.
+            요청한 적이 없다면 이 메일을 무시하세요.
+            """;
+
     private final MemberQuery memberQuery;
     private final MemberCommand memberCommand;
     private final SessionRevoker sessionRevoker;
@@ -170,17 +179,15 @@ public class PasswordService {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
-    /** 평문 최소 렌더. 템플릿 엔진도 다듬은 문안도 아직 없다 — 확정된 문안이 없어서다. */
+    /**
+     * 평문 최소 렌더. 템플릿 엔진도 다듬은 문안도 아직 없다 — 확정된 문안이 없어서다.
+     *
+     * <p>formatted() 대신 replace 를 쓴다. 포맷 문자열의 줄바꿈은 %n 이어야 하는데
+     * 그 값은 실행 환경을 따라가고, 메일 본문의 줄바꿈은 환경과 무관해야 한다.
+     */
     private String renderBody(String rawToken, Instant expiresAt) {
-        String link = passwordResetBaseUrl + "?token=" + rawToken;
-        String expiresAtText = EXPIRES_AT_FORMAT.format(expiresAt.atZone(SEOUL));
-        return """
-                비밀번호를 재설정하려면 아래 링크를 여세요.
-
-                %s
-
-                이 링크는 %s (KST)까지 유효합니다.
-                요청한 적이 없다면 이 메일을 무시하세요.
-                """.formatted(link, expiresAtText);
+        return MAIL_BODY
+                .replace("{link}", passwordResetBaseUrl + "?token=" + rawToken)
+                .replace("{expiresAt}", EXPIRES_AT_FORMAT.format(expiresAt.atZone(SEOUL)));
     }
 }
