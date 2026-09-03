@@ -30,7 +30,8 @@ import org.mockito.junit.jupiter.MockitoExtension;
  * 상품 서비스 — 역할 판정(PR-09) · 이름 중복(PR-02) · 회사 스코프(SC-01) · PATCH 부분 수정(08 §B).
  *
  * <p>역할 위반은 403, 리소스 범위 위반은 404다 (Q-43).
- * DB 제약이 개입하는 경로는 목으로 재현되지 않아 {@link ProductServiceIntegrationTest}가 맡는다.
+ * DB 제약이 개입하는 경로(UNIQUE 위반 → 409)는 목으로 재현되지 않는다 — 통합 테스트가 회사 행을
+ * 필요로 하는데 타 도메인 테이블이라 B가 만들 수 없다 (2JO-미룬작업 18번).
  */
 @ExtendWith(MockitoExtension.class)
 class ProductServiceTest {
