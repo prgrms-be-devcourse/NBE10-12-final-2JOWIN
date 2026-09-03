@@ -16,6 +16,7 @@ import com.twojo.auth.dto.RequestPasswordResetRequest;
 import com.twojo.auth.entity.PasswordResetToken;
 import com.twojo.auth.repository.PasswordResetTokenRepository;
 import com.twojo.auth.token.SecureTokenFactory;
+import com.twojo.boundary.MailCommand;
 import com.twojo.boundary.MemberCommand;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
@@ -34,8 +35,10 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.Spy;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.stubbing.Answer;
 import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * 비밀번호 변경·재설정 (AU-04·05).
@@ -55,11 +58,13 @@ class PasswordServiceTest {
     private static final UUID 김서연 = UUID.randomUUID();
     private static final UUID 한빛오피스 = UUID.randomUUID();
     private static final String 이메일 = "seoyeon@hanbit.co.kr";
+    private static final String 재설정_주소 = "http://localhost:5173/password-reset";
 
     @Mock private MemberQuery memberQuery;
     @Mock private MemberCommand memberCommand;
     @Mock private SessionRevoker sessionRevoker;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock private MailCommand mailCommand;
 
     @Spy private SecureTokenFactory secureTokenFactory = new SecureTokenFactory();
 
@@ -71,7 +76,7 @@ class PasswordServiceTest {
     void setUp() {
         passwordService = new PasswordService(
                 memberQuery, memberCommand, sessionRevoker, passwordEncoder,
-                passwordResetTokenRepository, secureTokenFactory);
+                passwordResetTokenRepository, secureTokenFactory, mailCommand, 재설정_주소);
     }
 
     @Nested
@@ -175,6 +180,9 @@ class PasswordServiceTest {
                             김서연, PasswordResetToken.Status.ACTIVE))
                     .willReturn(Optional.empty());
             willReturn("3Jv8Qw2ZpK1nL7xT").given(secureTokenFactory).generate();
+            // 저장한 토큰을 그대로 돌려준다 — 실제 JPA 와 같다. 뒤에서 이 반환값의 id 와 만료 시각을 쓴다
+            given(passwordResetTokenRepository.save(any(PasswordResetToken.class)))
+                    .willAnswer(호출 -> 호출.getArgument(0));
 
             // when
             passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
@@ -187,6 +195,165 @@ class PasswordServiceTest {
             assertThat(저장된_토큰.getValue().getTokenHash())
                     .isNotEqualTo("3Jv8Qw2ZpK1nL7xT")
                     .isEqualTo(new SecureTokenFactory().hash("3Jv8Qw2ZpK1nL7xT"));
+        }
+    }
+
+    @Nested
+    class 재설정_안내_메일은 {
+
+        private static final String 원문_토큰 = "3Jv8Qw2ZpK1nL7xT";
+
+        private final UUID 새_토큰id = UUID.randomUUID();
+
+        /** NT-14 — 링크만 만들어지고 메일이 안 나가면 사용자는 아무것도 받지 못한다 */
+        @Test
+        void 요청이_접수되면_예약된다() {
+            // given — 김서연은 가입된 구성원이고, 살아 있는 재설정 링크는 아직 없다
+            예약까지_흐른다(이메일);
+
+            // when — 재설정을 요청하면
+            passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
+
+            // then — 비밀번호 재설정 종류로 예약이 걸린다
+            assertThat(예약된_메일().종류()).isEqualTo(MailCommand.TemplateType.PASSWORD_RESET);
+        }
+
+        /** 표기가 갈리면 중복 방지 키가 갈라져, 재발송이 기존 기록을 덮지 못한다 */
+        @Test
+        void 정규화된_주소로_간다() {
+            // given — 계약이 요구하는 흐트러짐 둘을 함께 넣는다
+            //         (공백은 DTO 의 @Email 이 먼저 막는다. 서비스를 직접 부르는 이 자리에서만 닿는다)
+            예약까지_흐른다("  SeoYeon@Hanbit.co.KR  ");
+
+            // when
+            passwordService.requestReset(
+                    new RequestPasswordResetRequest("  SeoYeon@Hanbit.co.KR  "), NOW);
+
+            // then — 예약에는 다듬어진 값이 넘어간다
+            assertThat(예약된_메일().수신자()).isEqualTo("seoyeon@hanbit.co.kr");
+        }
+
+        /** 저장 반환값을 안 쓰면 null 이 넘어가는데, 목은 그것도 조용히 받는다 */
+        @Test
+        void 방금_발급한_토큰을_가리킨다() {
+            // given
+            예약까지_흐른다(이메일);
+
+            // when
+            passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
+
+            // then — 예약이 가리키는 것은 이 요청으로 저장된 토큰이다
+            assertThat(예약된_메일().참조()).isEqualTo(새_토큰id);
+        }
+
+        /** 재설정 메일은 회사가 있는 구성원에게만 나간다 — null 이면 예약이 스코프를 잃는다 */
+        @Test
+        void 회사_식별자와_함께_예약된다() {
+            // given
+            예약까지_흐른다(이메일);
+
+            // when
+            passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
+
+            // then
+            assertThat(예약된_메일().회사()).isEqualTo(한빛오피스);
+        }
+
+        /** NT-14 — 링크가 이 메일의 전부다. 주소·경로·토큰 중 하나만 빠져도 재설정할 수 없다 */
+        @Test
+        void 본문에_재설정_링크를_담는다() {
+            // given
+            예약까지_흐른다(이메일);
+
+            // when
+            passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
+
+            // then — 설정된 주소 뒤에 발급된 원문이 쿼리로 붙는다
+            assertThat(예약된_메일().본문()).contains(재설정_주소 + "?token=" + 원문_토큰);
+        }
+
+        /** 14 §2-1 — 본문에 해시가 실리면 링크가 죽고, DB 에 원문이 남으면 유출 시 전 계정이 열린다 */
+        @Test
+        void 링크에_실리는_토큰은_원문이고_저장되는_값은_해시다() {
+            // given
+            예약까지_흐른다(이메일);
+
+            // when
+            passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
+
+            // then — 같은 토큰이 본문에는 원문으로, 저장된 행에는 SHA-256 으로 들어간다
+            ArgumentCaptor<PasswordResetToken> 저장된_토큰 =
+                    ArgumentCaptor.forClass(PasswordResetToken.class);
+            verify(passwordResetTokenRepository).save(저장된_토큰.capture());
+
+            assertThat(예약된_메일().본문()).contains(원문_토큰);
+            assertThat(저장된_토큰.getValue().getTokenHash())
+                    .isEqualTo(new SecureTokenFactory().hash(원문_토큰));
+        }
+
+        /** UTC 로 나가면 수신자가 아홉 시간 이른 시각을 보고 링크가 죽은 줄 안다 */
+        @Test
+        void 만료_시각을_한국_시각으로_적는다() {
+            // given — 요청 시각이 UTC 11시 20분이라 만료는 11시 50분이다
+            예약까지_흐른다(이메일);
+
+            // when
+            passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
+
+            // then — 본문에는 같은 순간이 한국 시각 20시 50분으로 적힌다
+            assertThat(예약된_메일().본문()).contains("2026-09-02 20:50");
+        }
+
+        /** SC-09 — 미가입인데 메일이 나가면 남의 메일함으로 재설정 링크가 간다 */
+        @Test
+        void 가입되지_않은_이메일에는_예약되지_않는다() {
+            // given — 그런 구성원이 없다
+            given(memberQuery.findCredentialByEmail("nobody@twojo.test"))
+                    .willReturn(Optional.empty());
+
+            // when — 요청은 예외 없이 끝나고
+            passwordService.requestReset(
+                    new RequestPasswordResetRequest("nobody@twojo.test"), NOW);
+
+            // then — 메일 예약을 아예 건드리지 않는다
+            verifyNoInteractions(mailCommand);
+        }
+
+        /** 05 §10 — 예약이 옛 토큰을 가리키면 새 링크가 옛 기록을 덮어 재발송이 성립하지 않는다 */
+        @Test
+        void 다시_요청하면_새_토큰으로_다시_예약된다() {
+            // given — 먼젓번에 받은 링크가 아직 살아 있는데 다시 요청한다
+            UUID 옛_토큰id = UUID.randomUUID();
+            PasswordResetToken 옛_토큰 = 발급된_토큰(PasswordResetToken.Purpose.RESET);
+            ReflectionTestUtils.setField(옛_토큰, "id", 옛_토큰id);
+
+            given(memberQuery.findCredentialByEmail(이메일))
+                    .willReturn(Optional.of(자격(해시("test1234!"))));
+            given(passwordResetTokenRepository.findByMemberIdAndStatus(
+                            김서연, PasswordResetToken.Status.ACTIVE))
+                    .willReturn(Optional.of(옛_토큰));
+            given(passwordResetTokenRepository.save(any(PasswordResetToken.class)))
+                    .willAnswer(id를_심는다(새_토큰id));
+
+            // when
+            passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
+
+            // then — 예약이 가리키는 것은 방금 만든 링크다
+            assertThat(예약된_메일().참조())
+                    .isEqualTo(새_토큰id)
+                    .isNotEqualTo(옛_토큰id);
+        }
+
+        /** 가입된 구성원 · 살아 있는 링크 없음 — 예약까지 그대로 흘러가는 상황 */
+        private void 예약까지_흐른다(String 입력한_이메일) {
+            given(memberQuery.findCredentialByEmail(입력한_이메일))
+                    .willReturn(Optional.of(자격(해시("test1234!"))));
+            given(passwordResetTokenRepository.findByMemberIdAndStatus(
+                            김서연, PasswordResetToken.Status.ACTIVE))
+                    .willReturn(Optional.empty());
+            willReturn(원문_토큰).given(secureTokenFactory).generate();
+            given(passwordResetTokenRepository.save(any(PasswordResetToken.class)))
+                    .willAnswer(id를_심는다(새_토큰id));
         }
     }
 
@@ -272,5 +439,40 @@ class PasswordServiceTest {
 
     private PasswordResetToken 발급된_토큰(PasswordResetToken.Purpose purpose) {
         return PasswordResetToken.issue(김서연, purpose, "a3f1c0", NOW.minusSeconds(60));
+    }
+
+    /**
+     * schedule 에 넘어간 여섯 인자를 한 번에 잡는다 — 테스트마다 필요한 칸 하나만 본다.
+     * 인자마다 캡터를 따로 세우면 단정 한 줄을 위해 배경이 여섯 줄 붙는다.
+     */
+    private 예약 예약된_메일() {
+        ArgumentCaptor<MailCommand.TemplateType> 종류 =
+                ArgumentCaptor.forClass(MailCommand.TemplateType.class);
+        ArgumentCaptor<UUID> 회사 = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<String> 수신자 = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<UUID> 참조 = ArgumentCaptor.forClass(UUID.class);
+        ArgumentCaptor<String> 제목 = ArgumentCaptor.forClass(String.class);
+        ArgumentCaptor<String> 본문 = ArgumentCaptor.forClass(String.class);
+
+        verify(mailCommand).schedule(종류.capture(), 회사.capture(), 수신자.capture(),
+                참조.capture(), 제목.capture(), 본문.capture());
+
+        return new 예약(종류.getValue(), 회사.getValue(), 수신자.getValue(),
+                참조.getValue(), 제목.getValue(), 본문.getValue());
+    }
+
+    private record 예약(MailCommand.TemplateType 종류, UUID 회사, String 수신자,
+                       UUID 참조, String 제목, String 본문) {}
+
+    /**
+     * 저장하면 id 가 붙는다 — 실제로는 JPA 가 하는 일이라 목에서는 우리가 흉내 낸다.
+     * 엔티티에 id 를 넣는 통로가 없어(생성이 JPA 몫이다) 리플렉션으로 심는다.
+     */
+    private Answer<PasswordResetToken> id를_심는다(UUID 토큰id) {
+        return 호출 -> {
+            PasswordResetToken 저장될_토큰 = 호출.getArgument(0);
+            ReflectionTestUtils.setField(저장될_토큰, "id", 토큰id);
+            return 저장될_토큰;
+        };
     }
 }
