@@ -6,7 +6,9 @@ import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.Role;
 import com.twojo.deal.dto.DealRequests;
+import java.util.Queue;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
@@ -21,6 +23,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.orm.ObjectOptimisticLockingFailureException;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
@@ -31,9 +34,11 @@ import org.springframework.test.context.ActiveProfiles;
  * 동시에 커밋</b>하면 양쪽 다 그 검사를 통과하고, 진 쪽은 flush 시점에 JPA {@code @Version}에
  * 걸린다. 그 경로는 실제 DB의 UPDATE ... WHERE version = ? 가 있어야 재현된다.
  *
- * <p>이 테스트가 지키는 것은 <b>응답 코드의 일관성</b>이다. 두 경로 모두 "version 불일치"인데,
- * {@code GlobalExceptionHandler}에 {@code ObjectOptimisticLockingFailureException} 매핑이 없으면
- * 동시 쓰기만 500으로 나간다. 그 매핑을 지우면 이 테스트만 빨간불이 된다.
+ * <p><b>이 테스트가 지키는 범위</b> — 서비스를 직접 부르므로 웹 계층을 지나지 않는다.
+ * 따라서 409 변환 자체는 여기서 검증되지 않고, <b>"진 쪽에 무엇이 도달하는가"</b>를 고정한다
+ * ({@code ObjectOptimisticLockingFailureException}). 그 타입이
+ * {@code GlobalExceptionHandler}의 매핑 대상이고, 매핑이 없으면 {@code Exception} 폴백으로
+ * 떨어져 500 INTERNAL_ERROR가 된다 — 같은 "version 불일치"인데 응답이 갈린다.
  *
  * <p><b>{@code @Transactional}을 붙이지 않는다.</b> 붙이면 두 호출이 테스트 트랜잭션에 합류해
  * 커밋이 미뤄지고 경쟁 자체가 사라진다. D의 {@code ViewTokenCommandIssueIntegrationTest}와 같은 이유다.
@@ -98,7 +103,7 @@ class DealStageConcurrencyTest {
         CountDownLatch 출발선 = new CountDownLatch(1);
         CountDownLatch 종료 = new CountDownLatch(threads);
         AtomicInteger 성공 = new AtomicInteger();
-        AtomicInteger 실패 = new AtomicInteger();
+        Queue<Throwable> 실패들 = new ConcurrentLinkedQueue<>();
 
         try (ExecutorService pool = Executors.newFixedThreadPool(threads)) {
             for (int i = 0; i < threads; i++) {
@@ -107,8 +112,8 @@ class DealStageConcurrencyTest {
                         출발선.await();   // 순차 실행이 되면 검증이 무의미하다
                         dealService.advance(ctx, dealId, new DealRequests.StageMove(0));
                         성공.incrementAndGet();
-                    } catch (Exception e) {
-                        실패.incrementAndGet();
+                    } catch (Throwable e) {
+                        실패들.add(e);
                     } finally {
                         종료.countDown();
                     }
@@ -119,7 +124,12 @@ class DealStageConcurrencyTest {
         }
 
         assertThat(성공.get()).isOne();
-        assertThat(실패.get()).isEqualTo(threads - 1);
+        assertThat(실패들).hasSize(threads - 1);
+
+        // 진 쪽이 무엇을 받는지 고정한다 — 이 타입이 GlobalExceptionHandler의 매핑 대상이고,
+        // 매핑이 없으면 폴백으로 떨어져 500이 된다. 예외를 뭉뚱그려 세면 그 사실이 가려진다
+        assertThat(실패들).allSatisfy(e ->
+                assertThat(e).isInstanceOf(ObjectOptimisticLockingFailureException.class));
 
         // 단계가 여러 칸 뛰지 않았는지 — 표에 없는 전이가 동시성으로 만들어지면 안 된다 (전이표 §5)
         assertThat(jdbc.queryForObject("select stage from deal where id = ?", String.class, dealId))
