@@ -133,6 +133,13 @@ public class AuthService {
                 .findByTokenHash(secureTokenFactory.hash(rawToken))
                 .orElseThrow(() -> new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE));
 
+        // token_hash는 구성원·관리자 세션이 함께 쓰는 표에서 유일하다 — 해시로 찾은 것만으로는
+        // 어느 쪽 행인지 알 수 없다. 관리자 행이면 여기서 끊는다.
+        // 통과시키면 아래가 null인 memberId로 조회를 돌린다
+        if (!token.isMemberSession()) {
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+        }
+
         if (token.isRotated()) {
             // 한 번 쓴 토큰이 다시 왔다 — 정상 사용에서는 일어날 수 없다.
             // 훔쳐간 쪽과 진짜 사용자를 구별할 수 없으므로 이 구성원의 세션을 전부 끊는다
