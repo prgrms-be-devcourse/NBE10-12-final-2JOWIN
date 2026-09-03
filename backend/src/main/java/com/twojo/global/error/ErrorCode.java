@@ -55,6 +55,10 @@ public enum ErrorCode {
     DEAL_HAS_QUOTES(HttpStatus.CONFLICT, "견적이 연결된 Deal은 삭제할 수 없습니다."),
     // 종결(WON·LOST) Deal의 전이 — DEAL_ALREADY_WON은 문구가 성사 전용이라 LOST에 쓰면 거짓말이 된다
     DEAL_NOT_OPEN(HttpStatus.CONFLICT, "진행 중인 Deal만 단계를 변경할 수 있습니다."),
+    // 재개(DL-12)는 실패한 Deal에만 있는 전이 — DEAL_NOT_OPEN은 문구가 정반대라 쓸 수 없다
+    DEAL_NOT_LOST(HttpStatus.CONFLICT, "실패한 Deal만 재개할 수 있습니다."),
+    // 리드에는 되돌릴 단계가 없다 — DEAL_NOT_OPEN은 진행 중인 리드에 쓰면 문구가 거짓이 된다
+    DEAL_NO_PREVIOUS_STAGE(HttpStatus.CONFLICT, "리드 단계에서는 이전 단계로 되돌릴 수 없습니다."),
 
     // ── C 견적
     QUOTE_NOT_DRAFT(HttpStatus.CONFLICT, "작성 중인 견적만 수정·발송할 수 있습니다."),

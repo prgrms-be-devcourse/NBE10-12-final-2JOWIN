@@ -1,4 +1,4 @@
-# API 명세서 — v1.6.8
+# API 명세서 — v1.6.9
 
 > 🧭 [문서 지도](README.md) · ← [06 ERD](06-erd.md) · [08 DTO 설계서](08-dto.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.9 | **`DEAL_NOT_LOST` 신설(2026-09-02)** — 진행 중 Deal에 재개(DL-12)를 호출했을 때 던질 코드가 없었다. v1.6.7의 `DEAL_NOT_OPEN`은 문구가 "진행 중인 Deal만 단계를 변경할 수 있습니다"라 **정작 진행 중인 Deal에 쓰면 거짓말**이 된다 — 전이표 §5에서 재개는 실패(LOST)에만 있는 전이라 방향이 반대다. **`DEAL_NO_PREVIOUS_STAGE` 신설** — 리드에서 이전 단계 이동을 호출했을 때도 같은 공백이 있었다(07 엔드포인트 설명에 "LEAD에서 호출 불가"만 있고 코드가 없었다). 발견 경로: Deal 단계 전이 구현(#61) |
 | v1.6.8 | **`INTERNAL_ERROR` 신설(2026-09-03)** — 처리되지 않은 예외에 쓸 코드가 없어 `GlobalExceptionHandler`가 폴백을 둘 수 없었다. 그 결과 예외가 서블릿까지 올라가 `/error`로 내부 포워딩되고, 그 요청이 Security 필터에 다시 걸려 **500이어야 할 응답이 403으로 나갔다** (#53 재설정 메일 예약 검증 중 발견). 문구는 원인을 노출하지 않는다 — SC-09와 같은 태도 |
 | v1.6.7 | **C 도메인 에러 코드 3건 신설(2026-09-02)** — 전이표에는 불가로 적혀 있는데 던질 코드가 없던 자리를 채운다. **`DEAL_NOT_OPEN`**(LOST Deal의 단계 변경·WON Deal의 재개 — `DEAL_ALREADY_WON`은 문구가 성사 전용이라 LOST에 쓰면 거짓말이 된다) · **`QUOTE_NOT_RESENDABLE`**(종결 견적 재발송 — `QUOTE_NOT_WITHDRAWABLE`과 대칭) · **`QUOTE_VALID_UNTIL_PASSED`**(유효기간 지난 견적 발송 — 입력은 `@Future`로 막지만 저장 값이 낡는 것은 못 막는다). 발견 경로: Deal 구현(#46) 및 D의 `issue()` 실구현 리뷰(#54) |
 | v1.6.6 | **A 인증 보정 2차(2026-09-02)** — `POST /public/api/v1/auth/password-reset`의 응답 `204` 명시(v1.6.5에서 `/me/password`만 적고 이쪽이 비어 있었다. 08에 Response record가 없어 바디 없음이 전제였다) · 재설정 메일 요청 행에 **NT-14** 연결(03 v1.6.4 신설) |
@@ -212,6 +213,8 @@
 | DEAL_ALREADY_WON | 409 | 성사 Deal의 단계 변경·실패 처리. **단, 주문 전환의 자동 성사는 멱등 — 이 에러를 던지지 않는다 (Q-25)** |
 | DEAL_HAS_QUOTES | 409 | 견적 연결된 Deal 삭제 (DL-17) |
 | **DEAL_NOT_OPEN** | 409 | **실패(LOST) Deal의 단계 변경·실패 처리, 성사(WON) Deal의 재개.** 전이표 §5상 LOST에서 나가는 전이는 재개뿐이고 WON에서 나가는 전이는 없는데, 그 조합에 던질 코드가 없었다 (v1.6.7) |
+| **DEAL_NOT_LOST** | 409 | **진행 중(리드~협상) Deal의 재개.** 재개는 실패한 Deal에만 있는 전이라(DL-12) 그 밖의 상태에서는 막힌다. `DEAL_NOT_OPEN`은 문구가 "진행 중인 Deal만"이라 여기 쓰면 정반대가 된다 (v1.6.8) |
+| **DEAL_NO_PREVIOUS_STAGE** | 409 | **리드(LEAD) Deal의 이전 단계 이동.** 되돌릴 단계가 없다(DL-08). `DEAL_NOT_OPEN`은 문구가 "진행 중인 Deal만"이라 진행 중인 리드에 쓰면 거짓말이 된다 (v1.6.8) |
 | STALE_VERSION | 409 | version 불일치 (낙관적 락) — 재조회 후 재시도 안내 |
 
 ## C. 견적 — 최선진 (QT + AP-13·14)
@@ -321,6 +324,8 @@
 | **DEAL_NOT_OPEN** | **409** | **C Deal (v1.6.7)** |
 | **QUOTE_NOT_RESENDABLE** | **409** | **C 견적 (v1.6.7)** |
 | **QUOTE_VALID_UNTIL_PASSED** | **409** | **C 견적 (v1.6.7)** |
+| **DEAL_NOT_LOST** | **409** | **C Deal (v1.6.8)** |
+| **DEAL_NO_PREVIOUS_STAGE** | **409** | **C Deal (v1.6.8)** |
 | CONTACT_HAS_QUOTES | 409 | B 고객사 (실사용 점검) |
 | CONTACT_NOT_IN_CUSTOMER | 409 | C 견적 (C 리뷰 3-3) |
 | **FORBIDDEN** | **403** | **공통 — 역할 자체로 갈리는 행위 위반 (Q-43)** |
@@ -371,6 +376,8 @@
 | DEAL_WON_REQUIRES_ORDER | 409 | 성사는 승인된 견적을 주문으로 전환할 때 자동으로 처리됩니다. |
 | DEAL_ALREADY_WON | 409 | 성사된 Deal은 단계를 변경할 수 없습니다. |
 | **DEAL_NOT_OPEN** | **409** | **진행 중인 Deal만 단계를 변경할 수 있습니다.** |
+| **DEAL_NOT_LOST** | **409** | **실패한 Deal만 재개할 수 있습니다.** |
+| **DEAL_NO_PREVIOUS_STAGE** | **409** | **리드 단계에서는 이전 단계로 되돌릴 수 없습니다.** |
 | DEAL_HAS_QUOTES | 409 | 견적이 연결된 Deal은 삭제할 수 없습니다. |
 | VALIDATION_FAILED | 400 | 입력값을 확인해 주세요. (fieldErrors 참조) |
 | **INTERNAL_ERROR** | **500** | **일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.** |
