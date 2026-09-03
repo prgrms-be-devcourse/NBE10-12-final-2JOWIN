@@ -74,9 +74,13 @@ public class CustomerContact extends BaseTimeEntity {
     /**
      * 대표 담당자로 지정 (CU-11).
      *
-     * <p><b>기존 대표 해제는 여기서 하지 않는다</b> — 다른 담당자를 조회해야 하므로 서비스가
-     * {@code releasePrimary()} → {@code markPrimary()} 순으로 오케스트레이션한다.
-     * 엔티티는 자기 플래그만 다룬다.
+     * <p><b>기존 대표 해제는 여기서 하지 않는다</b> — 다른 담당자를 조회해야 하므로 서비스의
+     * 몫이다. 엔티티는 자기 플래그만 다룬다.
+     *
+     * <p><b>교체할 때 이 메서드와 {@code releasePrimary()}를 따로 호출하면 위험하다.</b>
+     * 두 UPDATE 사이에 대표가 2명인 순간이 생기는데, JPA는 그 순서를 보장하지 않아
+     * {@code uk_customer_contact_primary}(부분 유니크) 위반이 날 수 있다. 서비스는 옛 대표를
+     * 먼저 확정해 순서를 고정하거나, 한 문장으로 끝내야 한다 (CU-11 구현 이슈에서 정한다).
      */
     public void markPrimary() {
         this.isPrimary = true;
