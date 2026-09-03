@@ -9,6 +9,10 @@ package com.twojo.notification.service;
  *
  * <p>{@code body}에는 열람 링크(원문 토큰)가 들어 있다 — 구현은 이 값을 로그·저장소에 남기면 안 된다
  * (docs/14-tech-stack.md §2-1·§7.3).
+ *
+ * <p>이 인터페이스는 package-private다 — 실제 어댑터도 <b>같은 패키지({@code notification.service})</b>에
+ * 둔다. 하위 패키지에 두면 이 타입이 안 보인다(모듈이 아니라 패키지 경계 — {@code TokenGenerator} 리뷰에서
+ * 팀이 밟은 함정). 다른 모듈에서 참조할 일은 없다.
  */
 interface EmailSender {
 

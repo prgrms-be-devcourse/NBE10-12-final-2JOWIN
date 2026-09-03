@@ -16,9 +16,11 @@ import org.springframework.transaction.annotation.Transactional;
  * 커밋 후 비동기 발송 — {@link MailScheduledListener}가 AFTER_COMMIT에 호출한다.
  * {@code email_log}를 id로 다시 조회해 발송하고 결과를 SENT/FAILED로 기록한다.
  *
- * <p>{@code @Async}(전용 실행기) + {@code REQUIRES_NEW} — 리스너와 별도 빈이어야 제출 거부
- * ({@code TaskRejectedException})가 리스너의 {@code try}에서 잡힌다(AsyncConfig javadoc §6).
- * 새 트랜잭션인 이유: AFTER_COMMIT 시점엔 원래 트랜잭션 동기화 정리가 아직 안 끝났을 수 있다.
+ * <p>{@code @Async}(전용 실행기) + {@code REQUIRES_NEW} — 리스너와 별도 빈이어야 제출 거부가
+ * 리스너의 {@code try}에서 잡힌다(AsyncConfig javadoc §6). {@code REQUIRES_NEW}인 이유: 이 메서드는
+ * 워커 스레드에서 도는데 그 스레드엔 바인드된 트랜잭션이 없어 새로 열어야 한다(사실상 {@code REQUIRED}와
+ * 같으나 의도를 못박는다). {@code @Async}가 퇴화해 동기로 돌아도 안전하다 — 그때는 AFTER_COMMIT 시점의
+ * 원 트랜잭션에 합류하지 않고 별도로 커밋한다.
  *
  * <p>엔티티·{@code SecurityContext}·요청 스코프를 넘겨받지 않는다 — {@code emailLogId}로 새로 조회한다.
  * {@code subject}·{@code body}만 이벤트에서 온다({@code email_log}에 없으므로).
