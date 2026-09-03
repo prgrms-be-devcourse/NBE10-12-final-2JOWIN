@@ -1,4 +1,4 @@
-# 데이터 모델(ERD) — v1.6.4
+# 데이터 모델(ERD) — v1.6.5
 
 > 🧭 [문서 지도](README.md) · ← [05 상태 전이표](05-state-transitions.md) · [07 API 명세서](07-api-spec.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 | 근거 |
 | --- | --- | --- |
+| v1.6.5 | **task.company_id 추가(2026-09-02)** — `task`에 `company_id NOT NULL` + 복합 FK `(company_id, deal_id) → deal(company_id, id)`. activity와 같은 형태로 통일. 사유: 할 일은 Deal의 자식이지만 **딜과 무관하게 독립 조회되는 대상**(DB-05 후속 필요 · "내 할 일")이라 기업 관리자(COMPANY_ALL) 범위 조회에 회사 축이 필요하고, 격리 2중 방어(서비스 스코프 + 복합 FK)가 activity에만 걸려 있던 비대칭을 없앤다. 관리자 조회용 인덱스 `task(company_id, done_at)` 추가. **마이그레이션은 `V2xx` ALTER(B 번호대)** — V1 베이스라인은 수정하지 않는다 (11 §1.2) | PR #32 논의 · PR #51 · SC-01 |
 | v1.6.4 | **NT-14 반영(2026-09-02)** — `email_log.template_type`의 값 집합에 NT-14(비밀번호 재설정 안내) 추가. 컬럼은 `VARCHAR(30)`에 CHECK가 없어 **스키마 변경은 없다** — 값 목록 주석만 갱신한다 | NT-14 (03 v1.6.4), AU-05 |
 | v1.6.3 | **AP-19·Q-44 반영(2026-08-26)** — quote에 `responder_name`·`responder_title` 추가(고객 응답자의 자기 신고 신원). 계정 없는 응답자라 인증할 수 없으므로 **검증 없는 신고값**이며, 이 사실이 화면·문서에 명시된다 | AP-19, Q-44 (`10-screen-design.md` GAP-09) |
 | v1.6.1 | 검수 보정(2026-08-26) — AU-09 잠금 판정 서술 정정(**10분은 판정 윈도우가 아니라 잠금 지속 시간** — 마지막 성공 이후 연속 실패 5회 + 마지막 실패로부터 10분간 차단) · audit_log payload 규약에 견적·주문 이벤트 **dealId 필수** 추가(AC-06 Deal 타임라인 병합 키) | 검수 — AU-09 원문·AC-06 정합 |
@@ -24,8 +25,8 @@
 
 | 원칙 | 내용 | 근거 |
 | --- | --- | --- |
-| 테넌트 격리 | **집계 루트**(customer·deal·product·quote·orders·activity·audit_log·notification 등)는 `company_id` 직접 보유. **자식 테이블**(customer_contact·quote_item·quote_view_token·customer_inquiry·order_item·task·notification_setting·refresh_token·password_reset_token)은 부모 경유 격리. **예외: login_attempt는 company_id 없음** — 로그인 시점엔 회사 불명(미가입·플랫폼 관리자 포함) | SC-01 |
-| 복합 FK | **규칙: 부모가 둘 이상인 테이블은 그 부모들이 서로 다른 회사일 수 있다 → 복합 FK로 차단.** deal→customer · deal→member · quote→deal · orders→quote · activity→deal · activity→member · notification→member · invitation→member는 `(company_id, id)` 복합 FK. 참조 대상에 `UNIQUE(company_id, id)` 보조 유니크 | SC-01 |
+| 테넌트 격리 | **집계 루트**(customer·deal·product·quote·orders·activity·audit_log·notification 등)는 `company_id` 직접 보유. **자식 테이블**(customer_contact·quote_item·quote_view_token·customer_inquiry·order_item·notification_setting·refresh_token·password_reset_token)은 부모 경유 격리. **예외: activity·task는 Deal의 자식이지만 `company_id`를 직접 보유** — 딜과 무관하게 독립 조회되는 대상(DB-04·05, AC-06)이라 회사 축이 필요하다 (v1.6.5). **예외: login_attempt는 company_id 없음** — 로그인 시점엔 회사 불명(미가입·플랫폼 관리자 포함) | SC-01 |
+| 복합 FK | **규칙: 부모가 둘 이상인 테이블은 그 부모들이 서로 다른 회사일 수 있다 → 복합 FK로 차단.** deal→customer · deal→member · quote→deal · orders→quote · activity→deal · activity→member · task→deal · notification→member · invitation→member는 `(company_id, id)` 복합 FK. 참조 대상에 `UNIQUE(company_id, id)` 보조 유니크 | SC-01 |
 | 조회 범위 파생 | 견적·주문·상담 기록·할 일의 접근 범위는 **Deal에서 파생**(담당 기준은 deal.assignee_member_id 하나). 고객사는 회사 공유(SC-03). activity.author_member_id는 수정·삭제 권한(AC-04·05) 판정용이지 조회 경로가 아니다 | SC-02~06 |
 | PK | 전 테이블 UUID. 표시 번호(Q-2608-014 등)는 별도 컬럼 | 컨벤션 §2.5 |
 | 상태 | 상태 전이표 v1.6의 영문 코드를 문자열 enum으로 저장 | 전이표 v1.6 |
@@ -263,7 +264,8 @@ erDiagram
     }
     task {
         uuid id PK
-        uuid deal_id FK
+        uuid company_id FK
+        uuid deal_id FK "복합 FK"
         string content
         date due_date "AC-09"
         timestamp done_at
@@ -439,12 +441,12 @@ erDiagram
 
 | 분류 | 내용 |
 | --- | --- |
-| 복합 FK | deal→(company_id, customer_id) · deal→(company_id, assignee_member_id) · quote→(company_id, deal_id) · orders→(company_id, quote_id) · **activity→(company_id, deal_id) · activity→(company_id, author_member_id) · notification→(company_id, recipient_member_id) · invitation→(company_id, invited_by_member_id)**. 참조 대상에 UNIQUE(company_id, id) |
+| 복합 FK | deal→(company_id, customer_id) · deal→(company_id, assignee_member_id) · quote→(company_id, deal_id) · orders→(company_id, quote_id) · **activity→(company_id, deal_id) · activity→(company_id, author_member_id) · task→(company_id, deal_id) · notification→(company_id, recipient_member_id) · invitation→(company_id, invited_by_member_id)**. 참조 대상에 UNIQUE(company_id, id) |
 | 부분 유니크 | 견적당 활성 링크 1개 · 고객사당 대표 담당자 1명 `WHERE is_primary` · 회사·이메일당 대기 초대 1개 `WHERE status='PENDING'` · **구성원당 활성 재설정 토큰 1개 `WHERE status='ACTIVE'`** (refresh_token에는 걸지 않음 — 다중 기기, Q-28) |
 | 회사 내 유일 | quote_no · order_no · **product.name (판매 중지 포함 — 재등록 대신 판매 재개 사용)** |
 | 전역 유일 | member.email `lower(email)` · platform_admin.email · **company.business_no (사업자번호당 테넌트 1개 — 중복 가입을 DB가 최후 방어. 회사 이름은 유니크 아님: 동명 상호 합법)** — application.business_no는 재신청 허용(Q-15)이라 유니크 금지 |
 | CHECK | 금액 ≥ 0 · 수량 > 0 · sort_order ≥ 0 · 상태값 enum · **invitation.role** · **deal.stage IN (LEAD, CONSULT, QUOTE, NEGOTIATION, WON, LOST)** · **quote.status IN (DRAFT, SENT, VIEWED, APPROVED, REJECTED, WITHDRAWN, EXPIRED)** — 마이그레이션에서 값 명시 |
-| 인덱스 | 모든 FK 컬럼 · notification(recipient_member_id, read_at) · audit_log(company_id, occurred_at) · **refresh_token(member_id, status) · login_attempt(email, attempted_at DESC) · task(deal_id, done_at) · deal(company_id, assignee_member_id, stage)** |
+| 인덱스 | 모든 FK 컬럼 · notification(recipient_member_id, read_at) · audit_log(company_id, occurred_at) · **refresh_token(member_id, status) · login_attempt(email, attempted_at DESC) · task(deal_id, done_at) · **task(company_id, done_at)** · deal(company_id, assignee_member_id, stage)** |
 
 ## DB로 못 막는 것 (서비스 레이어 담당)
 
@@ -457,6 +459,7 @@ erDiagram
 | audit_log payload에 비밀번호·토큰·해시 금지 | 애플리케이션 규약 — 인증 이벤트 포함으로 더 중요 |
 | SC-09를 인증 경로에도 적용 — 로그인 실패·재설정 요청·잠금 여부의 응답이 계정 존재로 갈리면 안 됨 | 순수 응답 규약 |
 | activity 조회 권한은 Deal에서 파생 — author_member_id는 수정·삭제 판정용 | 작성자 컬럼이 별도 접근 경로가 되지 않도록 |
+| task 접근 범위는 부모 Deal에서 파생 (배정 컬럼 없음, Q-29) — 영업(OWNED_ONLY)은 담당 Deal 범위, 기업 관리자(COMPANY_ALL)는 company_id 범위. 복합 FK는 "할 일의 회사 = 딜의 회사"만 보장하고 **담당 여부는 서비스가 판정** | 단건 조회에 회사·딜 범위를 함께 걸어야 함 — 무스코프 findById 금지 (PR #51) |
 | 열람 링크 수신인은 해당 견적의 고객사 소속 담당자여야 함 (AP-13 재발송 특히) | customer_contact에 company_id가 없어 복합 FK 불가 — CONTACT_NOT_IN_CUSTOMER |
 | 비밀번호 변경·재설정 완료 시 해당 구성원 refresh_token 전 행 폐기 | 집계 조건 |
 | 로그인 실패 잠금 판정 — 마지막 성공 이후 **연속 실패 5회 이상**이고 **마지막 실패로부터 10분 이내**면 차단 (AU-09 — 10분은 잠금 지속 시간이지 판정 윈도우가 아님, v1.6.1 정정) | 시간 조건 집계 |
@@ -468,3 +471,4 @@ erDiagram
 | 1 | ✅ v1.6 확정 (채번 APPLICATION 제외 · status CHECK · 값 복사 비고) | 전원 |
 | 2 | Flyway V1 마이그레이션 + JPA 엔티티 25개 → 깃 PR | 김대연 |
 | 3 | API 명세 자기 도메인 검토 → 확정 → 구현 착수 | A·B·C·D |
+| 4 | `task.company_id` 마이그레이션 `V2xx` ALTER + Task 엔티티·Repository + `R__demo_seed.sql` task INSERT 갱신 (v1.6.5) | 한상민(B) |
