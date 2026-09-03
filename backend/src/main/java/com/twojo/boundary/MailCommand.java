@@ -23,20 +23,20 @@ import java.util.UUID;
  *       계약은 {@code body}를 {@code email_log}에 쓰지 않는다 — 발송 시점에만 쓰고 버린다.</li>
  * </ul>
  *
- * <p><b>호출 1회 = {@code email_log} 행 1건.</b> {@code refId}가 발송할 때마다 새로 발급되는
- * 토큰 행의 id라(QUOTE_SENT는 발송된 {@code quote_view_token}, PASSWORD_RESET는
- * {@code password_reset_token} — 아래 {@code schedule}), 멱등 키
- * {@code (type, refId, recipientEmail)}는 정상 흐름에서 겹치지 않는다. 재발송은 이전 토큰이
- * 만료되고 새 토큰·새 링크가 나가는 흐름이므로, 예약도 기존 행을 덮지 않고 새 행을 만든다.
+ * <p><b>{@code refId}의 뜻은 {@code TemplateType} 상수마다 다르다.</b> {@code QUOTE_SENT}·
+ * {@code PASSWORD_RESET}는 이 발송이 배달하는 토큰 행 id다({@code quote_view_token} /
+ * {@code password_reset_token}). 이 둘은 발송·재발송마다 이전 토큰을 만료시키고 새로 발급하므로
+ * {@code refId}가 매번 달라지고, {@code email_log} 행도 발송마다 하나씩 생긴다 — 재발송이 기존 행을
+ * 덮지 않는다. "같은 수신인 재발송 시 SENT 행을 되돌리나"는 이 두 상수에서는 생기지 않는다.
  *
- * <p>{@code UNIQUE(template_type, ref_id, recipient_email)}는 그 위의 백스톱이다 — 같은 대기 행이
- * AFTER_COMMIT 이벤트와 SCHEDULED 재처리 배치 양쪽에서 INSERT되는 경합만 DB에서 막는다. 이중
- * <b>발송</b> 방어는 디스패처가 행의 {@code status}로 한다({@code SCHEDULED}가 아니면 스킵).
+ * <p>{@code UNIQUE(template_type, ref_id, recipient_email)}는 06 §제약조건대로 <b>NT-05(리마인드)·
+ * NT-06(임박) 배치 재실행 시 이중 발송을 DB가 차단</b>한다 — 그쪽은 토큰이 없어 {@code refId}가
+ * 재실행 간 고정(견적 등)이다. 재실행 충돌 시의 멱등 처리(이미 SENT면 스킵 등)는 해당
+ * {@code TemplateType} 값을 추가할 때 06·docs/05와 함께 정한다.
  *
- * <p>{@code email_log} 상태 전이는 앞으로만 간다 — SENT는 뒤집지 않는다(엔티티 {@code markSent}·
- * {@code markFailed}). "같은 수신인에게 재발송하면 SENT 행을 되돌려야 하나"라는 물음은 {@code refId}를
- * 발송 단위로 유일하게 두면서 사라졌다(재발송 = 늘 새 행). {@code email_log} 전이 절은 메일 파이프라인
- * 이슈에서 docs/05에 신설한다.
+ * <p>디스패처는 이와 별개로, 한 대기 행이 AFTER_COMMIT 이벤트와 SCHEDULED 재처리 배치로 두 번
+ * 디스패치되는 것을 행의 {@code status}로 막는다({@code SCHEDULED}가 아니면 스킵). {@code email_log}
+ * 전이 절은 메일 파이프라인 이슈에서 docs/05에 신설한다.
  *
  * <p><b>{@code companyId} null 규칙</b> — NT-13(가입 승인·반려 통보) 계열만 null이다({@code email_log}
  * DDL 주석: "플랫폼 발송(NT-13)은 null"). 그 외(견적 발송·재설정)는 값 필수 — 재설정 메일도 이미 가입된
@@ -55,9 +55,9 @@ public interface MailCommand {
      * {@code type}과 따로 넘기면 불일치 쌍({@code QUOTE_SENT} + {@code "PASSWORD_RESET_TOKEN"})을 만들
      * 여지가 생겨서 뺐다.
      *
-     * <p>{@code refId}는 이 발송이 배달하는 <b>토큰 행</b>의 id다 — {@code QUOTE_SENT}면 방금 발급된
-     * {@code quote_view_token} id, {@code PASSWORD_RESET}면 {@code password_reset_token} id.
-     * 발송마다 새로 발급되므로 {@code email_log} 행도 발송마다 하나씩 생긴다.
+     * <p>{@code refId}는 발송을 식별하는 id다 — 뜻은 {@code TemplateType} 상수마다 다르다.
+     * {@code QUOTE_SENT}면 발송된 {@code quote_view_token} id, {@code PASSWORD_RESET}면
+     * {@code password_reset_token} id(둘 다 발송마다 새로 발급 → {@code email_log} 행도 발송마다 하나).
      * 멱등 키 {@code (type, refId, recipientEmail)}의 일부다.
      *
      * <p>{@code recipientEmail}은 정규화된 값(trim·소문자)이어야 한다 — 멱등 키의 일부이자
@@ -70,8 +70,8 @@ public interface MailCommand {
                   UUID refId, String subject, String body);
 
     /**
-     * 메일 종류 — {@code email_log.template_type} 값이자, 대기 행 이중 INSERT를 막는 백스톱 제약
-     * {@code UNIQUE(template_type, ref_id, recipient_email)}의 일부.
+     * 메일 종류 — {@code email_log.template_type} 값이자, NT-05·06 배치 재실행 시 이중 발송을 막는
+     * {@code UNIQUE(template_type, ref_id, recipient_email)}의 일부(06 §제약조건).
      *
      * <p><b>이 enum을 계약에 두고 엔티티({@code EmailLog})가 직접 참조한다</b> —
      * {@code ViewTokenCommand.ExpiredReason}이 계약 enum ↔ 엔티티 enum 2개로 갈라져 브리지되는 것과 다르다.
