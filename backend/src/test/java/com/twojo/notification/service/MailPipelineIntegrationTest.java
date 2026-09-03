@@ -27,6 +27,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.transaction.IllegalTransactionStateException;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
@@ -38,6 +39,10 @@ import org.springframework.transaction.support.TransactionTemplate;
  * <p><b>클래스에 {@code @Transactional}을 붙이지 않는다.</b> 붙이면 {@code schedule()}이 테스트 트랜잭션에
  * 합류해 커밋이 미뤄지고 AFTER_COMMIT이 영영 안 뜬다 → 테스트가 조용히 무의미해진다. 대신 {@link AfterEach}로
  * 수동 정리한다. {@code EmailSender}는 {@link MockitoBean}으로 세운다(로그 구현은 실패 경로가 없어서).
+ *
+ * <p>{@code TemplateType}은 {@code SIGNUP_APPROVED}를 쓴다 — 이 타입만 {@code companyId = null}이 계약상
+ * 합법이라 {@code company} 시드 없이 자족한다. 검증 대상(AFTER_COMMIT·스레드 홉·REQUIRES_NEW·UNIQUE·MANDATORY)은
+ * 타입과 무관하다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -83,7 +88,7 @@ class MailPipelineIntegrationTest {
         String recipient = "pipeline-ok-" + refId + "@test";
 
         tx.executeWithoutResult(t ->
-                mailCommand.schedule(TemplateType.QUOTE_SENT, null, recipient, refId, "제목", "본문 http://x/q/raw"));
+                mailCommand.schedule(TemplateType.SIGNUP_APPROVED, null, recipient, refId, "제목", "본문 http://x/q/raw"));
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertThat(statusOf(recipient)).isEqualTo("SENT"));
@@ -99,12 +104,20 @@ class MailPipelineIntegrationTest {
         String recipient = "pipeline-rollback-" + refId + "@test";
 
         tx.executeWithoutResult(t -> {
-            mailCommand.schedule(TemplateType.QUOTE_SENT, null, recipient, refId, "제목", "본문");
+            mailCommand.schedule(TemplateType.SIGNUP_APPROVED, null, recipient, refId, "제목", "본문");
             t.setRollbackOnly();
         });
 
         assertThat(countOf(recipient)).isZero();
-        verify(emailSender, after(500).never()).send(any(), any(), any());
+        verify(emailSender, after(500).never()).send(eq(recipient), any(), any());
+    }
+
+    @Test
+    @DisplayName("트랜잭션 밖에서 schedule()을 부르면 IllegalTransactionStateException으로 거부된다 (MANDATORY)")
+    void 트랜잭션_밖_호출은_거부된다() {
+        assertThatThrownBy(() -> mailCommand.schedule(
+                TemplateType.SIGNUP_APPROVED, null, "pipeline-notx@test", UUID.randomUUID(), "제목", "본문"))
+                .isInstanceOf(IllegalTransactionStateException.class);
     }
 
     @Test
@@ -115,7 +128,7 @@ class MailPipelineIntegrationTest {
         willThrow(new RuntimeException("SMTP down")).given(emailSender).send(eq(recipient), any(), any());
 
         tx.executeWithoutResult(t ->
-                mailCommand.schedule(TemplateType.QUOTE_SENT, null, recipient, refId, "제목", "본문"));
+                mailCommand.schedule(TemplateType.SIGNUP_APPROVED, null, recipient, refId, "제목", "본문"));
 
         await().atMost(Duration.ofSeconds(5)).untilAsserted(() ->
                 assertThat(statusOf(recipient)).isEqualTo("FAILED"));
@@ -128,10 +141,10 @@ class MailPipelineIntegrationTest {
         String recipient = "pipeline-dup-" + refId + "@test";
 
         tx.executeWithoutResult(t ->
-                mailCommand.schedule(TemplateType.QUOTE_SENT, null, recipient, refId, "제목", "본문"));
+                mailCommand.schedule(TemplateType.SIGNUP_APPROVED, null, recipient, refId, "제목", "본문"));
 
         assertThatThrownBy(() -> tx.executeWithoutResult(t ->
-                mailCommand.schedule(TemplateType.QUOTE_SENT, null, recipient, refId, "제목2", "본문2")))
+                mailCommand.schedule(TemplateType.SIGNUP_APPROVED, null, recipient, refId, "제목2", "본문2")))
                 .isInstanceOf(DataIntegrityViolationException.class);
 
         // 첫 행의 비동기 디스패치가 끝난 뒤 정리되도록 대기

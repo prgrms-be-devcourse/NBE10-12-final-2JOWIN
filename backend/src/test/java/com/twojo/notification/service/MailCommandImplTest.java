@@ -78,4 +78,22 @@ class MailCommandImplTest {
                 MailCommand.TemplateType.QUOTE_SENT, COMPANY_ID, "a@b.com", null, "제목", "본문"))
                 .isInstanceOf(NullPointerException.class);
     }
+
+    @Test
+    @DisplayName("SIGNUP_APPROVED가 아닌데 companyId가 null이면 예외를 전파한다 (계약: 그 외는 값 필수)")
+    void companyId_null이면_예외() {
+        assertThatThrownBy(() -> mailCommand.schedule(
+                MailCommand.TemplateType.QUOTE_SENT, null, "a@b.com", REF_ID, "제목", "본문"))
+                .isInstanceOf(NullPointerException.class);
+    }
+
+    @Test
+    @DisplayName("SIGNUP_APPROVED는 companyId가 null이어도 예약된다 (플랫폼 발송)")
+    void SIGNUP_APPROVED는_companyId_null_허용() {
+        givenSaveStampsId();
+
+        mailCommand.schedule(MailCommand.TemplateType.SIGNUP_APPROVED, null, "a@b.com", REF_ID, "제목", "본문");
+
+        verify(emailLogRepository).save(any(EmailLog.class));
+    }
 }

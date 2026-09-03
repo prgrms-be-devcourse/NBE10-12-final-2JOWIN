@@ -19,7 +19,8 @@ import org.springframework.core.task.TaskRejectedException;
 
 /**
  * {@link MailScheduledListener} — AFTER_COMMIT에서 디스패처를 부르고, 새는 예외를 HTTP로 올리지 않는다.
- * 제출 거부는 그 행을 즉시 FAILED로 기록, 그 밖의 예외는 로그만.
+ * {@code dispatch()}가 던지는 예외(제출 실패)는 종류와 무관하게 그 행을 FAILED로 기록하며,
+ * 기록마저 실패해도 {@code handle()}은 예외를 전파하지 않는다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -48,12 +49,21 @@ class MailScheduledListenerTest {
     }
 
     @Test
-    @DisplayName("그 밖의 RuntimeException은 삼키고 FAILED 기록도 하지 않는다 (로그만)")
-    void 그_밖의_예외는_로그만() {
+    @DisplayName("그 밖의 RuntimeException도 제출 실패이므로 FAILED로 기록한다")
+    void 그_밖의_예외도_FAILED로_기록() {
         willThrow(new IllegalStateException("shutting down")).given(mailDispatcher).dispatch(any());
 
         assertThatCode(() -> listener.handle(event())).doesNotThrowAnyException();
-        verify(mailFailureRecorder, never()).markFailed(any());
+        verify(mailFailureRecorder).markFailed(EMAIL_LOG_ID);
+    }
+
+    @Test
+    @DisplayName("FAILED 기록마저 던져도 handle()은 예외를 전파하지 않는다 (커밋된 요청 500 방지)")
+    void 기록_실패도_전파하지_않는다() {
+        willThrow(new TaskRejectedException("queue full")).given(mailDispatcher).dispatch(any());
+        willThrow(new RuntimeException("DB down")).given(mailFailureRecorder).markFailed(any());
+
+        assertThatCode(() -> listener.handle(event())).doesNotThrowAnyException();
     }
 
     @Test
