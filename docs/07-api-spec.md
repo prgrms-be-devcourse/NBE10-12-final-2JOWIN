@@ -1,4 +1,4 @@
-# API 명세서 — v1.6.7
+# API 명세서 — v1.6.8
 
 > 🧭 [문서 지도](README.md) · ← [06 ERD](06-erd.md) · [08 DTO 설계서](08-dto.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.8 | **`INTERNAL_ERROR` 신설(2026-09-03)** — 처리되지 않은 예외에 쓸 코드가 없어 `GlobalExceptionHandler`가 폴백을 둘 수 없었다. 그 결과 예외가 서블릿까지 올라가 `/error`로 내부 포워딩되고, 그 요청이 Security 필터에 다시 걸려 **500이어야 할 응답이 403으로 나갔다** (#53 재설정 메일 예약 검증 중 발견). 문구는 원인을 노출하지 않는다 — SC-09와 같은 태도 |
 | v1.6.7 | **C 도메인 에러 코드 3건 신설(2026-09-02)** — 전이표에는 불가로 적혀 있는데 던질 코드가 없던 자리를 채운다. **`DEAL_NOT_OPEN`**(LOST Deal의 단계 변경·WON Deal의 재개 — `DEAL_ALREADY_WON`은 문구가 성사 전용이라 LOST에 쓰면 거짓말이 된다) · **`QUOTE_NOT_RESENDABLE`**(종결 견적 재발송 — `QUOTE_NOT_WITHDRAWABLE`과 대칭) · **`QUOTE_VALID_UNTIL_PASSED`**(유효기간 지난 견적 발송 — 입력은 `@Future`로 막지만 저장 값이 낡는 것은 못 막는다). 발견 경로: Deal 구현(#46) 및 D의 `issue()` 실구현 리뷰(#54) |
 | v1.6.6 | **A 인증 보정 2차(2026-09-02)** — `POST /public/api/v1/auth/password-reset`의 응답 `204` 명시(v1.6.5에서 `/me/password`만 적고 이쪽이 비어 있었다. 08에 Response record가 없어 바디 없음이 전제였다) · 재설정 메일 요청 행에 **NT-14** 연결(03 v1.6.4 신설) |
 | v1.6.5 | **A 인증 보정(2026-09-01)** — **`CURRENT_PASSWORD_MISMATCH` 신설(422)**: 비밀번호 변경의 현재 비밀번호 불일치에 쓸 코드가 없었다. `LOGIN_FAILED`(401) 재사용은 부록이 401을 AU-12(세션 만료 → 로그인 화면 이동)와 묶어놓은 탓에 **유효한 세션을 끊어버려** 분리한다 · `POST /api/v1/me/password`의 효과·응답 명시 · 로그아웃 접근 범위 각주 · **비밀번호 변경 시도 제한 미도입 근거 각주** · 부록 `REFRESH_TOKEN_NOT_ACTIVE`의 필터 401 겸용 각주 |
@@ -324,6 +325,7 @@
 | CONTACT_NOT_IN_CUSTOMER | 409 | C 견적 (C 리뷰 3-3) |
 | **FORBIDDEN** | **403** | **공통 — 역할 자체로 갈리는 행위 위반 (Q-43)** |
 | **CURRENT_PASSWORD_MISMATCH** | **422** | **A 인증 — 비밀번호 변경의 현재 비밀번호 불일치 (v1.6.5)** |
+| **INTERNAL_ERROR** | **500** | **공통 — 처리되지 않은 예외의 최종 응답 (v1.6.8)** |
 
 ## 부록 — 에러별 사용자 안내 문구 (ErrorCode enum message 원본)
 
@@ -371,6 +373,7 @@
 | **DEAL_NOT_OPEN** | **409** | **진행 중인 Deal만 단계를 변경할 수 있습니다.** |
 | DEAL_HAS_QUOTES | 409 | 견적이 연결된 Deal은 삭제할 수 없습니다. |
 | VALIDATION_FAILED | 400 | 입력값을 확인해 주세요. (fieldErrors 참조) |
+| **INTERNAL_ERROR** | **500** | **일시적인 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.** |
 
 ## 확정 절차
 
