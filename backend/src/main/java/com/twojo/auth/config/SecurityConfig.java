@@ -98,6 +98,8 @@ public class SecurityConfig {
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
                         // Swagger — API 테스트용. TODO(A): 운영 프로필에서는 차단
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
+                        // 미처리 예외를 서블릿이 여기로 포워딩한다. 막으면 500이 403으로 둔갑한다
+                        .requestMatchers("/error").permitAll()
                         .anyRequest().denyAll())
                 .build();
     }
