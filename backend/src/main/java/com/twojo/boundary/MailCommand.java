@@ -23,15 +23,20 @@ import java.util.UUID;
  *       계약은 {@code body}를 {@code email_log}에 쓰지 않는다 — 발송 시점에만 쓰고 버린다.</li>
  * </ul>
  *
- * <p><b>멱등</b> — 같은 {@code (type, refId, recipientEmail)} 행이 이미 있으면 그 행을 SCHEDULED로
- * (되)돌리고 발송 이벤트를 재발행한다. 이미 SCHEDULED여도 재발행한다 — 재요청은 "확실히 다시 보낸다"는
- * 의도다(D 수신인 변경 재발송 AP-13). 이중 발송 방어는 디스패처가 행의 {@code status}로 한다.
+ * <p><b>{@code refId}의 뜻은 {@code TemplateType} 상수마다 다르다.</b> {@code QUOTE_SENT}·
+ * {@code PASSWORD_RESET}는 이 발송이 배달하는 토큰 행 id다({@code quote_view_token} /
+ * {@code password_reset_token}). 이 둘은 발송·재발송마다 이전 토큰을 만료시키고 새로 발급하므로
+ * {@code refId}가 매번 달라지고, {@code email_log} 행도 발송마다 하나씩 생긴다 — 재발송이 기존 행을
+ * 덮지 않는다. "같은 수신인 재발송 시 SENT 행을 되돌리나"는 이 두 상수에서는 생기지 않는다.
  *
- * <p>되돌림 대상은 <b>SCHEDULED·FAILED 행</b>이다. SENT 행까지 되돌릴지는 아직 정하지 않았다 —
- * {@code EmailLog}는 "SENT는 뒤집지 않는다"가 원칙이고(엔티티 {@code markSent}·{@code markFailed}),
- * docs/05에 {@code email_log} 전이 절이 없다. SENT 재발송이 필요해지면 후속 메일 파이프라인 이슈에서
- * docs/05에 {@code email_log} 전이 절을 신설하며 확정한다 — 최초 {@code sent_at}(NT-12 운영 지표,
- * 03 §2.13) 보존 여부도 그때 함께 정한다.
+ * <p>{@code UNIQUE(template_type, ref_id, recipient_email)}는 06 §제약조건대로 <b>NT-05(리마인드)·
+ * NT-06(임박) 배치 재실행 시 이중 발송을 DB가 차단</b>한다 — 그쪽은 토큰이 없어 {@code refId}가
+ * 재실행 간 고정(견적 등)이다. 재실행 충돌 시의 멱등 처리(이미 SENT면 스킵 등)는 해당
+ * {@code TemplateType} 값을 추가할 때 06·docs/05와 함께 정한다.
+ *
+ * <p>디스패처는 이와 별개로, 한 대기 행이 AFTER_COMMIT 이벤트와 SCHEDULED 재처리 배치로 두 번
+ * 디스패치되는 것을 행의 {@code status}로 막는다({@code SCHEDULED}가 아니면 스킵). {@code email_log}
+ * 전이 절은 메일 파이프라인 이슈에서 docs/05에 신설한다.
  *
  * <p><b>{@code companyId} null 규칙</b> — NT-13(가입 승인·반려 통보) 계열만 null이다({@code email_log}
  * DDL 주석: "플랫폼 발송(NT-13)은 null"). 그 외(견적 발송·재설정)는 값 필수 — 재설정 메일도 이미 가입된
@@ -44,17 +49,23 @@ import java.util.UUID;
 public interface MailCommand {
 
     /**
-     * 메일 예약 — {@code email_log}에 SCHEDULED 행을 만들고(멱등) 발송 이벤트를 발행한다.
+     * 메일 예약 — {@code email_log}에 SCHEDULED 행을 새로 만들고 발송 이벤트를 같은 트랜잭션에서 발행한다.
      *
      * <p>{@code ref_type}은 파라미터가 아니다 — {@link TemplateType#refType()}가 정한다. 호출자가
      * {@code type}과 따로 넘기면 불일치 쌍({@code QUOTE_SENT} + {@code "PASSWORD_RESET_TOKEN"})을 만들
      * 여지가 생겨서 뺐다.
      *
-     * <p>{@code refId}는 연관 엔티티 id다 — 견적 발송이면 {@code quote_id}, 재설정이면 재설정 토큰 id.
+     * <p>{@code refId}는 발송을 식별하는 id다 — 뜻은 {@code TemplateType} 상수마다 다르다.
+     * {@code QUOTE_SENT}면 발송된 {@code quote_view_token} id, {@code PASSWORD_RESET}면
+     * {@code password_reset_token} id(둘 다 발송마다 새로 발급 → {@code email_log} 행도 발송마다 하나).
      * 멱등 키 {@code (type, refId, recipientEmail)}의 일부다.
      *
-     * <p>{@code recipientEmail}은 정규화된 값(trim·소문자)이어야 한다 — 이것도 멱등 키의 일부라,
-     * 같은 수신자가 다른 표기로 들어오면 별개 행이 되어 재발송이 기존 행을 덮지 못한다. 정규화는 호출자 책임이다.
+     * <p>{@code refId}는 <b>null이면 안 된다</b>. {@code email_log.ref_id}는 nullable이지만
+     * PostgreSQL UNIQUE는 NULL을 서로 다른 값으로 취급하므로, null이 들어오면 {@code uk_email_log_dedup}이
+     * 조용히 무력화된다.
+     *
+     * <p>{@code recipientEmail}은 정규화된 값(trim·소문자)이어야 한다 — 멱등 키의 일부이자
+     * {@code email_log.recipient_email}에 그대로 저장돼 NT-12 수신자 판정·집계에 쓰인다. 정규화는 호출자 책임이다.
      *
      * <p>{@code subject}·{@code body}는 렌더 완료본이다. {@code body}(링크·원문 토큰 포함)는
      * {@code email_log}에 저장하지 않는다(docs/14-tech-stack.md §2-1·§7.3).
@@ -63,8 +74,8 @@ public interface MailCommand {
                   UUID refId, String subject, String body);
 
     /**
-     * 메일 종류 — {@code email_log.template_type} 값이자, 재실행 이중 발송을 막는 멱등 키
-     * {@code UNIQUE(template_type, ref_id, recipient_email)}의 일부.
+     * 메일 종류 — {@code email_log.template_type} 값이자, NT-05·06 배치 재실행 시 이중 발송을 막는
+     * {@code UNIQUE(template_type, ref_id, recipient_email)}의 일부(06 §제약조건).
      *
      * <p><b>이 enum을 계약에 두고 엔티티({@code EmailLog})가 직접 참조한다</b> —
      * {@code ViewTokenCommand.ExpiredReason}이 계약 enum ↔ 엔티티 enum 2개로 갈라져 브리지되는 것과 다르다.
@@ -73,7 +84,9 @@ public interface MailCommand {
      * 하나를 공유해도 엔티티가 계약에 묶이는 비용이 그만큼 작다. approval·auth도 호출자로 같은 값 집합을 써서
      * 한 곳에 두는 편이 낫다.
      *
-     * <p>{@link #refType()}는 {@code email_log.ref_type}에 그대로 들어가는 문자열이다.
+     * <p>{@link #refType()}는 {@code email_log.ref_type}에 그대로 들어가는 문자열이다 — {@code refId}가
+     * 가리키는 대상의 거친 분류이지 정확한 테이블명은 아니다({@code QUOTE_SENT}의 {@code "QUOTE"} ↔
+     * {@code refId}는 {@code quote_view_token} id).
      */
     enum TemplateType {
 
