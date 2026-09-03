@@ -3,6 +3,7 @@ package com.twojo.auth.service;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.twojo.auth.dto.RequestPasswordResetRequest;
+import com.twojo.boundary.MailCommand;
 import java.time.Instant;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -14,6 +15,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * 재설정 재요청 시 "활성 1개 유지" (05 §10 · uk_password_reset_token_active).
@@ -37,6 +39,12 @@ class PasswordResetIntegrationTest {
 
     @Autowired private PasswordService passwordService;
     @Autowired private JdbcTemplate jdbc;
+
+    /**
+     * 메일 예약은 이 테스트의 관심사가 아니다. 목으로 바꾸지 않으면 실제 빈이 스텁이라
+     * requestReset 이 예외를 던지고 given 첫 줄에서 끝난다.
+     */
+    @MockitoBean private MailCommand mailCommand;
 
     private UUID applicationId;
     private UUID companyId;

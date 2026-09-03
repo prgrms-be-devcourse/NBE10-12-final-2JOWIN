@@ -16,6 +16,7 @@ import com.twojo.auth.dto.RequestPasswordResetRequest;
 import com.twojo.auth.entity.PasswordResetToken;
 import com.twojo.auth.repository.PasswordResetTokenRepository;
 import com.twojo.auth.token.SecureTokenFactory;
+import com.twojo.boundary.MailCommand;
 import com.twojo.boundary.MemberCommand;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
@@ -55,11 +56,13 @@ class PasswordServiceTest {
     private static final UUID 김서연 = UUID.randomUUID();
     private static final UUID 한빛오피스 = UUID.randomUUID();
     private static final String 이메일 = "seoyeon@hanbit.co.kr";
+    private static final String 재설정_주소 = "http://localhost:5173/password-reset";
 
     @Mock private MemberQuery memberQuery;
     @Mock private MemberCommand memberCommand;
     @Mock private SessionRevoker sessionRevoker;
     @Mock private PasswordResetTokenRepository passwordResetTokenRepository;
+    @Mock private MailCommand mailCommand;
 
     @Spy private SecureTokenFactory secureTokenFactory = new SecureTokenFactory();
 
@@ -71,7 +74,7 @@ class PasswordServiceTest {
     void setUp() {
         passwordService = new PasswordService(
                 memberQuery, memberCommand, sessionRevoker, passwordEncoder,
-                passwordResetTokenRepository, secureTokenFactory);
+                passwordResetTokenRepository, secureTokenFactory, mailCommand, 재설정_주소);
     }
 
     @Nested
@@ -175,6 +178,9 @@ class PasswordServiceTest {
                             김서연, PasswordResetToken.Status.ACTIVE))
                     .willReturn(Optional.empty());
             willReturn("3Jv8Qw2ZpK1nL7xT").given(secureTokenFactory).generate();
+            // 저장한 토큰을 그대로 돌려준다 — 실제 JPA 와 같다. 뒤에서 이 반환값의 id 와 만료 시각을 쓴다
+            given(passwordResetTokenRepository.save(any(PasswordResetToken.class)))
+                    .willAnswer(호출 -> 호출.getArgument(0));
 
             // when
             passwordService.requestReset(new RequestPasswordResetRequest(이메일), NOW);
