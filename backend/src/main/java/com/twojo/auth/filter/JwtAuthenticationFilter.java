@@ -61,7 +61,7 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         try {
             Claims claims = jwtProvider.parse(header.substring(BEARER_PREFIX.length()));
-            UUID memberId = JwtProvider.memberIdOf(claims);
+            UUID memberId = JwtProvider.subjectOf(claims);
 
             // 비활성·정지는 토큰 발급 이후에 바뀐다 — claim이 아니라 지금 값을 본다 (09 구현 위치)
             MemberQuery.AuthCredential credential = memberQuery.getCredential(memberId);

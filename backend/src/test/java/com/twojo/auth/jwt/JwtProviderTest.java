@@ -30,7 +30,7 @@ class JwtProviderTest {
         Claims claims = jwtProvider.parse(token);
 
         // 필터가 AccessContext 를 만들 때 이 셋이 필요하다 (11 §1.4)
-        assertThat(JwtProvider.memberIdOf(claims)).isEqualTo(MEMBER_ID);
+        assertThat(JwtProvider.subjectOf(claims)).isEqualTo(MEMBER_ID);
         assertThat(JwtProvider.companyIdOf(claims)).isEqualTo(COMPANY_ID);
         assertThat(JwtProvider.roleOf(claims)).isEqualTo(Role.COMPANY_ADMIN);
     }
