@@ -70,4 +70,14 @@ public class Member extends BaseTimeEntity {
         this.passwordHash = newPasswordHash;
         this.passwordChangedAt = changedAt;
     }
+
+    /**
+     * 프로필 수정 (AU-07) — 이름과 연락처만.
+     *
+     * <p>연락처는 null을 그대로 받는다. 비울 수 있는 값이라 "안 보냄"과 "비움"을 구별하지 않는다.
+     */
+    public void updateProfile(String name, String phone) {
+        this.name = name;
+        this.phone = phone;
+    }
 }
