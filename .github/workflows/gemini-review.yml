@@ -1,0 +1,152 @@
+# Gemini 1차 리뷰 — 리뷰어 시간을 줄이는 참고용. 머지를 막지 않는다.
+# required check는 ci.yml의 build / flyway-validate / flyway-version-check 3개다 (13 §3).
+# 기준은 13-dev-workflow.md의 PR 셀프 체크리스트 (.github/review-prompt.md).
+# 백엔드만 본다 — 프론트엔드는 팀 합의로 대상 제외.
+name: Gemini Review
+
+on:
+  pull_request:
+    branches: [develop, 'release/**', main]
+    types: [opened, synchronize, ready_for_review]
+    paths:
+      - 'backend/src/**'
+      - '.github/workflows/gemini-review.yml'
+      - '.github/review-prompt.md'
+
+concurrency:
+  group: gemini-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  MARKER: '<!-- gemini-review -->'
+  MAX_DIFF_BYTES: '200000'
+
+jobs:
+  review:
+    if: github.event.pull_request.draft == false
+    name: gemini-review
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      # 키가 없으면 워크플로가 조용히 실패한다. 한 번만 알리고 끝낸다.
+      - name: 키 확인
+        id: guard
+        env:
+          KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: |
+          if [ -z "$KEY" ]; then
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::warning::GEMINI_API_KEY 시크릿이 없어 리뷰를 건너뜁니다"
+          else
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 변경분 추출
+        if: steps.guard.outputs.ready == 'true'
+        id: diff
+        env:
+          BASE: ${{ github.event.pull_request.base.sha }}
+          HEAD: ${{ github.event.pull_request.head.sha }}
+        run: |
+          git diff "$BASE" "$HEAD" -- \
+            'backend/src/**' ':(exclude)**/build/**' > diff.txt
+          size=$(wc -c < diff.txt)
+          echo "size=$size" >> "$GITHUB_OUTPUT"
+          echo "diff ${size} bytes"
+
+      - name: Gemini 호출
+        if: steps.guard.outputs.ready == 'true' && steps.diff.outputs.size != '0'
+        id: gemini
+        continue-on-error: true
+        env:
+          KEY: ${{ secrets.GEMINI_API_KEY }}
+          MODEL: ${{ vars.GEMINI_MODEL }}
+          SIZE: ${{ steps.diff.outputs.size }}
+        run: |
+          if [ "$SIZE" -gt "$MAX_DIFF_BYTES" ]; then
+            echo "too_large=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          jq -Rs --rawfile p .github/review-prompt.md \
+            '{contents:[{parts:[{text:($p + "\n\n--- diff ---\n" + .)}]}],
+              generationConfig:{responseMimeType:"application/json"}}' \
+            diff.txt > req.json
+          curl -sS --fail-with-body -X POST \
+            "https://generativelanguage.googleapis.com/v1beta/models/${MODEL}:generateContent" \
+            -H "x-goog-api-key: ${KEY}" \
+            -H 'Content-Type: application/json' \
+            -d @req.json > res.json
+          jq -r '.candidates[0].content.parts[0].text' res.json > review.json
+          jq -e . review.json > /dev/null
+
+      - name: 리뷰 등록
+        if: steps.guard.outputs.ready == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          SIZE: ${{ steps.diff.outputs.size }}
+          TOO_LARGE: ${{ steps.gemini.outputs.too_large }}
+          FAILED: ${{ steps.gemini.outcome }}
+        run: |
+          set -euo pipefail
+
+          # ── 본문 조립 ────────────────────────────────────────────────
+          {
+            echo "$MARKER"
+            echo "## Gemini 1차 리뷰 (참고용)"
+            echo
+            if [ "$SIZE" = "0" ]; then
+              echo "백엔드 변경이 없어 건너뜁니다."
+            elif [ "${TOO_LARGE:-}" = "true" ]; then
+              echo "diff가 ${MAX_DIFF_BYTES} 바이트를 넘어 건너뜁니다 (${SIZE} 바이트)."
+              echo "PR을 나누면 리뷰가 붙습니다."
+            elif [ "$FAILED" != "success" ] || [ ! -s review.json ]; then
+              echo "호출에 실패해 리뷰를 만들지 못했습니다. 로그를 확인해 주세요."
+            else
+              jq -r '.summary' review.json
+              echo
+              if [ "$(jq '.attention | length' review.json)" != "0" ]; then
+                echo "### 봐주실 곳"
+                jq -r '.attention[] | "- " + .' review.json
+                echo
+              fi
+              n=$(jq '.findings | length' review.json)
+              if [ "$n" = "0" ]; then
+                echo "체크리스트 기준 지적 없음."
+              else
+                echo "지적 ${n}건은 해당 줄에 코멘트로 달았습니다."
+              fi
+            fi
+            echo
+            echo "_기준: docs/13 PR 셀프 체크리스트. 머지를 막지 않습니다._"
+          } > body.md
+
+          # ── 인라인 코멘트는 새 리뷰로, 요약은 기존 코멘트를 갱신 ──────
+          if [ -s review.json ] && [ "$FAILED" = "success" ] \
+             && [ "$(jq '.findings | length' review.json)" != "0" ]; then
+            jq --arg sha "$HEAD_SHA" '{
+              commit_id: $sha, event: "COMMENT", body: "지적 사항입니다.",
+              comments: [ .findings[] | {
+                path: .file, line: .line, side: "RIGHT",
+                body: ("**" + (.severity | ascii_upcase) + "** " + .body)
+              } ]
+            }' review.json > payload.json
+            gh api "repos/$REPO/pulls/$PR/reviews" --input payload.json \
+              || echo "::warning::인라인 코멘트 등록 실패 — 요약만 남깁니다"
+          fi
+
+          id=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+                 --jq "map(select(.body | startswith(\"$MARKER\"))) | .[0].id // empty")
+          if [ -n "$id" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$id" -F body=@body.md
+          else
+            gh pr comment "$PR" --body-file body.md
+          fi
