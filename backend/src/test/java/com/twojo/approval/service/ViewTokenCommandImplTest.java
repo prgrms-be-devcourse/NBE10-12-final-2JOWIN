@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.inOrder;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
@@ -36,6 +37,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InOrder;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * {@link ViewTokenCommandImpl} — 계약 구현이 협력자(QuoteQuery·CustomerQuery·MailCommand)를 올바른
@@ -52,6 +54,8 @@ class ViewTokenCommandImplTest {
     private static final UUID QUOTE_ID = UUID.fromString("a0000000-0000-4000-8000-000000000001");
     private static final UUID CONTACT_ID = UUID.fromString("b0000000-0000-4000-8000-000000000001");
     private static final UUID COMPANY_ID = UUID.fromString("c0000000-0000-4000-8000-000000000001");
+    /** save()가 persist하며 채우는 id — 목이 심어 반환한다. issue()가 이 값을 refId로 넘긴다. */
+    private static final UUID SAVED_TOKEN_ID = UUID.fromString("d0000000-0000-4000-8000-000000000001");
     private static final LocalDate VALID_UNTIL = LocalDate.of(2026, 9, 2);
     private static final Instant EXPIRES_AT_KST_2359 = Instant.parse("2026-09-02T14:59:59Z"); // 23:59:59 Asia/Seoul
     private static final String QUOTE_NO = "Q-2608-014";
@@ -73,6 +77,13 @@ class ViewTokenCommandImplTest {
         // TokenGenerator는 의존성이 없어 실객체 — @InjectMocks는 String baseUrl을 못 채워 생성자에서 NPE.
         viewTokenCommand = new ViewTokenCommandImpl(
                 quoteViewTokenRepository, quoteQuery, customerQuery, new TokenGenerator(), mailCommand, BASE_URL);
+        // 실 PG면 persist가 id를 채우지만 목은 인메모리 — issue()가 save 반환값의 getId()를 refId로 쓰므로 심어 반환.
+        lenient().when(quoteViewTokenRepository.save(any(QuoteViewToken.class)))
+                .thenAnswer(inv -> {
+                    QuoteViewToken token = inv.getArgument(0);
+                    ReflectionTestUtils.setField(token, "id", SAVED_TOKEN_ID);
+                    return token;
+                });
     }
 
     private static QuoteViewToken activeToken() {
@@ -134,7 +145,7 @@ class ViewTokenCommandImplTest {
     }
 
     @Test
-    @DisplayName("신규 발급 — QUOTE_SENT·companyId·정규화 이메일·refId=quoteId로 예약하고, 제목엔 견적번호, 본문엔 링크와 유효기간이 있다")
+    @DisplayName("신규 발급 — QUOTE_SENT·companyId·정규화 이메일·refId=발급된 토큰 id로 예약하고, 제목엔 견적번호, 본문엔 링크와 유효기간이 있다")
     void 신규발급_메일을_예약한다() {
         given(quoteQuery.getPublicView(QUOTE_ID)).willReturn(view());
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact("박지훈", "jihun@hanbit.co.kr"));
@@ -146,7 +157,7 @@ class ViewTokenCommandImplTest {
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
         verify(mailCommand).schedule(
                 eq(MailCommand.TemplateType.QUOTE_SENT), eq(COMPANY_ID), eq("jihun@hanbit.co.kr"),
-                eq(QUOTE_ID), subject.capture(), body.capture());
+                eq(SAVED_TOKEN_ID), subject.capture(), body.capture());
         assertThat(subject.getValue()).contains(QUOTE_NO);
         assertThat(body.getValue())
                 .contains(BASE_URL + "/q/")
