@@ -1,5 +1,6 @@
 package com.twojo.product.dto;
 
+import com.twojo.product.entity.Product;
 import java.util.UUID;
 
 /**
@@ -14,4 +15,11 @@ public record ProductResponse(
         String unit,
         Long unitPrice,
         String description,
-        String status) {}
+        String status) {
+
+    /** 엔티티 → 응답. 응답 모양이 바뀔 때 열 파일을 하나로 둔다 — 서비스는 판단만 담는다. */
+    public static ProductResponse of(Product product) {
+        return new ProductResponse(product.getId(), product.getName(), product.getUnit(),
+                product.getUnitPrice(), product.getDescription(), product.getStatus().name());
+    }
+}

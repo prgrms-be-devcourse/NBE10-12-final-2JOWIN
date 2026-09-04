@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.7
+# DTO 설계서 — v1.6.8
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.8 | **§B 문자열 길이 제한 신설(2026-09-03)** — B 요청 record 8종의 `VARCHAR` 대응 필드에 **`@Size(max)`**를 붙인다. 지금은 컬럼 길이를 넘는 값이 Bean Validation을 통과해 DB에서 거부되고, 서비스의 제약 위반 변환에 잡혀 **엉뚱한 409**로 나간다(상품은 "이미 등록된 상품명입니다"). 400 `VALIDATION_FAILED`가 맞는 자리다. 값은 `V1__baseline.sql`의 컬럼 정의를 그대로 옮겼다 — `customer.name`·`product.name`·`contact.email` 255 · `contact.name`·`title`·`customer.industry` 100 · `product.unit`·`customer.size` 50 · `contact.phone` 30 · `task.content` 500. **`TEXT` 컬럼(`customer.note`·`product.description`·`activity.content`)에는 붙이지 않는다.** `activity.channel`은 `CHECK` 제약이라 길이가 아닌 값 검증 문제로 별개다 |
 | v1.6.7 | **B PATCH 규약 정합(2026-09-03)** — §B Update record 5종의 필수 문자열 필드를 `@NotBlank`/`@NotNull` → **`@Pattern(regexp = "(?s).*\\S.*")`**로 교체. `@NotBlank`는 null까지 거절해 07 §B가 PATCH로 규정한 부분 수정을 막았다(`{"note":"메모만"}`이 400). Bean Validation은 `@Pattern`에서 null을 검사하지 않아 "안 보내면 미변경 · 보냈으면 공백 불가"가 그대로 표현된다. `(?s)`는 개행 포함 값이 거절되지 않게 한다. 대상은 **NOT NULL 컬럼 대응 필드만** — nullable 필드는 빈 문자열로 비우는 경로를 남겼다. `UpdateContactRequest.email`은 `@Email`만으로 빈 문자열이 통과해 `@Pattern`을 병기 |
 | v1.6.6 | **A 인증 보정(2026-09-01)** — `ChangePasswordRequest`에 에러·응답 주석(`CURRENT_PASSWORD_MISMATCH` 422 · 성공 시 전 세션 폐기 + 204, 07 v1.6.5). 경계 계약 `MemberQuery`에 **`MemberContact(name·email·phone)` 추가**(A 구현 · PR #36 — D의 고객 열람 페이지 담당자 표시 AP-18. `MemberSummary`를 넓히지 않고 따로 둔 이유는 `/members/options`가 "이름·id만"이라 연락처가 딸려갈 경로가 아니기 때문) |
 | v1.6.5 | **화면 설계 공백 반영(2026-08-31)** — `PublicQuoteResponse`에 **`companyBusinessNo` 추가**(`10-screen-design.md` §5.6 · GAP-05 — 고객 열람 페이지가 회사명과 사업자번호를 최상단에 함께 표시). 경계 계약 `CompanyQuery.CompanySummary`에 **`businessNo` 동반 추가**(A 구현 — 발신 회사 정보를 받을 통로가 없었음) |
@@ -160,12 +161,13 @@ public record AcceptInvitationRequest(
 ```java
 // ── 고객사 (회사 공유 — 담당 개념 없음, SC-03)
 public record CreateCustomerRequest(
-        @NotBlank String name,
-        String industry, String size, String note) {}                 // CU-02
+        @NotBlank @Size(max = 255) String name,
+        @Size(max = 100) String industry, @Size(max = 50) String size,
+        String note) {}                                               // CU-02 · note는 TEXT — 제한 없음
 
 public record UpdateCustomerRequest(                                   // PATCH: null 필드는 미변경
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String name,   // 안 보내면 미변경 · 보냈으면 공백 불가
-        String industry, String size, String note) {}
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 255) String name,   // 안 보내면 미변경 · 보냈으면 공백 불가
+        @Size(max = 100) String industry, @Size(max = 50) String size, String note) {}
 
 public record CustomerResponse(
         UUID id, String name, String industry, String size, String note,
@@ -183,13 +185,14 @@ public record CustomerDetailResponse(
 }
 
 public record CreateContactRequest(
-        @NotBlank String name, String title, String phone,
-        @NotBlank @Email String email) {}                             // CU-10
+        @NotBlank @Size(max = 100) String name, @Size(max = 100) String title,
+        @Size(max = 30) String phone,
+        @NotBlank @Email @Size(max = 255) String email) {}            // CU-10
 
 public record UpdateContactRequest(                                   // v1.6 보강 · PATCH: null 필드는 미변경
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String name,   // NOT NULL 컬럼 — 안 보내면 미변경 · 보냈으면 공백 불가
-        String title, String phone,                                   // nullable — 빈 문자열로 비운다
-        @Email @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String email) {}
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 100) String name,   // NOT NULL 컬럼 — 안 보내면 미변경 · 보냈으면 공백 불가
+        @Size(max = 100) String title, @Size(max = 30) String phone,  // nullable — 빈 문자열로 비운다
+        @Email @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 255) String email) {}
 // 대표 지정은 이 PATCH가 아니라 별도 엔드포인트 POST .../contacts/{cid}/set-primary (CU-11, body 없음) —
 // 지정 시 기존 대표 자동 해제. 대표 해제만 하는 동작은 없음(대표 0명 방지)
 
@@ -199,15 +202,15 @@ public record ContactResponse(
 
 // ── 상품
 public record CreateProductRequest(
-        @NotBlank String name,           // 회사 내 유일(판매 중지 포함) → 409 PRODUCT_NAME_DUPLICATED
-        @NotBlank String unit,
+        @NotBlank @Size(max = 255) String name,   // 회사 내 유일(판매 중지 포함) → 409 PRODUCT_NAME_DUPLICATED
+        @NotBlank @Size(max = 50) String unit,
         @NotNull @PositiveOrZero Long unitPrice,
         String description) {}
 
 public record UpdateProductRequest(                                    // PATCH: null 필드는 미변경
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String name,   // 안 보내면 미변경 · 보냈으면 공백 불가
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String unit,
-        @PositiveOrZero Long unitPrice, String description) {}
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 255) String name,   // 안 보내면 미변경 · 보냈으면 공백 불가
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 50) String unit,
+        @PositiveOrZero Long unitPrice, String description) {}        // description은 TEXT — 제한 없음
 
 public record ProductResponse(
         UUID id, String name, String unit, Long unitPrice,
@@ -230,10 +233,10 @@ public record ActivityResponse(
         UUID authorMemberId, String authorMemberName, boolean authorActive, // 표시용
         Instant occurredAt) {}
 
-public record CreateTaskRequest(@NotBlank String content, @NotNull LocalDate dueDate) {}
+public record CreateTaskRequest(@NotBlank @Size(max = 500) String content, @NotNull LocalDate dueDate) {}
 
 public record UpdateTaskRequest(                                       // PATCH: null 필드는 미변경
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String content,
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 500) String content,
         LocalDate dueDate, Boolean done) {}
 
 public record TaskResponse(

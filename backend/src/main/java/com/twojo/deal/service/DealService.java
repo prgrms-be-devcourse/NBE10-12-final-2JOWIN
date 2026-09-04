@@ -117,6 +117,53 @@ public class DealService {
                 customerQuery.get(ctx, deal.getCustomerId()).name(), assigneeName);
     }
 
+    /** 다음 단계 (DL-07) — 인접만. 협상에서 호출하면 DEAL_WON_REQUIRES_ORDER */
+    @Transactional
+    public DealResponses.DealItem advance(AccessContext ctx, UUID dealId, DealRequests.StageMove request) {
+        return moveStage(ctx, dealId, request.version(), Deal::advance);
+    }
+
+    /** 이전 단계 (DL-08) — 리드에서는 되돌릴 곳이 없다 */
+    @Transactional
+    public DealResponses.DealItem revert(AccessContext ctx, UUID dealId, DealRequests.StageMove request) {
+        return moveStage(ctx, dealId, request.version(), Deal::revert);
+    }
+
+    /**
+     * 실패 처리 (DL-10·11).
+     *
+     * <p><b>진행 중 견적·열람 링크 만료(전이표 §5의 효과)는 아직 붙지 않았다</b> —
+     * quote가 Modulith상 다른 모듈이라 조회 창구가 없다. 이슈 #61 「리뷰 필요」 1번이
+     * 정해지면 이 메서드 안에서 같은 트랜잭션으로 호출한다.
+     */
+    @Transactional
+    public DealResponses.DealItem lose(AccessContext ctx, UUID dealId, DealRequests.LoseDeal request) {
+        return moveStage(ctx, dealId, request.version(), deal -> deal.lose(request.reason()));
+    }
+
+    /** 재개 (DL-12) — 실패 직전 단계로. 만료된 견적·링크는 복원하지 않는다 */
+    @Transactional
+    public DealResponses.DealItem reopen(AccessContext ctx, UUID dealId, DealRequests.StageMove request) {
+        return moveStage(ctx, dealId, request.version(), Deal::reopen);
+    }
+
+    /**
+     * 전이 4종의 공통 뼈대 — 범위 판정 → 낙관적 락 → 전이 → 응답 조립.
+     *
+     * <p>전이 규칙 자체는 엔티티가 판정한다 (전이표 §5). 여기서 단계를 비교하지 않는 이유는,
+     * 서비스에 조건을 흩으면 호출 경로가 늘 때마다 규칙이 새어 나가기 때문이다.
+     */
+    private DealResponses.DealItem moveStage(AccessContext ctx, UUID dealId, Integer version,
+                                             java.util.function.Consumer<Deal> transition) {
+        Deal deal = findInScope(ctx, dealId);
+        deal.checkVersion(version);
+        transition.accept(deal);
+
+        return DealResponses.DealItem.of(deal,
+                customerQuery.get(ctx, deal.getCustomerId()).name(),
+                memberQuery.get(deal.getAssigneeMemberId()).name());
+    }
+
     /**
      * 회사 스코프 + 미삭제 조회. 범위 밖이면 존재 여부를 구별하지 않고 404다 (SC-09).
      *

@@ -32,6 +32,12 @@ public final class DealRequests {
             LocalDate dueDate,
             @NotNull Integer version) {}           // 낙관적 락 — 불일치 409 STALE_VERSION
 
+    /** 단계 이동 공용 (DL-07·08·12) — advance · revert · reopen. 낙관적 락만 싣는다 */
+    public record StageMove(@NotNull Integer version) {}
+
+    /** 실패 처리 (DL-10·11) — 사유는 필수다 */
+    public record LoseDeal(@NotBlank String reason, @NotNull Integer version) {}
+
     /** 담당자 변경 (DL-05, SC-06) — 기업 관리자 전용. 대상은 같은 회사의 활성 구성원 */
     public record ChangeAssignee(
             @NotNull UUID assigneeMemberId,

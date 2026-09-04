@@ -16,9 +16,9 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 시스템 메일 발송 기록 (NT-01~06·10·13) — UNIQUE(template_type, ref_id, recipient_email)가
- * 배치 재실행 이중 발송을 DB에서 차단. 수신자가 바뀌면 키가 달라져 새 담당자에게 정상 발송.
- * FAILED는 운영 지표 — NT-13 실패의 유일한 감지 경로 (14-tech-stack.md §1.5).
+ * 시스템 메일 발송 기록 (NT-01~06·10·13·14) — UNIQUE(template_type, ref_id, recipient_email)가
+ * 배치 재실행 이중 발송을 DB에서 차단. 발송마다 ref_id가 유일해 재발송은 새 행이 된다.
+ * FAILED는 운영 지표 — NT-13 실패의 유일한 감지 경로 (14-tech-stack.md §1.5). 전이는 docs/05 §11.
  */
 @Getter
 @Entity
@@ -34,7 +34,7 @@ public class EmailLog extends BaseTimeEntity {
     private UUID companyId;   // 플랫폼 발송(NT-13)은 null
 
     @Enumerated(EnumType.STRING)
-    private MailCommand.TemplateType templateType;   // NT-01~06·10·13
+    private MailCommand.TemplateType templateType;   // NT-01~06·10·13·14
 
     private String recipientEmail;
 
@@ -59,7 +59,8 @@ public class EmailLog extends BaseTimeEntity {
         log.templateType = Objects.requireNonNull(templateType, "templateType");
         log.recipientEmail = Objects.requireNonNull(recipientEmail, "recipientEmail");
         log.refType = templateType.refType();
-        log.refId = refId;
+        // null이면 uk_email_log_dedup이 무력화된다 (PG UNIQUE는 NULL을 서로 다른 값으로 봄) — 마지막 방어선
+        log.refId = Objects.requireNonNull(refId, "refId");
         log.status = Status.SCHEDULED;
         return log;
     }

@@ -84,6 +84,34 @@ public class DealController {
         return dealService.update(ctx, dealId, request);
     }
 
+    /** 다음 단계 (DL-07) — LEAD→CONSULT→QUOTE→NEGOTIATION, 인접만 */
+    @PostMapping("/{dealId}/advance")
+    public DealResponses.DealItem advance(AccessContext ctx, @PathVariable UUID dealId,
+                                          @Valid @RequestBody DealRequests.StageMove request) {
+        return dealService.advance(ctx, dealId, request);
+    }
+
+    /** 이전 단계 (DL-08) — NEGOTIATION→QUOTE→CONSULT→LEAD, 리드에서 호출 불가 */
+    @PostMapping("/{dealId}/revert")
+    public DealResponses.DealItem revert(AccessContext ctx, @PathVariable UUID dealId,
+                                         @Valid @RequestBody DealRequests.StageMove request) {
+        return dealService.revert(ctx, dealId, request);
+    }
+
+    /** 실패 처리 (DL-10·11) — 사유 필수 */
+    @PostMapping("/{dealId}/lose")
+    public DealResponses.DealItem lose(AccessContext ctx, @PathVariable UUID dealId,
+                                       @Valid @RequestBody DealRequests.LoseDeal request) {
+        return dealService.lose(ctx, dealId, request);
+    }
+
+    /** 재개 (DL-12) — 실패 직전 단계로 */
+    @PostMapping("/{dealId}/reopen")
+    public DealResponses.DealItem reopen(AccessContext ctx, @PathVariable UUID dealId,
+                                         @Valid @RequestBody DealRequests.StageMove request) {
+        return dealService.reopen(ctx, dealId, request);
+    }
+
     /** 담당자 변경 (DL-05, SC-06) — 기업 관리자 전용, 역할 판정은 서비스가 한다 */
     @PatchMapping("/{dealId}/assignee")
     public DealResponses.DealItem changeAssignee(AccessContext ctx, @PathVariable UUID dealId,

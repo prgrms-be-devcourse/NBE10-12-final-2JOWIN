@@ -23,8 +23,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * <h2>작업의 내구성은 이 실행기가 보장하지 않는다</h2>
  *
  * <p>스레드 풀은 <b>휘발성</b>이다 — 큐에 든 작업은 서버가 죽으면 함께 사라지고,
- * 거부되면 애초에 실행되지 않는다. 따라서 "메일이 언젠가는 나간다"를 보장하는 것은
- * 실행기가 아니라 <b>{@code email_log}의 상태와 재처리 배치</b>다.
+ * 거부되면 애초에 실행되지 않는다. 발송 이벤트가 {@code body}(원문 토큰 포함)를 싣고 그 값은
+ * {@code email_log}에 저장되지 않으므로(docs/14 §2-1·§7.3), 커밋 ~ 디스패치 사이 프로세스가 죽으면
+ * 그 메일은 <b>재구성 불가</b>다 — "메일이 언젠가는 나간다"는 보장되지 않는다(docs/05 §11 한계).
+ * {@code email_log}의 상태와 정체 감지 배치는 그 유실을 <b>보이게</b> 만들 뿐이다.
  * D가 지켜야 하는 구조는 다음과 같다:
  *
  * <ol>
@@ -34,7 +36,9 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *   <li>제출이 거부되면 {@code TaskRejectedException}이 그 호출 지점에서 튀어나온다.
  *       <b>동기 리스너가 잡아서 HTTP 응답으로 전파하지 않는다</b> — 커밋은 이미 끝났고
  *       사용자의 발송 요청은 성공한 것이 맞다</li>
- *   <li>거부됐든 서버가 내려갔든, 남아 있는 {@code SCHEDULED} 행을 배치가 다시 집어간다</li>
+ *   <li>제출 거부는 리스너가 즉시 {@code FAILED}로 닫는다(재구성 불가라 SCHEDULED로 두면 실패 지표에 안 잡힌다).
+ *       서버 사망으로 남은 {@code SCHEDULED} 행은 정체 감지 배치가 {@code FAILED}로 전이시키고 담당자에게 알린다
+ *       — 배치가 재발송하지 않는다(docs/05 §11). 재발송은 호출자가 새 토큰으로 다시 부른다</li>
  *   <li>발송 결과를 {@code SENT}/{@code FAILED}로 기록하는 DB 작업은
  *       <b>새 트랜잭션</b>({@code REQUIRES_NEW})으로 연다 — {@code AFTER_COMMIT} 시점에는
  *       원래 트랜잭션의 동기화 정리가 아직 끝나지 않았을 수 있어, 기존 트랜잭션에
@@ -59,10 +63,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  *     public void handle(MailScheduled event) {
  *         try {
  *             notificationDispatcher.dispatch(event.emailLogId());
- *         } catch (TaskRejectedException e) {
- *             // HTTP 응답으로 다시 전파하지 않는다.
- *             // email_log는 SCHEDULED로 남고 재처리 배치가 가져간다.
- *             // 조용히 삼키지는 않는다 — 민감정보 없는 로그·지표를 남긴다.
+ *         } catch (RuntimeException e) {
+ *             // HTTP 응답으로 다시 전파하지 않는다 (커밋된 요청을 500으로 뒤집는다).
+ *             // 제출 실패 = 발송 시도조차 못 함 → email_log를 FAILED로 닫는다 (docs/05 §11).
+ *             // 기록마저 실패하면 그것도 삼킨다 — 조용히는 아니고 민감정보 없는 로그를 남긴다.
  *         }
  *     }
  * }
@@ -109,8 +113,10 @@ import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
  * {@code DiscardPolicy}는 조용한 유실이라 후보가 아니다. {@code CallerRunsPolicy}는
  * 유실은 막지만, 포화 상태에서 메일 발송이 <b>요청 스레드로 되돌아와</b> 응답이 그만큼
  * 지연된다 — 커밋 후라 데이터가 틀어지지는 않아도 사용자가 발송 버튼 앞에서 기다리게 된다.
- * 위의 {@code SCHEDULED} + 배치 구조가 있으면 거부는 유실이 아니라 <b>지연</b>일 뿐이므로,
- * 호출자를 붙잡는 대신 거부를 드러내고 배치에 넘기는 편이 낫다.
+ * {@code MailScheduled}가 {@code body}를 싣고 그 값은 {@code email_log}에 없으므로(docs/14 §2-1·§7.3),
+ * 거부/크래시는 <b>지연이 아니라 유실</b>이다(docs/05 §11 한계). 그래도 {@code AbortPolicy}를 유지한다 —
+ * 이 크기(core 2 / max 4 / queue 100)에선 포화가 드물고, 거부를 드러내면 리스너가 즉시 {@code FAILED}로
+ * 닫아 유실이 지표(docs/14 §1.5)에 잡힌다. 배치는 재발송이 아니라 <b>정체 감지</b>를 한다(docs/05 §11).
  *
  * <h2>그 밖의 결정</h2>
  *
