@@ -34,9 +34,9 @@ public class ProductService {
     public PageResponse<ProductResponse> list(AccessContext ctx, Product.Status status, Pageable pageable) {
         return PageResponse.from(
                 status == null
-                        ? productRepository.findByCompanyId(ctx.companyId(), pageable).map(ProductService::toResponse)
+                        ? productRepository.findByCompanyId(ctx.companyId(), pageable).map(ProductResponse::of)
                         : productRepository.findByCompanyIdAndStatus(ctx.companyId(), status, pageable)
-                                .map(ProductService::toResponse));
+                                .map(ProductResponse::of));
     }
 
     /** 등록 (PR-01·02) — 이름은 회사 내 유일하다 (판매 중지 포함). */
@@ -50,7 +50,7 @@ public class ProductService {
 
         Product product = Product.create(ctx.companyId(), request.name(), request.unit(),
                 request.unitPrice(), request.description());
-        return toResponse(saveOrConflict(product));
+        return ProductResponse.of(saveOrConflict(product));
     }
 
     /**
@@ -69,7 +69,7 @@ public class ProductService {
         }
 
         product.update(request.name(), request.unit(), request.unitPrice(), request.description());
-        return toResponse(saveOrConflict(product));
+        return ProductResponse.of(saveOrConflict(product));
     }
 
     /** 판매 중지 (PR-05) — 이미 중지된 상품이면 무동작이다. 기존 견적에는 영향이 없다 (PR-07). */
@@ -78,7 +78,7 @@ public class ProductService {
         requireAdmin(ctx);
         Product product = findInScope(ctx, productId);
         product.discontinue();
-        return toResponse(product);
+        return ProductResponse.of(product);
     }
 
     /** 판매 재개 — 중지한 이름은 UNIQUE에 걸려 재등록이 막히므로 이쪽이 정식 경로다. */
@@ -87,7 +87,7 @@ public class ProductService {
         requireAdmin(ctx);
         Product product = findInScope(ctx, productId);
         product.reactivate();
-        return toResponse(product);
+        return ProductResponse.of(product);
     }
 
     /**
@@ -121,10 +121,5 @@ public class ProductService {
         } catch (DataIntegrityViolationException e) {
             throw new BusinessException(ErrorCode.PRODUCT_NAME_DUPLICATED);
         }
-    }
-
-    private static ProductResponse toResponse(Product product) {
-        return new ProductResponse(product.getId(), product.getName(), product.getUnit(),
-                product.getUnitPrice(), product.getDescription(), product.getStatus().name());
     }
 }
