@@ -4,6 +4,7 @@ import com.twojo.auth.cookie.RefreshCookieFactory;
 import com.twojo.auth.dto.LoginRequest;
 import com.twojo.auth.dto.LoginResponse;
 import com.twojo.auth.dto.RefreshTokenResponse;
+import com.twojo.auth.entity.ActorType;
 import com.twojo.auth.service.AuthService;
 import com.twojo.auth.service.LoginResult;
 import com.twojo.auth.service.RotateResult;
@@ -40,7 +41,8 @@ public class AuthController {
 
         return ResponseEntity.ok()
                 .header(HttpHeaders.SET_COOKIE,
-                        refreshCookieFactory.issue(result.refreshToken(), request.rememberMe())
+                        refreshCookieFactory.issue(ActorType.MEMBER, result.refreshToken(),
+                                        request.rememberMe())
                                 .toString())
                 .body(result.response());
     }
@@ -69,13 +71,14 @@ public class AuthController {
             return ResponseEntity.ok()
                     .header(HttpHeaders.SET_COOKIE,
                             refreshCookieFactory
-                                    .reissue(result.refreshToken(), result.expiresAt(), now)
+                                    .reissue(ActorType.MEMBER, result.refreshToken(),
+                                            result.expiresAt(), now)
                                     .toString())
                     .body(result.response());
         } catch (BusinessException e) {
             // 예외는 GlobalExceptionHandler가 바디로 바꾸지만, 여기서 넣은 헤더는 살아남는다
             servletResponse.addHeader(HttpHeaders.SET_COOKIE,
-                    refreshCookieFactory.delete().toString());
+                    refreshCookieFactory.delete(ActorType.MEMBER).toString());
             throw e;
         }
     }
@@ -98,7 +101,8 @@ public class AuthController {
         authService.logout(rawToken, Instant.now());
 
         return ResponseEntity.noContent()
-                .header(HttpHeaders.SET_COOKIE, refreshCookieFactory.delete().toString())
+                .header(HttpHeaders.SET_COOKIE,
+                        refreshCookieFactory.delete(ActorType.MEMBER).toString())
                 .build();
     }
 }

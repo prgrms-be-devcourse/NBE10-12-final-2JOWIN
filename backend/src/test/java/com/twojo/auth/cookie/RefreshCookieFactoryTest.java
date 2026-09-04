@@ -2,6 +2,7 @@ package com.twojo.auth.cookie;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.twojo.auth.entity.ActorType;
 import java.time.Duration;
 import java.time.Instant;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -20,7 +21,7 @@ class RefreshCookieFactoryTest {
 
     @Test
     void 로그인_유지를_고르지_않으면_세션_쿠키가_된다() {
-        ResponseCookie cookie = factory.issue(RAW_TOKEN, false);
+        ResponseCookie cookie = factory.issue(ActorType.MEMBER, RAW_TOKEN, false);
 
         // Max-Age 가 붙지 않아야 브라우저가 창을 닫을 때 버린다 (07)
         assertThat(cookie.getMaxAge()).isNegative();
@@ -32,7 +33,7 @@ class RefreshCookieFactoryTest {
 
     @Test
     void 로그인_유지를_고르면_Max_Age가_14일이다() {
-        ResponseCookie cookie = factory.issue(RAW_TOKEN, true);
+        ResponseCookie cookie = factory.issue(ActorType.MEMBER, RAW_TOKEN, true);
 
         assertThat(cookie.getMaxAge()).isEqualTo(Duration.ofDays(14));
     }
@@ -43,14 +44,15 @@ class RefreshCookieFactoryTest {
         Instant expiresAt = NOW.plus(Duration.ofHours(12));
 
         ResponseCookie cookie =
-                factory.reissue(RAW_TOKEN, expiresAt, NOW.plus(Duration.ofMinutes(15)));
+                factory.reissue(ActorType.MEMBER, RAW_TOKEN, expiresAt,
+                        NOW.plus(Duration.ofMinutes(15)));
 
         assertThat(cookie.getMaxAge()).isEqualTo(Duration.ofHours(11).plusMinutes(45));
     }
 
     @Test
     void 삭제_쿠키는_값이_비어_있고_Max_Age가_0이다() {
-        ResponseCookie cookie = factory.delete();
+        ResponseCookie cookie = factory.delete(ActorType.MEMBER);
 
         assertThat(cookie.getValue()).isEmpty();
         assertThat(cookie.getMaxAge()).isZero();
