@@ -1,4 +1,4 @@
-# API 명세서 — v1.6.9
+# API 명세서 — v1.6.10
 
 > 🧭 [문서 지도](README.md) · ← [06 ERD](06-erd.md) · [08 DTO 설계서](08-dto.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.10 | **`PATCH /api/v1/me` 응답 형태 명시(2026-09-04)** — §A 표에 요약만 있고 응답 규정이 없어 200 `MeResponse`인지 204인지가 구현 결정으로 남아 있었다. **200 `MeResponse`**로 확정한다 — `GET /api/v1/me`와 응답 형태가 같아 프론트가 재조회 없이 헤더·프로필 표시를 갱신하고 캐시 키도 하나로 유지된다. 204를 쓰는 `POST /api/v1/me/password`·`POST /public/api/v1/auth/password-reset`과 갈리는 이유는 **그쪽은 돌려줄 상태가 없기 때문**이다(둘 다 08에 Response record가 없다). 발견 경로: AU-07 착수 전 문서 대조(#76) |
 | v1.6.9 | **`DEAL_NOT_LOST` 신설(2026-09-02)** — 진행 중 Deal에 재개(DL-12)를 호출했을 때 던질 코드가 없었다. v1.6.7의 `DEAL_NOT_OPEN`은 문구가 "진행 중인 Deal만 단계를 변경할 수 있습니다"라 **정작 진행 중인 Deal에 쓰면 거짓말**이 된다 — 전이표 §5에서 재개는 실패(LOST)에만 있는 전이라 방향이 반대다. **`DEAL_NO_PREVIOUS_STAGE` 신설** — 리드에서 이전 단계 이동을 호출했을 때도 같은 공백이 있었다(07 엔드포인트 설명에 "LEAD에서 호출 불가"만 있고 코드가 없었다). 발견 경로: Deal 단계 전이 구현(#61) |
 | v1.6.8 | **`INTERNAL_ERROR` 신설(2026-09-03)** — 처리되지 않은 예외에 쓸 코드가 없어 `GlobalExceptionHandler`가 폴백을 둘 수 없었다. 그 결과 예외가 서블릿까지 올라가 `/error`로 내부 포워딩되고, 그 요청이 Security 필터에 다시 걸려 **500이어야 할 응답이 403으로 나갔다** (#53 재설정 메일 예약 검증 중 발견). 문구는 원인을 노출하지 않는다 — SC-09와 같은 태도 |
 | v1.6.7 | **C 도메인 에러 코드 3건 신설(2026-09-02)** — 전이표에는 불가로 적혀 있는데 던질 코드가 없던 자리를 채운다. **`DEAL_NOT_OPEN`**(LOST Deal의 단계 변경·WON Deal의 재개 — `DEAL_ALREADY_WON`은 문구가 성사 전용이라 LOST에 쓰면 거짓말이 된다) · **`QUOTE_NOT_RESENDABLE`**(종결 견적 재발송 — `QUOTE_NOT_WITHDRAWABLE`과 대칭) · **`QUOTE_VALID_UNTIL_PASSED`**(유효기간 지난 견적 발송 — 입력은 `@Future`로 막지만 저장 값이 낡는 것은 못 막는다). 발견 경로: Deal 구현(#46) 및 D의 `issue()` 실구현 리뷰(#54) |
@@ -78,7 +79,7 @@
 | POST | /api/v1/auth/refresh | **요청 바디 없음 — 쿠키가 곧 자격 증명.** **토큰 재발급 (회전 — 기존 refresh 폐기 + 새 발급, 새 쿠키로 교체) · 재발급 시 구성원·회사 상태 검사(비활성·정지면 거부 — 폐기 누락 대비 안전망) · 회전된 토큰 재사용 감지 시 해당 구성원 세션 전체 폐기(사유 REUSE_DETECTED), 응답은 REFRESH_TOKEN_NOT_ACTIVE로 통일(감지 사실 비노출)** | — | AU-03, Q-32 |
 | POST | /api/v1/auth/logout | 로그아웃 — refresh 폐기(사유 LOGOUT) + **쿠키 삭제(`Max-Age=0`)** · **access token 없이도 호출된다 (각주 2)** | 전 구성원 | AU-02 |
 | GET | /api/v1/me | 내 정보 (세션 확인) | 전 구성원 | AU-03·07 |
-| PATCH | /api/v1/me | 프로필 수정 (이름·연락처) | 전 구성원 | AU-07 |
+| PATCH | /api/v1/me | 프로필 수정 (이름·연락처) — 응답 `200` `MeResponse` (GET과 같은 형태, v1.6.10) | 전 구성원 | AU-07 |
 | POST | /api/v1/me/password | 비밀번호 변경 — **효과: 해당 구성원 refresh_token 전 행 폐기(전이표 §9) → 본인도 재로그인해야 한다.** 응답 `204` · **시도 제한 없음 (각주 3)** | 전 구성원 | AU-04 |
 | POST | /public/api/v1/auth/password-reset-request | 재설정 메일 요청 — **미가입 이메일도 동일 응답 (SC-09 인증 확장)** · 안내 메일은 **NT-14** · 응답 `202` | 비로그인 | AU-05 |
 | POST | /public/api/v1/auth/password-reset | 재설정 실행 (토큰) — **효과: 토큰 사용됨(USED) + 해당 구성원 refresh_token 전 행 폐기 (전이표 §10)**. 응답 `204` | 비로그인 | AU-05 |
