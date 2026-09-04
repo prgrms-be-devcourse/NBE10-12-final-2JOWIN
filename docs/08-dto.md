@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.8
+# DTO 설계서 — v1.6.9
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.9 | **§A `UpdateMeRequest` 길이 제한(2026-09-04)** — v1.6.8이 §B 요청 record에만 `@Size(max)`를 붙여 §A에 같은 구멍이 남아 있었다. `member.name` VARCHAR(100)·`member.phone` VARCHAR(30)을 넘는 값이 Bean Validation을 통과해 DB에서 거부되는데, §B와 달리 여기는 제약 위반을 변환할 자리조차 없어 **`INTERNAL_ERROR` 500**으로 나간다(§B는 엉뚱한 409였다). 400 `VALIDATION_FAILED`가 맞는 자리다. 값은 `V1__baseline.sql:58~59`를 그대로 옮겼다. 발견 경로: AU-07 착수 전 문서 대조(#76) |
 | v1.6.8 | **§B 문자열 길이 제한 신설(2026-09-03)** — B 요청 record 8종의 `VARCHAR` 대응 필드에 **`@Size(max)`**를 붙인다. 지금은 컬럼 길이를 넘는 값이 Bean Validation을 통과해 DB에서 거부되고, 서비스의 제약 위반 변환에 잡혀 **엉뚱한 409**로 나간다(상품은 "이미 등록된 상품명입니다"). 400 `VALIDATION_FAILED`가 맞는 자리다. 값은 `V1__baseline.sql`의 컬럼 정의를 그대로 옮겼다 — `customer.name`·`product.name`·`contact.email` 255 · `contact.name`·`title`·`customer.industry` 100 · `product.unit`·`customer.size` 50 · `contact.phone` 30 · `task.content` 500. **`TEXT` 컬럼(`customer.note`·`product.description`·`activity.content`)에는 붙이지 않는다.** `activity.channel`은 `CHECK` 제약이라 길이가 아닌 값 검증 문제로 별개다 |
 | v1.6.7 | **B PATCH 규약 정합(2026-09-03)** — §B Update record 5종의 필수 문자열 필드를 `@NotBlank`/`@NotNull` → **`@Pattern(regexp = "(?s).*\\S.*")`**로 교체. `@NotBlank`는 null까지 거절해 07 §B가 PATCH로 규정한 부분 수정을 막았다(`{"note":"메모만"}`이 400). Bean Validation은 `@Pattern`에서 null을 검사하지 않아 "안 보내면 미변경 · 보냈으면 공백 불가"가 그대로 표현된다. `(?s)`는 개행 포함 값이 거절되지 않게 한다. 대상은 **NOT NULL 컬럼 대응 필드만** — nullable 필드는 빈 문자열로 비우는 경로를 남겼다. `UpdateContactRequest.email`은 `@Email`만으로 빈 문자열이 통과해 `@Pattern`을 병기 |
 | v1.6.6 | **A 인증 보정(2026-09-01)** — `ChangePasswordRequest`에 에러·응답 주석(`CURRENT_PASSWORD_MISMATCH` 422 · 성공 시 전 세션 폐기 + 204, 07 v1.6.5). 경계 계약 `MemberQuery`에 **`MemberContact(name·email·phone)` 추가**(A 구현 · PR #36 — D의 고객 열람 페이지 담당자 표시 AP-18. `MemberSummary`를 넓히지 않고 따로 둔 이유는 `/members/options`가 "이름·id만"이라 연락처가 딸려갈 경로가 아니기 때문) |
@@ -106,7 +107,10 @@ public record MeResponse(
         UUID memberId, String name, String email, String phone,
         String role, UUID companyId, String companyName) {}
 
-public record UpdateMeRequest(@NotBlank String name, String phone) {}
+public record UpdateMeRequest(
+        @NotBlank @Size(max = 100) String name,
+        @Size(max = 30) String phone) {}                              // v1.6.9 — member.name 100 · phone 30
+// 응답은 200 `MeResponse` — GET /me와 같은 형태 (07 v1.6.10)
 
 public record ChangePasswordRequest(
         @NotBlank String currentPassword,
