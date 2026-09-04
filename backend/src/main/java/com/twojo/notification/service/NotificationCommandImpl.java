@@ -6,6 +6,7 @@ import com.twojo.boundary.NotificationCommand;
 import com.twojo.notification.entity.Notification;
 import com.twojo.notification.repository.NotificationRepository;
 import java.util.LinkedHashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -76,6 +77,11 @@ class NotificationCommandImpl implements NotificationCommand {
 
     private void write(UUID companyId, UUID recipientMemberId, NotificationType type,
                        String message, RefType refType, UUID refId) {
+        Objects.requireNonNull(message, "message");
+        if ((refType == null) != (refId == null)) {
+            // 계약: 한쪽만 있으면 프론트가 죽은 링크를 그린다. 호출부 실수를 여기서 막는다.
+            throw new IllegalArgumentException("refType과 refId는 함께 있거나 함께 없어야 한다");
+        }
         String safe = message.length() <= MESSAGE_MAX
                 ? message
                 : message.substring(0, MESSAGE_MAX - 1) + "…";

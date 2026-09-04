@@ -28,8 +28,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * {@link NotificationCommandImpl} — 수신자 해석(Q-26 폴백 / NT-10 union / 중복 제거)과 message 절삭,
- * 계약 enum → 엔티티 enum 브리지를 검증한다. {@code @Transactional(MANDATORY)}의 "트랜잭션 밖 호출 거부"는
- * 프록시가 필요해 통합 테스트가 검증한다.
+ * refType/refId 짝 불변식, 계약 enum → 엔티티 enum 브리지를 검증한다.
+ * {@code @Transactional(MANDATORY)}의 "트랜잭션 밖 호출 거부"와 실 PG 저장(절삭·ref_type·복합 FK)은
+ * 프록시·DB가 필요해 {@link NotificationPersistenceIntegrationTest}가 검증한다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -75,6 +76,15 @@ class NotificationCommandImplTest {
         assertThat(n.getRecipientMemberId()).isEqualTo(RECIPIENT);
         assertThat(n.getRefType()).isNull();
         assertThat(n.getRefId()).isNull();
+    }
+
+    @Test
+    @DisplayName("notify - refType은 있는데 refId가 null이면 예외 (짝 불변식)")
+    void notify_refType만_있으면_예외() {
+        assertThatThrownBy(() -> command.notify(
+                NotificationType.EMAIL_FAILED, COMPANY, RECIPIENT, "메일 실패", RefType.QUOTE, null))
+                .isInstanceOf(IllegalArgumentException.class);
+        verify(notificationRepository, never()).save(any());
     }
 
     @Test

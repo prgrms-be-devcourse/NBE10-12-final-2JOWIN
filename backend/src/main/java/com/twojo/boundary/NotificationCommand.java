@@ -37,8 +37,9 @@ public interface NotificationCommand {
      * <p>{@code EMAIL_FAILED}(메일 디스패처)처럼 수신자를 호출자가 직접 정하는 경우에 쓴다.
      * 견적 알림은 {@link #notifyForDeal}을 쓴다.
      *
-     * <p>{@code refType}이 null이면 클릭 이동이 없는 알림이다. null이 아니면 {@code refId}도 있어야 한다 —
-     * 한쪽만 있으면 프론트가 죽은 링크를 그린다.
+     * <p>{@code refType}과 {@code refId}는 <b>함께 있거나 함께 없어야 한다</b> — 한쪽만 있으면 프론트가
+     * 죽은 링크를 그린다. 구현이 강제한다(위반 시 {@code IllegalArgumentException}). 둘 다 null이면
+     * 클릭 이동이 없는 알림이다.
      */
     void notify(NotificationType type, UUID companyId, UUID recipientMemberId,
                 String message, RefType refType, UUID refId);
@@ -50,8 +51,13 @@ public interface NotificationCommand {
      *       — 현재 담당자. 담당자가 비활성이면 기업 관리자 전원(Q-26).</li>
      *   <li>{@code INQUIRY_RECEIVED} — 담당자(활성 시) <b>및</b> 기업 관리자 전원(NT-10).</li>
      * </ul>
-     * refType은 {@code RefType.QUOTE}로 고정, {@code refId}는 {@code quoteId}다.
+     * refType은 {@code RefType.QUOTE}로 고정, {@code refId}는 {@code quoteId}다 — {@code quoteId}가
+     * null이면 {@code IllegalArgumentException}(refType/refId 짝 불변식).
      * {@code EMAIL_FAILED}는 Deal 컨텍스트가 아니므로 이 메서드로 부르면 {@code IllegalArgumentException}.
+     *
+     * <p>{@code companyId}와 {@code dealId}는 <b>같은 조회에서 얻은 쌍</b>이어야 한다 —
+     * {@code DealQuery.assigneeIdOf}는 회사 스코프를 걸지 않으므로, 어긋난 쌍이면 담당자가 다른 회사로 풀려
+     * {@code notification} 복합 FK 위반이 flush 시점에 호출자 트랜잭션을 롤백시킨다.
      */
     void notifyForDeal(NotificationType type, UUID companyId, UUID dealId,
                        String message, UUID quoteId);
