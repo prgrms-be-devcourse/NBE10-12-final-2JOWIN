@@ -1,10 +1,12 @@
 package com.twojo.auth.config;
 
+import com.twojo.auth.filter.AdminAuthenticationFilter;
 import com.twojo.auth.filter.JsonAuthenticationEntryPoint;
 import com.twojo.auth.filter.JwtAuthenticationFilter;
 import com.twojo.auth.jwt.JwtProvider;
 import com.twojo.boundary.CompanyQuery;
 import com.twojo.boundary.MemberQuery;
+import com.twojo.boundary.PlatformAdminQuery;
 import java.time.Duration;
 import java.util.List;
 import org.springframework.beans.factory.annotation.Value;
@@ -62,19 +64,26 @@ public class SecurityConfig {
     }
 
     /**
-     * 플랫폼 관리자 API — 인증 수단(AU-08)이 아직 없어 auth 외 경로는 전부 401이 정상이다.
-     * 그래도 지금 분리한다. 없으면 /admin/**이 구성원 JWT로 열려 ON-11이 뚫린다.
+     * 플랫폼 관리자 API — 별도 체인이라 구성원 JWT로는 열리지 않는다 (ON-11).
+     * 영업 데이터 엔드포인트가 이 경로에 존재하지 않는 것이 ON-11의 본체이고,
+     * 체인 분리는 구성원 토큰이 이 경로에서 인증으로 인정되지 않게 하는 몫이다.
      */
     @Bean
     @Order(2)
-    SecurityFilterChain adminChain(HttpSecurity http,
+    SecurityFilterChain adminChain(HttpSecurity http, JwtProvider jwtProvider,
+                                   PlatformAdminQuery platformAdminQuery,
                                    JsonAuthenticationEntryPoint entryPoint) throws Exception {
         return stateless(http)
                 .securityMatcher("/admin/api/v1/**")
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(HttpMethod.POST, "/admin/api/v1/auth/login",
-                                "/admin/api/v1/auth/refresh").permitAll()
+                        // 로그아웃도 쿠키가 곧 자격 증명이다 — access 만료 뒤에야말로 확실히 끊어야 한다
+                        .requestMatchers(HttpMethod.POST,
+                                "/admin/api/v1/auth/login", "/admin/api/v1/auth/refresh",
+                                "/admin/api/v1/auth/logout").permitAll()
                         .anyRequest().authenticated())
+                .addFilterBefore(
+                        new AdminAuthenticationFilter(jwtProvider, platformAdminQuery),
+                        UsernamePasswordAuthenticationFilter.class)
                 .exceptionHandling(e -> e.authenticationEntryPoint(entryPoint))
                 .build();
     }
