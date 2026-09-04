@@ -1,6 +1,7 @@
 package com.twojo.quote.controller;
 
 import com.twojo.boundary.AccessContext;
+import com.twojo.boundary.QuoteQuery;
 import com.twojo.global.response.PageResponse;
 import com.twojo.quote.dto.QuoteRequests;
 import com.twojo.quote.dto.QuoteResponses;
@@ -84,6 +85,15 @@ public class QuoteController {
     public QuoteResponses.QuoteDetail update(AccessContext ctx, @PathVariable UUID quoteId,
                                              @Valid @RequestBody QuoteRequests.UpdateQuote request) {
         return quoteService.update(ctx, quoteId, request);
+    }
+
+    /**
+     * 발송 전 미리보기 (QT-12) — 고객 열람 페이지와 <b>같은 데이터</b>를 돌려준다.
+     * 응답 모양이 {@code PublicQuoteView}인 것은 그 때문이다 (내부 상세와 필드가 다르다).
+     */
+    @GetMapping("/{quoteId}/preview")
+    public QuoteQuery.PublicQuoteView preview(AccessContext ctx, @PathVariable UUID quoteId) {
+        return quoteService.preview(ctx, quoteId);
     }
 
     /** Q-39 — 음수 페이지·과대 size를 그대로 넘기면 500이 된다. 여기서 잘라낸다 */

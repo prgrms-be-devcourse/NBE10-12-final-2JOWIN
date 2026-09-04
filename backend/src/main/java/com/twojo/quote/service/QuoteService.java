@@ -4,6 +4,7 @@ import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.ProductQuery;
+import com.twojo.boundary.QuoteQuery;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
@@ -111,6 +112,17 @@ public class QuoteService {
     /** 상세 — 항목 포함 */
     public QuoteResponses.QuoteDetail get(AccessContext ctx, UUID quoteId) {
         return QuoteResponses.QuoteDetail.of(findInScope(ctx, quoteId));
+    }
+
+    /**
+     * 발송 전 미리보기 (QT-12) — <b>고객이 보게 될 것과 같은 데이터</b>다.
+     *
+     * <p>{@code QuoteQueryImpl.toPublicView}를 그대로 쓴다. 여기서 따로 조립하면 미리보기와
+     * 실제 열람 화면이 갈리는데, 그러면 미리보기가 확인해 주는 것이 아무것도 없어진다.
+     * 다만 <b>범위 판정은 구성원 규칙</b>을 쓴다 — 부르는 쪽이 로그인한 구성원이기 때문이다.
+     */
+    public QuoteQuery.PublicQuoteView preview(AccessContext ctx, UUID quoteId) {
+        return QuoteQueryImpl.toPublicView(findInScope(ctx, quoteId));
     }
 
     /**
