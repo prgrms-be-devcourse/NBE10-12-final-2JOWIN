@@ -67,7 +67,9 @@ class AuthServiceTest {
         secureTokenFactory = new SecureTokenFactory();
         authService = new AuthService(memberQuery, companyQuery, loginAttemptService,
                 refreshTokenRepository, secureTokenFactory,
-                new JwtProvider("test-only-secret-key-at-least-32-bytes-long"), passwordEncoder,
+                new JwtProvider("test-only-secret-key-at-least-32-bytes-long"),
+                // 실물을 쓴다 — 목으로 감싸면 더미 해시 대조가 검증에서 빠진다
+                new PasswordMatcher(passwordEncoder),
                 // 목으로 감싸면 폐기 케이스가 스텁된 리포지토리에 닿지 않아 검증이 사라진다
                 new SessionRevokeService(refreshTokenRepository, memberQuery));
     }
