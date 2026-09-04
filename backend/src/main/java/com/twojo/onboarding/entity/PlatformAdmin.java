@@ -2,6 +2,8 @@ package com.twojo.onboarding.entity;
 
 import com.twojo.global.jpa.BaseTimeEntity;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
@@ -16,6 +18,8 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor(access = AccessLevel.PROTECTED)
 public class PlatformAdmin extends BaseTimeEntity {
 
+    public enum Status { ACTIVE, INACTIVE }
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
@@ -24,5 +28,11 @@ public class PlatformAdmin extends BaseTimeEntity {
 
     private String passwordHash;
 
-    private String status;
+    @Enumerated(EnumType.STRING)
+    private Status status;
+
+    /** 비활성 계정은 로그인도 재발급도 되지 않는다. */
+    public boolean isActive() {
+        return status == Status.ACTIVE;
+    }
 }

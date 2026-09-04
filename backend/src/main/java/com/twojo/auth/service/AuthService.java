@@ -12,13 +12,11 @@ import com.twojo.boundary.CompanyQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
-import jakarta.annotation.PostConstruct;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -37,21 +35,8 @@ public class AuthService {
     private final RefreshTokenRepository refreshTokenRepository;
     private final SecureTokenFactory secureTokenFactory;
     private final JwtProvider jwtProvider;
-    private final PasswordEncoder passwordEncoder;
+    private final PasswordMatcher passwordMatcher;
     private final SessionRevokeService sessionRevokeService;
-
-    /**
-     * 미가입·미설정·비활성 경로에서 대조할 더미 해시 — BCrypt 비용을 균등하게 맞추기 위한 것이다.
-     *
-     * <p>상수로 박지 않고 기동 때마다 만든다. matches()는 인코더 설정이 아니라 <b>해시 문자열에
-     * 적힌 강도</b>로 검증하므로, 나중에 인코더 강도를 올리면 상수만 옛 비용으로 남아 차이가 되살아난다.
-     */
-    private String dummyPasswordHash;
-
-    @PostConstruct
-    void initDummyPasswordHash() {
-        dummyPasswordHash = passwordEncoder.encode(UUID.randomUUID().toString());
-    }
 
     /**
      * 로그인. 실패 사유를 응답으로 구별하지 않는다 — 미가입·미설정·비활성·불일치가 모두
@@ -69,13 +54,12 @@ public class AuthService {
         Optional<MemberQuery.AuthCredential> found =
                 memberQuery.findCredentialByEmail(request.email());
 
-        // 미가입·미설정·비활성이면 더미 해시와 대조한다 — 어느 경로로 가든 BCrypt를 정확히 한 번 돌려
+        // 미가입·미설정·비활성이면 null을 넘긴다 — 어느 경로로 가든 BCrypt를 정확히 한 번 돌려
         // 응답 시간이 계정의 존재나 상태를 드러내지 않게 한다 (SC-09)
-        String hashToMatch = found
+        boolean matched = passwordMatcher.matches(request.password(), found
                 .filter(MemberQuery.AuthCredential::active)
                 .map(MemberQuery.AuthCredential::passwordHash)
-                .orElse(dummyPasswordHash);
-        boolean matched = passwordEncoder.matches(request.password(), hashToMatch);
+                .orElse(null));
 
         if (found.isEmpty()) {
             // 미가입 이메일도 기록한다 — 안 하면 잠기지 않는다는 사실로 계정 부재가 드러난다
@@ -132,6 +116,13 @@ public class AuthService {
         RefreshToken token = refreshTokenRepository
                 .findByTokenHash(secureTokenFactory.hash(rawToken))
                 .orElseThrow(() -> new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE));
+
+        // token_hash는 구성원·관리자 세션이 함께 쓰는 표에서 유일하다 — 해시로 찾은 것만으로는
+        // 어느 쪽 행인지 알 수 없다. 관리자 행이면 여기서 끊는다.
+        // 통과시키면 아래가 null인 memberId로 조회를 돌린다
+        if (!token.isMemberSession()) {
+            throw new BusinessException(ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+        }
 
         if (token.isRotated()) {
             // 한 번 쓴 토큰이 다시 왔다 — 정상 사용에서는 일어날 수 없다.

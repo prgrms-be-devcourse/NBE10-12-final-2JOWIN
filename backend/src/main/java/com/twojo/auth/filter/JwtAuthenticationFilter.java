@@ -1,5 +1,6 @@
 package com.twojo.auth.filter;
 
+import com.twojo.auth.entity.ActorType;
 import com.twojo.auth.jwt.JwtProvider;
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
@@ -61,7 +62,14 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
         }
         try {
             Claims claims = jwtProvider.parse(header.substring(BEARER_PREFIX.length()));
-            UUID memberId = JwtProvider.memberIdOf(claims);
+
+            // 관리자 토큰이 이 체인으로 오는 것을 막는다 — 지금까지는 그 id가 member 표에
+            // 없다는 사실에 기대고 있었다
+            if (!JwtProvider.isActor(claims, ActorType.MEMBER)) {
+                return Optional.empty();
+            }
+
+            UUID memberId = JwtProvider.subjectOf(claims);
 
             // 비활성·정지는 토큰 발급 이후에 바뀐다 — claim이 아니라 지금 값을 본다 (09 구현 위치)
             MemberQuery.AuthCredential credential = memberQuery.getCredential(memberId);

@@ -45,6 +45,19 @@ public class SessionRevokeService implements SessionRevoker {
     }
 
     /**
+     * 해당 관리자의 활성 세션을 전부 폐기한다 (AU-08).
+     *
+     * <p>SessionRevoker 인터페이스에는 올리지 않는다 — 그쪽은 다른 모듈이 부르는 통로이고,
+     * 관리자 세션을 끊는 일은 auth 안에서만 일어난다.
+     */
+    public void revokeAllActiveForAdmin(UUID platformAdminId, RefreshToken.RevokedReason reason,
+                                        Instant now) {
+        refreshTokenRepository
+                .findByPlatformAdminIdAndStatus(platformAdminId, RefreshToken.Status.ACTIVE)
+                .forEach(token -> token.revoke(reason, now));
+    }
+
+    /**
      * 비밀번호 변경·재설정 — 그 구성원의 세션을 전부 끊는다 (AU-04·05).
      *
      * <p><b>본인이 지금 쓰고 있는 세션도 예외가 아니다.</b> 05 §9가 "해당 구성원 전 행 일괄"로

@@ -67,7 +67,9 @@ class AuthServiceTest {
         secureTokenFactory = new SecureTokenFactory();
         authService = new AuthService(memberQuery, companyQuery, loginAttemptService,
                 refreshTokenRepository, secureTokenFactory,
-                new JwtProvider("test-only-secret-key-at-least-32-bytes-long"), passwordEncoder,
+                new JwtProvider("test-only-secret-key-at-least-32-bytes-long"),
+                // 실물을 쓴다 — 목으로 감싸면 더미 해시 대조가 검증에서 빠진다
+                new PasswordMatcher(passwordEncoder),
                 // 목으로 감싸면 폐기 케이스가 스텁된 리포지토리에 닿지 않아 검증이 사라진다
                 new SessionRevokeService(refreshTokenRepository, memberQuery));
     }
@@ -239,6 +241,28 @@ class AuthServiceTest {
         assertThat(otherDevice.getStatus()).isEqualTo(RefreshToken.Status.REVOKED);
         assertThat(otherDevice.getRevokedReason())
                 .isEqualTo(RefreshToken.RevokedReason.REUSE_DETECTED);
+    }
+
+    /** AU-08 — token_hash 는 표 전체에서 유일해 조회만으로는 어느 쪽 행인지 알 수 없다 */
+    @Test
+    void 관리자_refresh_토큰으로_구성원_재발급을_시도하면_거부된다() {
+        // given — 관리자 세션 행이 구성원 경로로 제시됐다
+        RefreshToken 관리자_세션 = RefreshToken.issueForPlatformAdmin(
+                UUID.randomUUID(), "hash", NOW.plus(Duration.ofDays(14)));
+        given(refreshTokenRepository.findByTokenHash(any())).willReturn(Optional.of(관리자_세션));
+
+        // when/then — 401 이다. 검사가 없으면 null 인 memberId 로 조회가 나가 500 이 된다
+        assertThatThrownBy(() -> authService.rotate("관리자-원문", NOW))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.REFRESH_TOKEN_NOT_ACTIVE);
+
+        // then — 주인 검사가 앞에서 끊어 구성원 조회까지 가지 않는다.
+        // 이 단정이 없으면 검사를 빼도 초록불이다 — isActive(null) 이 목에서 false 를 돌려
+        // 같은 예외로 끝나기 때문이다
+        verify(memberQuery, never()).isActive(any());
+
+        // then — 남의 종류 행은 손대지 않는다
+        assertThat(관리자_세션.getStatus()).isEqualTo(RefreshToken.Status.ACTIVE);
     }
 
     @Test

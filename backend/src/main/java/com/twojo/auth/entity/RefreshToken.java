@@ -62,9 +62,28 @@ public class RefreshToken extends BaseTimeEntity {
      * 수명은 호출자가 계산해 넘긴다 (Q-32: 유지 미선택 12h / 선택 14d).
      */
     public static RefreshToken issueForMember(UUID memberId, String tokenHash, Instant expiresAt) {
-        RefreshToken token = new RefreshToken();
-        token.actorType = ActorType.MEMBER;
+        RefreshToken token = issue(ActorType.MEMBER, tokenHash, expiresAt);
         token.memberId = memberId;
+        return token;
+    }
+
+    /** 관리자 로그인 성공 시 발급 (AU-08) — 같은 표에 들어가되 채우는 주인 컬럼이 다르다. */
+    public static RefreshToken issueForPlatformAdmin(UUID platformAdminId, String tokenHash,
+                                                     Instant expiresAt) {
+        RefreshToken token = issue(ActorType.PLATFORM_ADMIN, tokenHash, expiresAt);
+        token.platformAdminId = platformAdminId;
+        return token;
+    }
+
+    /**
+     * 두 발급이 공유하는 부분.
+     *
+     * <p>주인 컬럼은 여기서 채우지 않는다 — 각 팩토리가 자기 것 하나만 채워야
+     * 둘 다 채워지는 길이 아예 생기지 않는다. 둘 다 차거나 둘 다 비면 DB가 INSERT를 거부한다.
+     */
+    private static RefreshToken issue(ActorType actorType, String tokenHash, Instant expiresAt) {
+        RefreshToken token = new RefreshToken();
+        token.actorType = actorType;
         token.tokenHash = tokenHash;
         token.status = Status.ACTIVE;
         token.expiresAt = expiresAt;
@@ -99,6 +118,21 @@ public class RefreshToken extends BaseTimeEntity {
      */
     public boolean isRotated() {
         return status == Status.REVOKED && revokedReason == RevokedReason.ROTATED;
+    }
+
+    /**
+     * 이 행의 주인이 구성원인가.
+     *
+     * <p>token_hash는 표 전체에서 유일해서 해시로 찾는 것만으로는 구성원 행인지
+     * 관리자 행인지 알 수 없다. 회전이 남의 종류의 세션을 돌리지 못하게 막는 검사다.
+     */
+    public boolean isMemberSession() {
+        return actorType == ActorType.MEMBER;
+    }
+
+    /** 위와 같은 검사의 관리자 쪽 (AU-08). */
+    public boolean isPlatformAdminSession() {
+        return actorType == ActorType.PLATFORM_ADMIN;
     }
 
     /** 회전 성공 시 직전 사용 시각 기록 — 운영 지표용이며 판정에는 쓰지 않는다. */
