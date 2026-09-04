@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.twojo.quote.entity.Quote.VatMode;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -59,7 +60,7 @@ class QuoteAmountsTest {
     @EnumSource(VatMode.class)
     @DisplayName("vat_mode는 금액에 영향을 주지 않는다 — 표시 기준일 뿐이다 (Q-46)")
     void 모드는_금액을_바꾸지_않는다(VatMode mode) {
-        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001");
+        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001", LocalDate.now().plusDays(30));
         quote.replaceItems(List.of(
                 QuoteItem.of(null, "사무용 의자", "개", 3, 150_000L, null, 0)));
         QuoteAmounts before = new QuoteAmounts(

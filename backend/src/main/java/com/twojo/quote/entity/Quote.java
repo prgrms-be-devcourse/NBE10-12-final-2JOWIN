@@ -92,14 +92,18 @@ public class Quote extends BaseTimeEntity {
      * 단위 테스트에 DB가 딸려온다. 발급은 서비스가 하고({@code DocumentNumberService}),
      * 여기서는 받은 값을 검증만 한다.
      */
-    public static Quote draft(UUID companyId, UUID dealId, String quoteNo) {
+    public static Quote draft(UUID companyId, UUID dealId, String quoteNo, LocalDate validUntil) {
         if (quoteNo == null || quoteNo.isBlank()) {
             throw new IllegalArgumentException("견적 번호 없이 견적을 만들 수 없습니다.");
+        }
+        if (validUntil == null) {
+            throw new IllegalArgumentException("유효기간 없이 견적을 만들 수 없습니다.");   // quote.valid_until NOT NULL
         }
         Quote quote = new Quote();
         quote.companyId = companyId;
         quote.dealId = dealId;
         quote.quoteNo = quoteNo;
+        quote.validUntil = validUntil;
         quote.status = Status.DRAFT;
         quote.vatMode = VatMode.EXCLUDED;
         quote.applyAmounts(QuoteAmounts.of(0L));
