@@ -19,6 +19,7 @@ class JwtProviderTest {
 
     private static final UUID MEMBER_ID = UUID.randomUUID();
     private static final UUID COMPANY_ID = UUID.randomUUID();
+    private static final UUID ADMIN_ID = UUID.randomUUID();
 
     private final JwtProvider jwtProvider =
             new JwtProvider("test-only-secret-key-at-least-32-bytes-long");
@@ -33,6 +34,19 @@ class JwtProviderTest {
         assertThat(JwtProvider.subjectOf(claims)).isEqualTo(MEMBER_ID);
         assertThat(JwtProvider.companyIdOf(claims)).isEqualTo(COMPANY_ID);
         assertThat(JwtProvider.roleOf(claims)).isEqualTo(Role.COMPANY_ADMIN);
+    }
+
+    /** 08 §인증 · AU-08 — 관리자는 회사에 속하지 않고 역할이 하나뿐이라 담을 값이 없다 */
+    @Test
+    void 관리자_토큰에는_회사와_역할이_담기지_않는다() {
+        // given/when — 관리자용으로 발급하면
+        String token = jwtProvider.issueForPlatformAdmin(ADMIN_ID, Instant.now());
+
+        // then — 주체는 담기고, 구성원용 claim 두 개는 아예 없다
+        Claims claims = jwtProvider.parse(token);
+        assertThat(JwtProvider.subjectOf(claims)).isEqualTo(ADMIN_ID);
+        assertThat(claims.get("companyId")).isNull();
+        assertThat(claims.get("role")).isNull();
     }
 
     @Test

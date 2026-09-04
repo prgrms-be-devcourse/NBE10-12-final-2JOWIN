@@ -91,6 +91,21 @@ class SecurityChainIntegrationTest {
                 .andExpect(jsonPath("$.companyName").value("한빛오피스"));
     }
 
+    /** ON-11 · 09 — 갈라내는 것이 actor claim 하나임을 고정한다 */
+    @Test
+    void 관리자_토큰으로_구성원_API를_호출할_수_없다() throws Exception {
+        // given — 주체를 일부러 이 구성원의 id 로 발급한다. 랜덤 id 로 만들면
+        // actor 검사를 빼도 "member 표에 그 id 가 없어서" 401 이 나 테스트가 공허해진다
+        String 관리자_토큰 = jwtProvider.issueForPlatformAdmin(memberId, Instant.now());
+
+        // when — 그 토큰으로 구성원 경로를 부르면
+        mockMvc.perform(get("/api/v1/me")
+                        .header(HttpHeaders.AUTHORIZATION, "Bearer " + 관리자_토큰))
+                // then — 가리키는 구성원이 실재하는데도 401 이다. actor 가 유일한 근거다
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("REFRESH_TOKEN_NOT_ACTIVE"));
+    }
+
     /** ON-11 · 07 §경로 체계 — 체인을 나누지 않으면 이 토큰으로 관리자 경로가 열린다 */
     @Test
     void 같은_토큰으로_플랫폼_관리자_경로를_열_수_없다() throws Exception {
