@@ -26,6 +26,8 @@ public class Task extends BaseTimeEntity {
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
 
+    private UUID companyId;
+
     private UUID dealId;
 
     private String content;
@@ -42,9 +44,13 @@ public class Task extends BaseTimeEntity {
      *
      * <p>{@code dueDate}는 필수다 — AC-09가 "할 일과 예정일"을 함께 요구하고,
      * {@code task.due_date}도 NOT NULL이다. 기한 없는 할 일은 만들어지지 않는다.
+     *
+     * <p>{@code companyId}는 배정과 무관하다 — 기업 관리자(COMPANY_ALL) 범위 조회에
+     * 회사 축이 필요해서 갖는다 (ERD v1.6.5). 딜의 회사와 어긋나는 조합은 복합 FK가 막는다.
      */
-    public static Task create(UUID dealId, String content, LocalDate dueDate) {
+    public static Task create(UUID companyId, UUID dealId, String content, LocalDate dueDate) {
         Task task = new Task();
+        task.companyId = Objects.requireNonNull(companyId, "companyId");
         task.dealId = Objects.requireNonNull(dealId, "dealId");
         task.content = Objects.requireNonNull(content, "content");
         task.dueDate = Objects.requireNonNull(dueDate, "dueDate");

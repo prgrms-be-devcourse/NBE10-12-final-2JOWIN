@@ -10,13 +10,14 @@ import org.junit.jupiter.api.Test;
 
 class TaskTest {
 
+    private static final UUID COMPANY_ID = UUID.randomUUID();
     private static final UUID DEAL_ID = UUID.randomUUID();
     private static final LocalDate DUE = LocalDate.of(2026, 9, 10);
     private static final Instant T1 = Instant.parse("2026-09-02T10:00:00Z");
     private static final Instant T2 = Instant.parse("2026-09-02T11:00:00Z");
 
     private Task 할일() {
-        return Task.create(DEAL_ID, "견적서 재발송", DUE);
+        return Task.create(COMPANY_ID, DEAL_ID, "견적서 재발송", DUE);
     }
 
     @Test
