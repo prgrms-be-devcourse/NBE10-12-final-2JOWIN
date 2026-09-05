@@ -2,6 +2,7 @@ package com.twojo.activity.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 /**
@@ -13,5 +14,5 @@ import java.time.LocalDate;
  * <p>{@code dueDate}는 필수다 — AC-09가 "할 일과 예정일"을 함께 요구한다.
  */
 public record CreateTaskRequest(
-        @NotBlank String content,
+        @NotBlank @Size(max = 500) String content,
         @NotNull LocalDate dueDate) {}

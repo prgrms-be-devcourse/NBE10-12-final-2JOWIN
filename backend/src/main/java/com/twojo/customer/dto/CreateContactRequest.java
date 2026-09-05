@@ -2,6 +2,7 @@ package com.twojo.customer.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.Size;
 
 /**
  * 고객사 담당자 등록 요청 (CU-09·10).
@@ -10,7 +11,7 @@ import jakarta.validation.constraints.NotBlank;
  * {@code POST .../contacts/{cid}/set-primary}가 담당한다 (CU-11).
  */
 public record CreateContactRequest(
-        @NotBlank String name,
-        String title,
-        String phone,
-        @NotBlank @Email String email) {}
+        @NotBlank @Size(max = 100) String name,
+        @Size(max = 100) String title,
+        @Size(max = 30) String phone,
+        @NotBlank @Email @Size(max = 255) String email) {}

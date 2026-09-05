@@ -36,4 +36,11 @@ class UpdateContactRequestTest {
     void blankOptional_passes() {
         assertThat(VALIDATOR.validate(new UpdateContactRequest(null, "", "", null))).isEmpty();
     }
+
+    @Test
+    @DisplayName("전화번호가 30자를 넘으면 거절한다 — customer_contact.phone VARCHAR(30)")
+    void phoneTooLong_rejected() {
+        assertThat(VALIDATOR.validate(new UpdateContactRequest(null, null, "0".repeat(30), null))).isEmpty();
+        assertThat(VALIDATOR.validate(new UpdateContactRequest(null, null, "0".repeat(31), null))).hasSize(1);
+    }
 }

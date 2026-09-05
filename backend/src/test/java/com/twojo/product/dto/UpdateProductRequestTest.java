@@ -36,6 +36,13 @@ class UpdateProductRequestTest {
     }
 
     @Test
+    @DisplayName("이름이 255자를 넘으면 거절한다 — product.name VARCHAR(255)")
+    void nameTooLong_rejected() {
+        assertThat(VALIDATOR.validate(new UpdateProductRequest("가".repeat(255), null, null, null))).isEmpty();
+        assertThat(VALIDATOR.validate(new UpdateProductRequest("가".repeat(256), null, null, null))).hasSize(1);
+    }
+
+    @Test
     @DisplayName("단가가 음수면 거절한다 — 값이 왔을 때만 걸린다")
     void negativeUnitPrice_rejected() {
         assertThat(VALIDATOR.validate(new UpdateProductRequest(null, null, -1L, null))).hasSize(1);

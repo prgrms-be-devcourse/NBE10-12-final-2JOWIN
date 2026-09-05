@@ -1,6 +1,7 @@
 package com.twojo.activity.dto;
 
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import java.time.LocalDate;
 
 /**
@@ -13,6 +14,6 @@ import java.time.LocalDate;
  * {@code Boolean}이 래퍼 타입인 이유가 이것이다 — 안 보낸 것과 {@code false}를 구별해 둔다.
  */
 public record UpdateTaskRequest(
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String content,
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 500) String content,
         LocalDate dueDate,
         Boolean done) {}

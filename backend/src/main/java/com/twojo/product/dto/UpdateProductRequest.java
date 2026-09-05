@@ -1,6 +1,7 @@
 package com.twojo.product.dto;
 
 import jakarta.validation.constraints.Pattern;
+import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.PositiveOrZero;
 
 /**
@@ -12,7 +13,7 @@ import jakarta.validation.constraints.PositiveOrZero;
  * 복사해 두기 때문이다 (QT-24, PR-07·08). 이름을 바꿀 때는 중복 검사가 필요하다.
  */
 public record UpdateProductRequest(
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String name,
-        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") String unit,
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 255) String name,
+        @Pattern(regexp = "(?s).*\\S.*", message = "공백일 수 없습니다") @Size(max = 50) String unit,
         @PositiveOrZero Long unitPrice,
         String description) {}
