@@ -2,12 +2,22 @@ import type { RequestHandler } from 'msw'
 import { authHandlers, invitationHandlers } from './auth'
 import { publicQuoteHandlers } from './publicQuote'
 import { customerHandlers } from './customer'
+import { memberHandlers } from './member'
+import { productHandlers } from './product'
+import { dealHandlers } from './deal'
+import { quoteHandlers } from './quote'
+import { orderHandlers } from './order'
+import { activityHandlers } from './activity'
+import { auditHandlers } from './audit'
+import { notificationHandlers } from './notification'
+import { dashboardHandlers } from './dashboard'
+import { adminHandlers } from './admin'
 
 /**
  * 도메인별 목 핸들러 집결지 (12-frontend-plan.md §5).
  *
- * 각 도메인 담당이 `handlers/{도메인}.ts`를 만들어 아래 표에 등록한다.
- * 작성 견본은 `auth.ts` — DTO 1:1 · 픽스처만 사용 · 공통 ErrorResponse ·
+ * 각 도메인은 `handlers/{도메인}.ts` — 상태는 전부 `store.ts`를 공유한다.
+ * 작성 견본은 `auth.ts` — DTO 1:1 · 저장소만 사용 · 공통 ErrorResponse ·
  * 실패 경로 포함 · 명세에 있는 경로만.
  *
  * 도메인 단위 on/off (§5.3) — `VITE_MOCK_DOMAINS`에서 이름을 빼면 그 도메인의 목이
@@ -16,19 +26,26 @@ import { customerHandlers } from './customer'
  */
 const BY_DOMAIN: Record<string, RequestHandler[]> = {
   auth: [...authHandlers, ...invitationHandlers],
-  // 고객 열람(/public/api/v1/quotes)은 견적과 같은 자원이라 quote와 함께 켜고 끈다
-  quote: publicQuoteHandlers,
+  member: memberHandlers,
   customer: customerHandlers,
-  // member: [], product: [], deal: [], order: [],
-  // activity: [], notification: [], dashboard: [],
+  product: productHandlers,
+  deal: dealHandlers,
+  // 고객 열람(/public/api/v1/quotes)은 견적과 같은 자원이라 quote와 함께 켜고 끈다
+  quote: [...quoteHandlers, ...publicQuoteHandlers],
+  order: orderHandlers,
+  activity: [...activityHandlers, ...auditHandlers],
+  notification: notificationHandlers,
+  dashboard: dashboardHandlers,
+  // 플랫폼 관리자 (/admin/api/v1) — 별도 세션 (AU-08)
+  admin: adminHandlers,
 }
 
 const enabledDomains = (import.meta.env.VITE_MOCK_DOMAINS ?? '')
   .split(',')
-  .map((name) => name.trim())
+  .map((name: string) => name.trim())
   .filter(Boolean)
 
-export const handlers: RequestHandler[] = enabledDomains.flatMap((domain) => BY_DOMAIN[domain] ?? [])
+export const handlers: RequestHandler[] = enabledDomains.flatMap((domain: string) => BY_DOMAIN[domain] ?? [])
 
 /** 개발 중 어떤 도메인이 목으로 도는지 한눈에 — 전환 사고를 줄인다 */
-export const mockedDomains = enabledDomains.filter((domain) => domain in BY_DOMAIN)
+export const mockedDomains = enabledDomains.filter((domain: string) => domain in BY_DOMAIN)

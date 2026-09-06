@@ -101,18 +101,27 @@ table th {
     transform var(--motion-fast) var(--ease-out),
     box-shadow var(--motion-fast) var(--ease-out);
 }
-.lift:hover {
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-4);
+.lift:hover,
+.lift:focus-visible {
+  transform: translateY(-2px);
+  /* 그림자로 뜨고, accent 링으로 "누를 수 있다"를 말한다 — 색만 바뀌면 카드 사이에서 눈에 안 띈다 */
+  box-shadow: var(--shadow-4), inset 0 0 0 1px var(--accent-a7);
 }
 .lift:active {
   transform: translateY(0);
   transition-duration: 60ms;
 }
 
-/** 표의 행 강조 — 색만 바뀐다 */
+/** 표의 행 강조 — 색만 바뀐다. 누를 수 있는 행(role="link")은 cursor를 인라인으로 준다 */
 .row-hover {
   transition: background-color var(--motion-fast) var(--ease-out);
+}
+.row-hover:hover {
+  background-color: var(--accent-a2);
+}
+.row-hover:focus-visible {
+  outline: 2px solid var(--focus-8);
+  outline-offset: -2px;
 }
 
 /* 밑줄이 좌에서 우로 자라는 링크 — 내비게이션에만 */

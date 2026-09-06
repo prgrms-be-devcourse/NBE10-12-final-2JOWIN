@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
-import { Button, Dialog, Flex, Select, Text, TextArea, TextField } from '@radix-ui/themes'
+import { Button, Dialog, Flex, Select, TextArea, TextField } from '@radix-ui/themes'
 import { ApiError } from '../../../shared/api/client'
-import { ErrorCallout } from '../../../shared/ui'
+import { ErrorCallout, Field } from '../../../shared/ui'
 import type { CreateCustomerRequest, CustomerResponse } from '../../../shared/api/types'
 import { COMPANY_SIZES, INDUSTRIES, SELECT_CONTENT } from '../constants'
 
@@ -135,35 +135,5 @@ function CustomerForm({ customer, loading, error, onSubmit }: Omit<Props, 'open'
         </Flex>
       </form>
     </>
-  )
-}
-
-/** 라벨·입력·오류/힌트 공통 배치 */
-export function Field({
-  label, required, error, hint, grow, children,
-}: { label: string; required?: boolean; error?: string; hint?: string; grow?: boolean; children: React.ReactNode }) {
-  return (
-    <Flex direction="column" gap="1" style={grow ? { flex: 1, minWidth: 0 } : undefined}>
-      <Text as="label" size="2" weight="medium">
-        {label}
-        {required && (
-          <Text color="red" aria-hidden>
-            {' '}*
-          </Text>
-        )}
-      </Text>
-      {children}
-      {error ? (
-        <Text size="1" color="red">
-          {error}
-        </Text>
-      ) : (
-        hint && (
-          <Text size="1" color="gray">
-            {hint}
-          </Text>
-        )
-      )}
-    </Flex>
   )
 }

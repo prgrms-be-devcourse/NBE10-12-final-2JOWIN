@@ -1,107 +1,138 @@
 import { http, HttpResponse } from 'msw'
-import { COMPANY, contacts, customers, deals, members, quoteExtras, quoteItems, quotes, viewTokens } from '../fixtures'
-import type { PublicQuoteResponse } from '../../shared/api/types'
+import { db, error, findDeal, findQuote, noContent, notFound, notify, now, recordAudit, recordAuto } from '../store'
+import type { ApproveQuoteRequest, CreateInquiryRequest, PublicQuoteResponse, RejectQuoteRequest } from '../../shared/api/types'
 
 /**
- * 고객 열람 목 (`/public/api/v1`) — 토큰이 곧 인증 (SC-07~09).
+ * 고객 열람 목 (`/public/api/v1`) — 토큰이 곧 인증 (SC-07~09) · approval/dto.
  *
- * 데모 링크:
- *  - `/q/demo-dodam-14`      메인 시나리오 — 응답 가능 (S-01 3막)
+ * 데모 링크 (픽스처 viewTokens.rawToken):
+ *  - `/q/demo-dodam-14`      메인 시나리오 — 응답 가능 (S-01 5막)
  *  - `/q/demo-hanul-16`      단가 재조정안 — 응답 가능
  *  - `/q/demo-shinyoung-01`  응답 완료 — 열람은 되고 재응답만 막힌다 (AP-11, 전이표 §7)
  *  - `/q/demo-mirae-05`      만료 — 410 LINK_EXPIRED (AP-05)
  *  - 그 외 문자열            404 — 존재 여부를 노출하지 않는다 (SC-09)
+ *
+ * 승인·반려는 견적 상태를 바꾸고(C의 도메인 메서드에 해당), 담당자에게 알림을 남긴다 (NT-04, AP-12).
  */
 
-const error = (code: string, message: string, status: number) =>
-  HttpResponse.json({ code, message, fieldErrors: [] }, { status })
+const tokenOf = (raw: string) => db.viewTokens.find((t) => t.rawToken === raw)
 
-/** 응답 완료 표시 — 목에서만 쓰는 상태. 실제로는 quote.status가 바뀐다 */
-const responded = new Set<string>()
-
-function build(token: string): PublicQuoteResponse | null {
-  const entry = viewTokens[token]
-  if (!entry) return null
-
-  const quote = quotes.find((q) => q.id === entry.quoteId)
-  if (!quote) return null
-
-  const deal = deals.find((d) => d.id === quote.dealId)
-  const assignee = members.find((m) => m.id === deal?.assigneeMemberId)
-  const extras = quoteExtras[quote.id]
-  const items = quoteItems[quote.id] ?? []
-  // 금액은 픽스처가 원본이다 — 합계는 quotes에서 오고, 부가세는 그 차액이다.
-  // 여기서 다시 계산하면 픽스처와 어긋날 수 있고, 그 순간 목과 시연 데이터가 갈라진다
-  const supplyAmount = items.reduce((sum, item) => sum + item.amount, 0)
-
+/** PublicQuoteResponse 조립 — 담당자는 Deal의 현재 담당자 (AP-18) */
+export function buildPublicQuote(quoteId: string, respondable: boolean): PublicQuoteResponse | null {
+  const quote = findQuote(quoteId)
+  const deal = quote && findDeal(quote.dealId)
+  if (!quote || !deal) return null
+  const assignee = db.members.find((m) => m.id === deal.assigneeMemberId)
+  const company = db.companies[0]
   return {
     quoteNo: quote.quoteNo,
     status: quote.status,
-    companyName: COMPANY.name,
-    companyBusinessNo: COMPANY.businessNo,
-    assignee: {
-      // AP-18 — 발송자가 아니라 Deal의 현재 담당자
-      name: assignee?.name ?? '',
-      email: assignee?.email ?? '',
-      phone: assignee?.phone ?? '',
-    },
-    vatMode: extras?.vatMode ?? 'EXCLUDED',
-    terms: extras?.terms ?? null,
+    companyName: company.name,
+    companyBusinessNo: company.businessNo,
+    assignee: { name: assignee?.name ?? '', email: assignee?.email ?? '', phone: assignee?.phone ?? '' },
+    vatMode: quote.vatMode,
+    terms: quote.terms,
     validUntil: quote.validUntil,
-    supplyAmount,
-    vatAmount: quote.totalAmount - supplyAmount,
+    supplyAmount: quote.supplyAmount,
+    vatAmount: quote.vatAmount,
     totalAmount: quote.totalAmount,
-    items: items.map(({ name, unit, quantity, unitPrice, amount }) => ({
-      name, unit, quantity, unitPrice, amount,
-    })),
-    respondable: entry.respondable && !responded.has(token),
+    items: (db.quoteItems.get(quote.id) ?? [])
+      .slice()
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .map(({ name, unit, quantity, unitPrice, amount }) => ({ name, unit, quantity, unitPrice, amount })),
+    // 정지 회사면 열람만 (SC-10, Q-27)
+    respondable: respondable && company.status === 'ACTIVE',
   }
 }
 
-/** 고객사 이름 — 열람 화면의 "OOO 님 귀하"에 쓴다 */
-export function recipientOf(token: string): { customerName: string; contactName: string } | null {
-  const entry = viewTokens[token]
-  const quote = quotes.find((q) => q.id === entry?.quoteId)
-  const deal = deals.find((d) => d.id === quote?.dealId)
-  const customer = customers.find((c) => c.id === deal?.customerId)
-  if (!customer) return null
-  const contact = (contacts[customer.id] ?? []).find((c) => c.primary)
-  return { customerName: customer.name, contactName: contact?.name ?? '' }
+/** 응답 가능 조건 — 링크 활성 + 견적이 발송됨·열람됨 */
+const respondable = (token: NonNullable<ReturnType<typeof tokenOf>>) => {
+  const quote = findQuote(token.quoteId)
+  return token.status === 'ACTIVE' && (quote?.status === 'SENT' || quote?.status === 'VIEWED')
 }
 
 export const publicQuoteHandlers = [
   http.get('/public/api/v1/quotes/:token', ({ params }) => {
-    const token = String(params.token)
-    const quote = build(token)
-    if (!quote) return error('RESOURCE_NOT_FOUND', '요청한 대상을 찾을 수 없습니다.', 404)
-    if (quote.status === 'EXPIRED') {
-      return error('LINK_EXPIRED', '만료된 링크입니다. 담당자에게 재발송을 요청해 주세요.', 410)
+    const token = tokenOf(String(params.token))
+    if (!token) return notFound()
+    // 410은 만료 링크만 — 응답 완료(RESPONDED) 링크도 열람은 허용 (전이표 §7, v1.6.1)
+    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+    const quote = findQuote(token.quoteId)!
+    // 첫 열람 시각 기록 + SENT → VIEWED (AP-02·07) + 담당자 알림 (NT-03)
+    if (quote.status === 'SENT' && token.status === 'ACTIVE') {
+      quote.status = 'VIEWED'
+      quote.firstViewedAt = now()
+      quote.version += 1
+      recordAudit({ entityType: 'QUOTE', entityId: quote.id, eventType: 'QUOTE_VIEWED', actorType: 'CUSTOMER_LINK', actorId: null, changes: { status: { before: 'SENT', after: 'VIEWED' } } })
+      recordAuto(quote.dealId, `고객이 견적을 열람했습니다 — ${quote.quoteNo}`)
+      const deal = findDeal(quote.dealId)
+      notify(quote.dealId, 'QUOTE_VIEWED', `${deal?.customerName ?? ''} 담당자가 견적을 열람했습니다 (${quote.quoteNo})`, quote.id)
     }
-    return HttpResponse.json(quote)
+    const body = buildPublicQuote(token.quoteId, respondable(token))
+    return body ? HttpResponse.json(body) : notFound()
   }),
 
-  http.post('/public/api/v1/quotes/:token/approve', ({ params }) => {
-    const token = String(params.token)
-    const quote = build(token)
-    if (!quote) return error('RESOURCE_NOT_FOUND', '요청한 대상을 찾을 수 없습니다.', 404)
-    if (!quote.respondable) {
-      return error('LINK_ALREADY_RESPONDED', '이미 응답이 완료된 견적입니다.', 409)
-    }
-    responded.add(token)
-    return new HttpResponse(null, { status: 204 })
+  http.post('/public/api/v1/quotes/:token/approve', async ({ params, request }) => {
+    const token = tokenOf(String(params.token))
+    if (!token) return notFound()
+    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+    if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
+    if (!respondable(token)) return error('LINK_ALREADY_RESPONDED')
+    const body = (await request.json()) as ApproveQuoteRequest
+    if (!body.responderName?.trim()) return error('VALIDATION_FAILED', [{ field: 'responderName', reason: '이름을 입력해 주세요.' }])
+    const quote = findQuote(token.quoteId)!
+    const before = quote.status
+    quote.status = 'APPROVED'
+    quote.respondedAt = now()
+    quote.responderName = body.responderName.trim()
+    quote.responderTitle = body.responderTitle?.trim() || null
+    quote.version += 1
+    token.status = 'RESPONDED'
+    recordAudit({ entityType: 'QUOTE', entityId: quote.id, eventType: 'QUOTE_APPROVED', actorType: 'CUSTOMER_LINK', actorId: null, changes: { status: { before, after: 'APPROVED' } } })
+    recordAuto(quote.dealId, `고객이 견적을 승인했습니다 — ${quote.quoteNo}`)
+    const deal = findDeal(quote.dealId)
+    notify(quote.dealId, 'QUOTE_APPROVED', `${deal?.customerName ?? ''} 담당자가 견적을 승인했습니다 (${quote.quoteNo})`, quote.id)
+    return noContent()
   }),
 
-  http.post('/public/api/v1/quotes/:token/reject', ({ params }) => {
-    const token = String(params.token)
-    const quote = build(token)
-    if (!quote) return error('RESOURCE_NOT_FOUND', '요청한 대상을 찾을 수 없습니다.', 404)
-    if (!quote.respondable) {
-      return error('LINK_ALREADY_RESPONDED', '이미 응답이 완료된 견적입니다.', 409)
-    }
-    responded.add(token)
-    return new HttpResponse(null, { status: 204 })
+  http.post('/public/api/v1/quotes/:token/reject', async ({ params, request }) => {
+    const token = tokenOf(String(params.token))
+    if (!token) return notFound()
+    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+    if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
+    if (!respondable(token)) return error('LINK_ALREADY_RESPONDED')
+    const body = (await request.json()) as RejectQuoteRequest
+    const fieldErrors = [
+      ...(!body.reason?.trim() ? [{ field: 'reason', reason: '반려 사유를 입력해 주세요.' }] : []),
+      ...(!body.responderName?.trim() ? [{ field: 'responderName', reason: '이름을 입력해 주세요.' }] : []),
+    ]
+    if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
+    const quote = findQuote(token.quoteId)!
+    const before = quote.status
+    quote.status = 'REJECTED'
+    quote.respondedAt = now()
+    quote.rejectReason = body.reason.trim()
+    quote.responderName = body.responderName.trim()
+    quote.responderTitle = body.responderTitle?.trim() || null
+    quote.version += 1
+    token.status = 'RESPONDED'
+    recordAudit({ entityType: 'QUOTE', entityId: quote.id, eventType: 'QUOTE_REJECTED', actorType: 'CUSTOMER_LINK', actorId: null, changes: { status: { before, after: 'REJECTED' } } })
+    recordAuto(quote.dealId, `고객이 견적을 반려했습니다 — ${quote.quoteNo}`)
+    const deal = findDeal(quote.dealId)
+    notify(quote.dealId, 'QUOTE_REJECTED', `${deal?.customerName ?? ''} 담당자가 견적을 반려했습니다 (${quote.quoteNo})`, quote.id)
+    return noContent()
   }),
 
-  // 문의는 응답 완료 후에도 남길 수 있다 — 재응답 차단(AP-11)과 무관하다
-  http.post('/public/api/v1/quotes/:token/inquiries', () => new HttpResponse(null, { status: 204 })),
+  // 문의는 응답 완료 후에도 남길 수 있다 — 재응답 차단(AP-11)과 무관하다. 담당 구성원 + 기업 관리자 알림 (NT-10)
+  http.post('/public/api/v1/quotes/:token/inquiries', async ({ params, request }) => {
+    const token = tokenOf(String(params.token))
+    if (!token) return notFound()
+    const body = (await request.json()) as CreateInquiryRequest
+    if (!body.content?.trim()) return error('VALIDATION_FAILED', [{ field: 'content', reason: '문의 내용을 입력해 주세요.' }])
+    const quote = findQuote(token.quoteId)!
+    db.inquiries.push({ id: crypto.randomUUID(), quoteId: quote.id, content: body.content.trim(), createdAt: now() })
+    const deal = findDeal(quote.dealId)
+    notify(quote.dealId, 'INQUIRY_RECEIVED', `${deal?.customerName ?? ''} 담당자가 문의를 남겼습니다 (${quote.quoteNo})`, quote.id)
+    return noContent()
+  }),
 ]

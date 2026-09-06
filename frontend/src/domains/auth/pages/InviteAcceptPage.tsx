@@ -6,6 +6,7 @@ import { CheckCircledIcon, EnvelopeClosedIcon } from '@radix-ui/react-icons'
 import { ErrorCallout } from '../../../shared/ui'
 import { messageOf } from '../../../shared/api/errors'
 import { ApiError } from '../../../shared/api/client'
+import { ROLE_LABEL } from '../../../shared/ui/status'
 import { acceptInvitation, fetchInvitation } from '../api'
 
 /**
@@ -37,7 +38,7 @@ export function InviteAcceptPage() {
     setLoading(true)
     setErrorCode(undefined)
     try {
-      await acceptInvitation(token, name, password)
+      await acceptInvitation(token, { name, password })
       setDone(true)
     } catch (error) {
       setErrorCode(error instanceof ApiError ? error.code : 'INTERNAL_ERROR')
@@ -104,7 +105,7 @@ export function InviteAcceptPage() {
             </Heading>
             <Flex align="center" gap="2">
               <Badge color="blue" variant="soft" radius="full">
-                {invitation.role === 'COMPANY_ADMIN' ? '기업 관리자' : '영업 담당자'}
+                {ROLE_LABEL[invitation.role]}
               </Badge>
               <Text size="2" color="gray">
                 {invitation.email}

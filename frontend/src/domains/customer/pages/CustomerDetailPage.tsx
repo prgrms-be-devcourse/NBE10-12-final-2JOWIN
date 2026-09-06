@@ -1,8 +1,8 @@
 import { useState } from 'react'
-import { Link, useNavigate, useParams } from 'react-router'
+import { useNavigate, useParams } from 'react-router'
 import { Badge, Box, Button, Card, Flex, Grid, Heading, Skeleton, Tabs, Text } from '@radix-ui/themes'
-import { ArrowLeftIcon, CheckCircledIcon, ColumnsIcon, Pencil1Icon, TrashIcon } from '@radix-ui/react-icons'
-import { ConfirmDialog, EmptyState, ErrorCallout, Money, PageHeader } from '../../../shared/ui'
+import { CheckCircledIcon, ColumnsIcon, Pencil1Icon, TrashIcon } from '@radix-ui/react-icons'
+import { BackLink, ConfirmDialog, ErrorCallout, Money, NotFound, PageHeader } from '../../../shared/ui'
 import { ApiError } from '../../../shared/api/client'
 import { date } from '../../../shared/lib/format'
 import type { ContactResponse } from '../../../shared/api/types'
@@ -45,16 +45,8 @@ export function CustomerDetailPage() {
     const code = error instanceof ApiError ? error.code : 'INTERNAL_ERROR'
     return (
       <>
-        <BackLink />
-        {code === 'RESOURCE_NOT_FOUND' ? (
-          <EmptyState
-            title="요청한 대상을 찾을 수 없습니다"
-            description="삭제되었거나 주소가 잘못되었을 수 있습니다."
-            action={{ label: '고객사 목록으로', onClick: () => navigate('/customers') }}
-          />
-        ) : (
-          <ErrorCallout code={code} onRetry={() => refetch()} />
-        )}
+        <BackLink to="/customers" label="고객사" />
+        <NotFound code={code} backLabel="고객사 목록으로" onBack={() => navigate('/customers')} onRetry={() => refetch()} />
       </>
     )
   }
@@ -90,7 +82,7 @@ export function CustomerDetailPage() {
 
   return (
     <Box className="enter-fade">
-      <BackLink />
+      <BackLink to="/customers" label="고객사" />
       <PageHeader
         title={customer.name}
         badge={customer.industry && <IndustryBadge industry={customer.industry} size="2" />}
@@ -269,15 +261,6 @@ function InfoCard({ label, value }: { label: string; value: string | null }) {
   )
 }
 
-function BackLink() {
-  return (
-    <Text asChild size="2" color="gray" mb="3" style={{ display: 'inline-flex', alignItems: 'center', gap: 4, textDecoration: 'none' }}>
-      <Link to="/customers">
-        <ArrowLeftIcon /> 고객사
-      </Link>
-    </Text>
-  )
-}
 
 /** 집계 칩. 진행 중 blue · 성사 건수 green · 성사 금액 red (10 §2.3 예외) */
 function StatChip({ label, value, color, icon }: { label: string; value: React.ReactNode; color: 'blue' | 'green' | 'red'; icon?: React.ReactNode }) {

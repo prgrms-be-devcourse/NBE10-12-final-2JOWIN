@@ -1,11 +1,16 @@
 import { Badge, Flex } from '@radix-ui/themes'
 import {
-  CheckCircledIcon, ClockIcon, CrossCircledIcon, EyeNoneIcon, EyeOpenIcon,
-  Pencil1Icon, PaperPlaneIcon, ResetIcon,
+  BellIcon, ChatBubbleIcon, CheckCircledIcon, ClockIcon, CrossCircledIcon, EnvelopeClosedIcon, EyeNoneIcon, EyeOpenIcon,
+  ExclamationTriangleIcon, MobileIcon, PersonIcon, Pencil1Icon, PaperPlaneIcon, ResetIcon,
 } from '@radix-ui/react-icons'
 import type { ComponentProps, ReactNode } from 'react'
 import { daysSince } from '../lib/format'
-import type { DealStage, QuoteStatus } from './status'
+import {
+  ACTIVITY_CHANNEL_LABEL, APPLICATION_STATUS_LABEL, COMPANY_STATUS_LABEL, DEAL_STAGE_LABEL, INVITATION_STATUS_LABEL,
+  MEMBER_STATUS_LABEL, NOTIFICATION_TYPE_LABEL, PRODUCT_STATUS_LABEL, QUOTE_STATUS_LABEL, ROLE_LABEL,
+  type ActivityChannel, type ApplicationStatus, type CompanyStatus, type DealStage, type InvitationStatus,
+  type MemberStatus, type NotificationType, type ProductStatus, type QuoteStatus, type Role,
+} from './status'
 
 /**
  * 상태 표시는 전부 Badge (10-screen-design.md §6.1).
@@ -17,46 +22,45 @@ import type { DealStage, QuoteStatus } from './status'
  */
 
 type Color = ComponentProps<typeof Badge>['color']
+type Size = ComponentProps<typeof Badge>['size']
 
-
-
-const DEAL: Record<DealStage, { label: string; color: Color; icon?: ReactNode }> = {
-  LEAD: { label: '리드', color: 'blue' },
-  CONSULT: { label: '상담', color: 'blue' },
-  QUOTE: { label: '견적', color: 'blue' },
-  NEGOTIATION: { label: '협상', color: 'blue' },
-  WON: { label: '성사', color: 'green', icon: <CheckCircledIcon /> },
-  LOST: { label: '실패', color: 'gray', icon: <CrossCircledIcon /> },
+const DEAL: Record<DealStage, { color: Color; icon?: ReactNode }> = {
+  LEAD: { color: 'blue' },
+  CONSULT: { color: 'blue' },
+  QUOTE: { color: 'blue' },
+  NEGOTIATION: { color: 'blue' },
+  WON: { color: 'green', icon: <CheckCircledIcon /> },
+  LOST: { color: 'gray', icon: <CrossCircledIcon /> },
 }
 
-const QUOTE: Record<QuoteStatus, { label: string; color: Color; icon: ReactNode }> = {
-  DRAFT: { label: '작성 중', color: 'gray', icon: <Pencil1Icon /> },
-  SENT: { label: '발송됨', color: 'blue', icon: <PaperPlaneIcon /> },
-  VIEWED: { label: '열람됨', color: 'amber', icon: <EyeOpenIcon /> },
-  APPROVED: { label: '승인됨', color: 'green', icon: <CheckCircledIcon /> },
-  REJECTED: { label: '반려됨', color: 'gray', icon: <CrossCircledIcon /> },
-  WITHDRAWN: { label: '회수됨', color: 'gray', icon: <ResetIcon /> },
-  EXPIRED: { label: '기간 만료', color: 'gray', icon: <ClockIcon /> },
+const QUOTE: Record<QuoteStatus, { color: Color; icon: ReactNode }> = {
+  DRAFT: { color: 'gray', icon: <Pencil1Icon /> },
+  SENT: { color: 'blue', icon: <PaperPlaneIcon /> },
+  VIEWED: { color: 'amber', icon: <EyeOpenIcon /> },
+  APPROVED: { color: 'green', icon: <CheckCircledIcon /> },
+  REJECTED: { color: 'gray', icon: <CrossCircledIcon /> },
+  WITHDRAWN: { color: 'gray', icon: <ResetIcon /> },
+  EXPIRED: { color: 'gray', icon: <ClockIcon /> },
 }
 
 /** 딜 단계 — 딜 보드의 현재 단계만 current로 강조한다 (§6.1) */
-export function DealStageBadge({ stage, current = false }: { stage: DealStage; current?: boolean }) {
-  const { label, color, icon } = DEAL[stage]
+export function DealStageBadge({ stage, current = false, size }: { stage: DealStage; current?: boolean; size?: Size }) {
+  const { color, icon } = DEAL[stage]
   return (
-    <Badge color={color} variant={current ? 'solid' : 'soft'} radius="full">
+    <Badge color={color} variant={current ? 'solid' : 'soft'} radius="full" size={size}>
       {icon}
-      {label}
+      {DEAL_STAGE_LABEL[stage]}
     </Badge>
   )
 }
 
 /** 견적 상태 7종 */
-export function QuoteStatusBadge({ status }: { status: QuoteStatus }) {
-  const { label, color, icon } = QUOTE[status]
+export function QuoteStatusBadge({ status, size }: { status: QuoteStatus; size?: Size }) {
+  const { color, icon } = QUOTE[status]
   return (
-    <Badge color={color} variant="soft" radius="full">
+    <Badge color={color} variant="soft" radius="full" size={size}>
       {icon}
-      {label}
+      {QUOTE_STATUS_LABEL[status]}
     </Badge>
   )
 }
@@ -105,5 +109,110 @@ export function RemainingBadge({ until }: { until: string }) {
         {days > 0 ? `${days}일 남음` : days === 0 ? '오늘 마감' : `${-days}일 지남`}
       </Badge>
     </Flex>
+  )
+}
+
+/** 상품 — 판매 중 gray(중립) · 판매 중지 red 아니라 gray: 늦은 것이 아니라 그냥 없는 것 */
+export function ProductStatusBadge({ status }: { status: ProductStatus }) {
+  return (
+    <Badge color={status === 'ACTIVE' ? 'green' : 'gray'} variant="soft" radius="full">
+      {status === 'ACTIVE' ? <CheckCircledIcon /> : <CrossCircledIcon />}
+      {PRODUCT_STATUS_LABEL[status]}
+    </Badge>
+  )
+}
+
+/** 구성원 활성/비활성 */
+export function MemberStatusBadge({ status }: { status: MemberStatus }) {
+  return (
+    <Badge color={status === 'ACTIVE' ? 'green' : 'gray'} variant="soft" radius="full">
+      {status === 'ACTIVE' ? <CheckCircledIcon /> : <CrossCircledIcon />}
+      {MEMBER_STATUS_LABEL[status]}
+    </Badge>
+  )
+}
+
+const INVITATION: Record<InvitationStatus, { color: Color; icon: ReactNode }> = {
+  PENDING: { color: 'blue', icon: <PaperPlaneIcon /> },
+  ACCEPTED: { color: 'green', icon: <CheckCircledIcon /> },
+  CANCELED: { color: 'gray', icon: <CrossCircledIcon /> },
+  EXPIRED: { color: 'gray', icon: <ClockIcon /> },
+}
+export function InvitationStatusBadge({ status }: { status: InvitationStatus }) {
+  const { color, icon } = INVITATION[status]
+  return (
+    <Badge color={color} variant="soft" radius="full">
+      {icon}
+      {INVITATION_STATUS_LABEL[status]}
+    </Badge>
+  )
+}
+
+const APPLICATION: Record<ApplicationStatus, { color: Color; icon: ReactNode }> = {
+  PENDING: { color: 'amber', icon: <ClockIcon /> },
+  APPROVED: { color: 'green', icon: <CheckCircledIcon /> },
+  REJECTED: { color: 'gray', icon: <CrossCircledIcon /> },
+}
+export function ApplicationStatusBadge({ status }: { status: ApplicationStatus }) {
+  const { color, icon } = APPLICATION[status]
+  return (
+    <Badge color={color} variant="soft" radius="full">
+      {icon}
+      {APPLICATION_STATUS_LABEL[status]}
+    </Badge>
+  )
+}
+
+/** 회사 — 정지는 되돌릴 수 있는 운영 조치라 red가 아니라 amber */
+export function CompanyStatusBadge({ status }: { status: CompanyStatus }) {
+  return (
+    <Badge color={status === 'ACTIVE' ? 'green' : 'amber'} variant="soft" radius="full">
+      {status === 'ACTIVE' ? <CheckCircledIcon /> : <ExclamationTriangleIcon />}
+      {COMPANY_STATUS_LABEL[status]}
+    </Badge>
+  )
+}
+
+/** 역할 — 관리자 blue · 영업 gray */
+export function RoleBadge({ role, size }: { role: Role; size?: Size }) {
+  return (
+    <Badge color={role === 'COMPANY_ADMIN' ? 'blue' : 'gray'} variant="soft" radius="full" size={size}>
+      <PersonIcon />
+      {ROLE_LABEL[role]}
+    </Badge>
+  )
+}
+
+const NOTIFICATION: Record<NotificationType, { color: Color; icon: ReactNode }> = {
+  QUOTE_VIEWED: { color: 'amber', icon: <EyeOpenIcon /> },
+  QUOTE_APPROVED: { color: 'green', icon: <CheckCircledIcon /> },
+  QUOTE_REJECTED: { color: 'gray', icon: <CrossCircledIcon /> },
+  REMIND_NO_RESPONSE: { color: 'amber', icon: <BellIcon /> },
+  INQUIRY_RECEIVED: { color: 'blue', icon: <ChatBubbleIcon /> },
+  EMAIL_FAILED: { color: 'red', icon: <ExclamationTriangleIcon /> },
+}
+/** 알림 종류 — 최근 활동·알림 목록에서 종류를 앞세워 훑기 쉽게 (10 §5.1) */
+export function NotificationTypeBadge({ type }: { type: NotificationType }) {
+  const { color, icon } = NOTIFICATION[type]
+  return (
+    <Badge color={color} variant="soft" radius="full">
+      {icon}
+      {NOTIFICATION_TYPE_LABEL[type]}
+    </Badge>
+  )
+}
+
+const CHANNEL: Record<ActivityChannel, ReactNode> = {
+  CALL: <MobileIcon />,
+  MEETING: <PersonIcon />,
+  EMAIL: <EnvelopeClosedIcon />,
+}
+/** 상담 수단 (AC-02) — 뜻 없는 분류라 slate */
+export function ActivityChannelBadge({ channel }: { channel: ActivityChannel }) {
+  return (
+    <Badge color="gray" variant="soft" radius="full">
+      {CHANNEL[channel]}
+      {ACTIVITY_CHANNEL_LABEL[channel]}
+    </Badge>
   )
 }

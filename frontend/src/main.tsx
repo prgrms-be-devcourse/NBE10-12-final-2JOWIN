@@ -6,7 +6,7 @@ import { Theme } from '@radix-ui/themes'
 import '@radix-ui/themes/styles.css'
 import './app/theme.css'
 import { router } from './app/router'
-import { setSessionExpiredHandler } from './shared/api/client'
+import { setAdminSessionExpiredHandler, setSessionExpiredHandler } from './shared/api/client'
 
 const queryClient = new QueryClient()
 
@@ -14,6 +14,10 @@ const queryClient = new QueryClient()
 setSessionExpiredHandler(() => {
   queryClient.clear()   // 남의 데이터가 다음 로그인에 비치지 않게 (§6.3-8)
   if (window.location.pathname !== '/login') window.location.href = '/login'
+})
+// 플랫폼 관리자 세션은 별개다 (AU-08) — 만료되면 관리자 로그인으로
+setAdminSessionExpiredHandler(() => {
+  if (!window.location.pathname.startsWith('/admin/login')) window.location.href = '/admin/login'
 })
 
 async function enableMocking() {
