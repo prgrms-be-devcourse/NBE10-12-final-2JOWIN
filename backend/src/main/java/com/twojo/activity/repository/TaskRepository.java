@@ -25,10 +25,12 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
     /**
      * 단건 접근 — <b>담당 딜 범위</b> (영업, OWNED_ONLY).
      *
-     * <p>{@code dealIds}는 {@code DealQuery.assignedDealIds(companyId, memberId)}가 준 목록이다.
+     * <p>{@code dealIds}는 {@code DealQuery.assignedDealIds(companyId, memberId)}가 준 목록이라
+     * 이미 회사로 걸러져 있지만, 회사 조건을 한 번 더 건다 — 06 §접근 범위가
+     * <b>"단건 조회에 회사·딜 범위를 함께"</b>로 정했고, 목록을 만드는 쪽이 바뀌어도 이 조건은 남는다.
      * 범위 밖 할 일이면 빈 {@code Optional}이 오고, 호출부는 404로 변환한다 (SC-09).
      */
-    Optional<Task> findByIdAndDealIdIn(UUID id, Collection<UUID> dealIds);
+    Optional<Task> findByIdAndCompanyIdAndDealIdIn(UUID id, UUID companyId, Collection<UUID> dealIds);
 
     /**
      * 단건 접근 — <b>회사 범위</b> (기업 관리자, COMPANY_ALL).

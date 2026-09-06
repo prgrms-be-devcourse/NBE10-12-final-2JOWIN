@@ -1,6 +1,7 @@
 package com.twojo.activity.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -24,6 +25,14 @@ class TaskTest {
     @DisplayName("새 할 일은 미완료다 — doneAt이 null")
     void create_notDone() {
         assertThat(할일().getDoneAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("회사 없이는 만들 수 없다 — 관리자 범위 조회의 축이라 비면 안 된다 (ERD v1.6.5)")
+    void create_requiresCompanyId() {
+        assertThatThrownBy(() -> Task.create(null, DEAL_ID, "견적서 재발송", DUE))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("companyId");
     }
 
     @Test

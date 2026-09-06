@@ -1,8 +1,8 @@
 package com.twojo.product.dto;
 
 import jakarta.validation.constraints.Pattern;
-import jakarta.validation.constraints.Size;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 /**
  * 상품 수정 요청 (PR-04·08) — <b>PATCH: null 필드는 미변경</b> (08 §B). 기업 관리자만 (PR-09).
