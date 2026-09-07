@@ -69,8 +69,8 @@ class DocumentNumberConcurrencyTest {
         // 서비스와 같은 기준으로 계산한다 — 여기서 UTC를 쓰면 월말에만 어긋나는 테스트가 된다
         yearMonth = LocalDate.now(ZoneId.of("Asia/Seoul")).format(DateTimeFormatter.ofPattern("yyMM"));
 
-        jdbc.update("insert into application (id, company_name, business_no, email, status) "
-                        + "values (?, ?, ?, ?, 'APPROVED')",
+        jdbc.update("insert into application (id, company_name, business_no, email, applicant_name, status) "
+                        + "values (?, ?, ?, ?, '김서연', 'APPROVED')",
                 applicationId, "한빛오피스", businessNo, "admin-" + applicationId + "@twojo.test");
         jdbc.update("insert into company (id, application_id, name, business_no, status) "
                         + "values (?, ?, ?, ?, 'ACTIVE')",

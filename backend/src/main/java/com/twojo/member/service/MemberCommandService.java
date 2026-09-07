@@ -38,4 +38,22 @@ public class MemberCommandService implements MemberCommand {
 
         member.changePassword(newPasswordHash, changedAt);
     }
+
+    /**
+     * 승인 직후의 관리자 계정 생성 (ON-07).
+     *
+     * <p>이메일 중복을 여기서 본다 — 신청 접수 때의 검사와 승인 사이에 시차가 있고, 그 사이
+     * 초대로 같은 이메일의 계정이 생길 수 있다. 유니크 인덱스에 맡기면 409가 아니라
+     * 제약 위반 500이 나간다.
+     *
+     * <p>정규화는 호출자(onboarding)가 끝낸 값이 들어온다 — {@code lower(email)} 유니크
+     * 인덱스와 어긋나면 중복이 조용히 통과한다.
+     */
+    @Override
+    public UUID createCompanyAdmin(UUID companyId, String email, String name) {
+        if (memberRepository.findByEmailLower(email).isPresent()) {
+            throw new BusinessException(ErrorCode.EMAIL_ALREADY_MEMBER);
+        }
+        return memberRepository.save(Member.companyAdmin(companyId, email, name)).getId();
+    }
 }

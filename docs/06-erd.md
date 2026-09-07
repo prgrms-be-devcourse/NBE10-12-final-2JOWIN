@@ -100,6 +100,7 @@ erDiagram
         string company_name
         string business_no "회사로 복사"
         string email
+        string applicant_name "승인 시 member.name 으로 복사"
         string status "PENDING/APPROVED/REJECTED"
         string reject_reason "이력 보존 Q-15"
         timestamp decided_at

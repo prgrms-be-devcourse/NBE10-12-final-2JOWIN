@@ -74,8 +74,8 @@ class ViewTokenCommandIssueIntegrationTest {
         quoteId = UUID.randomUUID();
         String businessNo = applicationId.toString().substring(0, 13);
 
-        jdbc.update("insert into application (id, company_name, business_no, email, status) "
-                        + "values (?, ?, ?, ?, 'APPROVED')",
+        jdbc.update("insert into application (id, company_name, business_no, email, applicant_name, status) "
+                        + "values (?, ?, ?, ?, '김서연', 'APPROVED')",
                 applicationId, "한빛오피스", businessNo, "admin-" + applicationId + "@twojo.test");
         jdbc.update("insert into company (id, application_id, name, business_no, status) "
                         + "values (?, ?, ?, ?, 'ACTIVE')",
