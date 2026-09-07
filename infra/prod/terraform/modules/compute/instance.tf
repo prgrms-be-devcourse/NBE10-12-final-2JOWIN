@@ -13,6 +13,8 @@ resource "aws_instance" "main" {
   ami           = data.aws_ssm_parameter.al2023_x86_64.value
   instance_type = var.instance_type
 
+  key_name = var.key_name
+
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [var.security_group_id]
   iam_instance_profile   = aws_iam_instance_profile.instance.name
@@ -45,15 +47,15 @@ resource "aws_instance" "main" {
   }
 
   user_data = templatefile("${path.module}/user_data.sh", {
-    app_dir              = var.app_dir
-    config_bucket        = var.config_bucket
-    ssm_parameter_prefix = var.ssm_parameter_prefix
-    aws_region           = var.aws_region
-    swap_size_gb         = var.swap_size_gb
+    app_dir           = var.app_dir
+    config_bucket     = var.config_bucket
+    aws_region        = var.aws_region
+    swap_size_gb      = var.swap_size_gb
+    deploy_public_key = var.deploy_public_key
   })
 
   # user_data 를 고쳐도 인스턴스를 재생성하지 않는다(기본값 false).
-  # 설정 변경은 S3 재동기화 + SSM 으로 반영한다 — 서버를 갈아엎을 일이 아니다.
+  # 설정 변경은 S3 재동기화 + 배포 스크립트로 반영한다 — 서버를 갈아엎을 일이 아니다.
 
   lifecycle {
     # SSM 파라미터가 최신 AMI 를 가리키므로, AWS 가 새 AMI 를 낼 때마다

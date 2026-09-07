@@ -44,4 +44,7 @@ module "compute" {
 
   config_bucket      = module.storage.bucket_name
   storage_policy_arn = module.storage.instance_access_policy_arn
+
+  key_name          = var.key_name
+  deploy_public_key = var.deploy_public_key
 }
