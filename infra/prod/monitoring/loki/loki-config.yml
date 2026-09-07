@@ -1,0 +1,57 @@
+# 단일 인스턴스 · 파일시스템 저장. 메모리 한도가 256m 라 최소 구성으로 간다.
+#
+# 보존 기간을 명시하지 않으면 기본이 무제한이라 디스크가 조용히 찬다.
+
+auth_enabled: false
+
+server:
+  http_listen_port: 3100
+  grpc_listen_port: 9096
+  log_level: warn
+
+common:
+  path_prefix: /loki
+  storage:
+    filesystem:
+      chunks_directory: /loki/chunks
+      rules_directory: /loki/rules
+  replication_factor: 1
+  ring:
+    kvstore:
+      store: inmemory
+
+schema_config:
+  configs:
+    - from: 2024-01-01
+      store: tsdb
+      object_store: filesystem
+      schema: v13
+      index:
+        prefix: index_
+        period: 24h
+
+limits_config:
+  # 168h = 7일. Prometheus 보존과 맞춘다.
+  retention_period: 168h
+  # 스트림이 폭발하면 256m 로는 못 버틴다. 상한을 걸어 조기에 드러나게 한다.
+  max_streams_per_user: 1000
+  ingestion_rate_mb: 4
+  ingestion_burst_size_mb: 8
+  reject_old_samples: true
+  reject_old_samples_max_age: 168h
+
+# compactor 가 있어야 retention_period 가 실제로 삭제를 수행한다.
+compactor:
+  working_directory: /loki/compactor
+  delete_request_store: filesystem
+  retention_enabled: true
+  retention_delete_delay: 2h
+
+ruler:
+  storage:
+    type: local
+    local:
+      directory: /loki/rules
+
+analytics:
+  reporting_enabled: false
