@@ -15,8 +15,8 @@
 -- =============================================================================
 
 -- ── 온보딩: 가입 신청(승인됨) → 회사 ────────────────────────────────────────
-INSERT INTO application (id, company_name, business_no, email, status, decided_at, created_at, updated_at) VALUES
-('0a000000-0000-4000-8000-000000000001', '한빛오피스', '123-45-67890', 'seoyeon@hanbit.co.kr', 'APPROVED', '2026-08-10 10:00:00+09', '2026-08-09 09:00:00+09', '2026-08-10 10:00:00+09')
+INSERT INTO application (id, company_name, business_no, email, applicant_name, status, decided_at, created_at, updated_at) VALUES
+('0a000000-0000-4000-8000-000000000001', '한빛오피스', '123-45-67890', 'seoyeon@hanbit.co.kr', '김서연', 'APPROVED', '2026-08-10 10:00:00+09', '2026-08-09 09:00:00+09', '2026-08-10 10:00:00+09')
 ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO platform_admin (id, email, password_hash, status) VALUES
