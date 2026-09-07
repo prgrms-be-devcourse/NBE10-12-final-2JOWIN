@@ -147,3 +147,24 @@ variable "backup_retention_days" {
   type        = number
   default     = 7
 }
+
+# ── 컴퓨트 ─────────────────────────────────────────────────────────
+# 근거: network-compute.md §3
+
+variable "instance_type" {
+  description = "EC2 인스턴스 타입. cost-guard 의 allowed_instance_types 안에 있어야 한다"
+  type        = string
+  default     = "t4g.medium"
+}
+
+variable "root_volume_size_gb" {
+  description = "루트 EBS 크기(GB). cost-guard 의 max_volume_size_gb 이하여야 한다"
+  type        = number
+  default     = 40
+}
+
+variable "swap_size_gb" {
+  description = "스왑파일 크기(GB). 4 GiB 압박의 안전망"
+  type        = number
+  default     = 2
+}

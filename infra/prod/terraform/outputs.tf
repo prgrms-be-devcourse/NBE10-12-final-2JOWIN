@@ -51,3 +51,20 @@ output "instance_access_policy_arn" {
   description = "compute(#91)의 인스턴스 프로파일에 붙일 정책 ARN"
   value       = module.storage.instance_access_policy_arn
 }
+
+# ── 컴퓨트 ─────────────────────────────────────────────────────────
+
+output "instance_id" {
+  description = "EC2 인스턴스 ID. cost-guard 의 stop_instance_ids 에 넣는다"
+  value       = module.compute.instance_id
+}
+
+output "eip_public_ip" {
+  description = "고정 공인 IP. dnszi 에 A 레코드로 등록한다"
+  value       = module.compute.eip_public_ip
+}
+
+output "instance_role_name" {
+  description = "인스턴스 역할 이름"
+  value       = module.compute.instance_role_name
+}
