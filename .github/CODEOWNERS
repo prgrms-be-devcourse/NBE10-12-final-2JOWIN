@@ -32,14 +32,17 @@ backend/src/main/java/com/twojo/dashboard/    @nibble1492
 frontend/src/domains/notification/            @nibble1492
 frontend/src/domains/dashboard/               @nibble1492
 
-# ── E 김대연 — 인프라·공통·boundary·프론트 플랫폼
+# ── E 김대연 — 공통 골격·boundary·프론트 플랫폼
 backend/src/main/java/com/twojo/global/      @horangnabi97
 backend/src/main/java/com/twojo/boundary/    @horangnabi97
 backend/src/main/resources/db/migration/     @horangnabi97
 frontend/src/app/                            @horangnabi97
 frontend/src/shared/                         @horangnabi97
 frontend/src/mocks/                          @horangnabi97
-infra/                                       @horangnabi97
+
+# ── 인프라·DevOps — A 조민석 (역할 이관, 2026-09-04 팀 합의)
+# infra/ 는 E → A 로 옮겼다. E는 공통 골격·프론트 플랫폼을 계속 소유한다.
+infra/                                       @jomin4
 
 # ── .github(CI·PR 템플릿·CODEOWNERS)은 저장소 세팅 담당 A가 관리 (역할 조정, 2026-08-27)
 .github/                                     @jomin4
