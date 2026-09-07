@@ -10,8 +10,7 @@ import java.util.UUID;
  * 고객사 상세 응답 (CU-05·12) — 담당자 목록과 Deal 이력을 함께 싣는다.
  *
  * <p>{@code deals}는 C의 {@code DealQuery.summariesByCustomer()}로 받아 서비스가 옮긴다.
- * {@code createdByMemberName}은 A의 {@code MemberQuery.get()}으로 채운다 — 표시용이라
- * 없으면 {@code null}로 두고 진행한다.
+ * {@code createdByMemberName}은 A의 {@code MemberQuery.get()}으로 채운다.
  */
 public record CustomerDetailResponse(
         UUID id,
@@ -28,8 +27,10 @@ public record CustomerDetailResponse(
     /**
      * 엔티티와 경계 조회 결과 → 응답.
      *
-     * <p>{@code createdByMemberName}은 없으면 {@code null}이다 — 표시용이라 이름 하나 때문에
-     * 상세 전체를 실패시키지 않는다.
+     * <p>{@code createdByMemberName}은 호출부가 {@code MemberQuery.get}으로 받아 넘긴다.
+     * 그 계약은 <b>없으면 {@code RESOURCE_NOT_FOUND}를 던진다</b>이므로 여기로 null이 오지 않는다 —
+     * {@code customer.created_by_member_id}가 {@code member}를 NOT NULL FK로 물고 있어
+     * 등록자 행이 없는 고객사가 존재할 수 없다.
      */
     public static CustomerDetailResponse of(Customer customer, String createdByMemberName,
                                             List<ContactResponse> contacts,

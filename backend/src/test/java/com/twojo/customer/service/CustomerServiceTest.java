@@ -17,7 +17,9 @@ import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
 import com.twojo.customer.dto.ContactResponse;
 import com.twojo.customer.dto.CreateContactRequest;
+import com.twojo.customer.dto.CreateCustomerRequest;
 import com.twojo.customer.dto.CustomerDetailResponse;
+import com.twojo.customer.dto.CustomerResponse;
 import com.twojo.customer.dto.UpdateContactRequest;
 import com.twojo.customer.dto.UpdateCustomerRequest;
 import com.twojo.customer.entity.Customer;
@@ -98,6 +100,18 @@ class CustomerServiceTest {
         customerService.list(SALES, "도담", null, PageRequest.of(0, 20));
 
         then(customerRepository).should().search(eq(COMPANY_ID), eq("도담"), isNull(), any());
+    }
+
+    @Test
+    @DisplayName("등록은 등록자를 AccessContext에서 채운다 — 요청 바디에 없다 (CU-01·02)")
+    void create_fillsCreatedByFromContext() {
+        given(customerRepository.save(any())).willAnswer(invocation -> invocation.getArgument(0));
+
+        CustomerResponse response = customerService.create(SALES,
+                new CreateCustomerRequest("도담건설", "건설", "중소기업", "정기 거래처"));
+
+        assertThat(response.name()).isEqualTo("도담건설");
+        assertThat(response.createdByMemberId()).isEqualTo(MEMBER_ID);
     }
 
     @Test

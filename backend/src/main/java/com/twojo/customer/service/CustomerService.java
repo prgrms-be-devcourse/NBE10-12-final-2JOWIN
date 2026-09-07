@@ -78,8 +78,11 @@ public class CustomerService {
                 .stream().map(ContactResponse::of).toList();
         List<DealQuery.DealSummary> deals = dealQuery.summariesByCustomer(customerId);
 
-        return CustomerDetailResponse.of(customer, memberQuery.get(customer.getCreatedByMemberId()).name(),
-                contacts, deals);
+        // MemberQuery.get은 없으면 RESOURCE_NOT_FOUND를 던진다. created_by_member_id가 member를
+        // NOT NULL FK로 물고 있어 그 경우가 생기지 않는다 (V1 baseline).
+        String createdByMemberName = memberQuery.get(customer.getCreatedByMemberId()).name();
+
+        return CustomerDetailResponse.of(customer, createdByMemberName, contacts, deals);
     }
 
     /** 수정 (CU-06) — null로 온 필드는 미변경이다 (08 §B). */
@@ -160,7 +163,7 @@ public class CustomerService {
     }
 
     /** 빈 검색어는 필터가 아니다 — {@code ?keyword=}로 온 빈 문자열을 조건에서 뺀다. */
-    private String blankToNull(String value) {
+    private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
     }
 }

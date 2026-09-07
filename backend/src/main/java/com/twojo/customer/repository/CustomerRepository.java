@@ -23,8 +23,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
      * <p><b>담당 축이 없다</b> — 고객사는 회사 공유 자원이라 영업 담당자도 회사 전체를 본다 (SC-03).
      * Deal 목록과 달리 스코프 분기가 없는 이유다.
      *
-     * <p>선택 필터가 둘뿐이라 한 문장으로 둔다. {@code DealRepository}가 Specification으로 간 것은
-     * 필터가 셋이라 파생 쿼리 조합이 폭발해서다 — 여기서는 그 비용이 나오지 않는다.
+     * <p>선택 필터가 둘뿐이라 한 문장으로 둔다. 파생 쿼리로 쓰면 조합이 넷으로 늘어난다.
      * 정렬은 호출부의 Pageable이 정한다 (Q-39).
      *
      * <p><b>{@code cast(:param as string)}은 장식이 아니다.</b> 값이 null이면 JDBC가 타입을 몰라
