@@ -41,15 +41,15 @@ const SELECT_CONTENT = { position: 'popper', style: { maxHeight: 'min(328px, var
 const toRows = (quote: QuoteDetailResponse): Row[] =>
   quote.items.slice().sort((a, b) => a.sortOrder - b.sortOrder).map((it) => ({ key: it.id, productId: it.productId, name: it.name, unit: it.unit, quantity: it.quantity, unitPrice: it.unitPrice }))
 
-/** 클라이언트 미리 계산 — 서버와 같은 규칙 (별도: vat=supply×10% · 포함: total=합, vat=total×10/110) */
-function preview(rows: Row[], vatMode: VatMode) {
-  const sum = rows.reduce((acc, r) => acc + r.quantity * r.unitPrice, 0)
-  if (vatMode === 'INCLUDED') {
-    const vat = Math.round((sum * 10) / 110)
-    return { supply: sum - vat, vat, total: sum }
-  }
-  const vat = Math.round(sum * 0.1)
-  return { supply: sum, vat, total: sum + vat }
+/**
+ * 클라이언트 미리 계산 — 서버(QuoteAmounts)와 같은 규칙.
+ * 단가는 항상 세전이라 항목 합계가 곧 공급가액이고, 부가세는 공급가액의 10%다 (QT-08·22, Q-46).
+ * vatMode는 견적서 표시 기준일 뿐 금액에 영향이 없다 (Q-46) — 여기서 받지 않는다.
+ */
+function preview(rows: Row[]) {
+  const supply = rows.reduce((acc, r) => acc + r.quantity * r.unitPrice, 0)
+  const vat = Math.round(supply * 0.1)
+  return { supply, vat, total: supply + vat }
 }
 
 export function QuoteEditor({ quote, onSend, onPreview }: Props) {
@@ -79,7 +79,7 @@ export function QuoteEditor({ quote, onSend, onPreview }: Props) {
     [quote],
   )
   const dirty = JSON.stringify(body) !== JSON.stringify(saved)
-  const amounts = preview(rows, vatMode)
+  const amounts = preview(rows)
   const today = new Date().toISOString().slice(0, 10)
   const canSubmit = rows.length > 0 && validUntil > today && rows.every((r) => r.name.trim() && r.unit.trim() && r.quantity > 0 && r.unitPrice >= 0)
   const apiError = update.error instanceof ApiError ? update.error : null
