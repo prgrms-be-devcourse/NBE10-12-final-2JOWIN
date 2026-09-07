@@ -67,17 +67,20 @@ if [ -x "$APP_DIR/scripts/fetch-secrets.sh" ]; then
   export SSM_PREFIX AWS_REGION APP_DIR
   "$APP_DIR/scripts/fetch-secrets.sh" || fail "fetch-secrets.sh"
 else
-  log "fetch-secrets.sh 없음 — 건너뛴다 (#92 에서 들어온다)"
+  log "fetch-secrets.sh 없음 — 건너뛴다"
 fi
 
-# ── 5. 컨테이너 ──────────────────────────────────────────────────────────
-COMPOSE_FILE="$APP_DIR/compose/docker-compose.yml"
+# ── 5. 컨테이너는 여기서 띄우지 않는다 ───────────────────────────────────
+# 첫 기동 시점에는 백엔드 이미지가 아직 ECR 에 없다. 배포 워크플로가 이미지를
+# 올리고 deploy.sh 가 compose up 을 한다.
+#
+# 여기서 일부만 띄우면 "반쯤 뜬 상태"가 생기고, 그 상태를 전제로 한 디버깅이
+# 필요해진다. 서버는 받을 준비만 해두고 기동은 배포 한 곳에서만 한다.
+COMPOSE_FILE="$APP_DIR/compose/compose.yml"
 if [ -f "$COMPOSE_FILE" ]; then
-  log "컨테이너 기동"
-  docker compose -f "$COMPOSE_FILE" up -d || fail "docker compose up"
-  docker compose -f "$COMPOSE_FILE" ps
+  log "compose 파일 확인됨 — 기동은 첫 배포(deploy.sh)가 한다"
 else
-  log "compose 파일 없음 — 건너뛴다 (#92 에서 들어온다)"
+  log "compose 파일 없음 — 설정 번들이 아직 S3 에 없다"
 fi
 
 log "완료"
