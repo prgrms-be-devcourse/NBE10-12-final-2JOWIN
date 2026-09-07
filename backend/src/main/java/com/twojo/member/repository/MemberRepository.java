@@ -36,4 +36,7 @@ public interface MemberRepository extends JpaRepository<Member, UUID> {
 
     /** 마지막 활성 관리자 판정 (MB-11) — 행을 불러오지 않고 수만 센다. */
     long countByCompanyIdAndRoleAndStatus(UUID companyId, Role role, Member.Status status);
+
+    /** 회사 목록의 이용 현황 (ON-12 · Q-41) — 비활성 구성원도 센다. */
+    long countByCompanyId(UUID companyId);
 }

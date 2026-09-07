@@ -1,5 +1,6 @@
 package com.twojo.auth.service;
 
+import com.twojo.auth.InitialPasswordSetup;
 import com.twojo.auth.SessionRevoker;
 import com.twojo.auth.dto.ChangePasswordRequest;
 import com.twojo.auth.dto.ExecutePasswordResetRequest;
@@ -31,10 +32,13 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p>member 테이블은 MemberCommand로만 건드린다. 직접 참조하면 SessionRevoker가
  * 반대 방향(member -> auth)이라 모듈 순환이 되고 CI가 막는다.
+ *
+ * <p>가입 승인의 최초 설정 링크({@link InitialPasswordSetup})도 여기가 낸다. 발급 절차가
+ * 재설정과 같은 테이블·같은 활성 1개 제약을 쓰므로, 클래스를 나누면 그 규칙이 두 벌이 된다.
  */
 @Service
 @Transactional
-public class PasswordService {
+public class PasswordService implements InitialPasswordSetup {
 
     /** 메일 본문은 프론트를 거치지 않는 최종 표시물이라 서버가 KST로 바꿔 넣는다. */
     private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
@@ -123,18 +127,9 @@ public class PasswordService {
         MemberQuery.AuthCredential found = credential.get();
         UUID memberId = found.id();
 
-        // 구성원당 활성 토큰 1개 — 첫 요청이면 여기서 아무 일도 일어나지 않는다
-        passwordResetTokenRepository
-                .findByMemberIdAndStatus(memberId, PasswordResetToken.Status.ACTIVE)
-                .ifPresent(PasswordResetToken::expire);
-
-        // 만료 UPDATE를 먼저 내보낸다. Hibernate는 INSERT를 UPDATE보다 앞에 내보내므로
-        // 이 줄이 없으면 새 ACTIVE가 먼저 들어가 활성 1개 제약에 걸린다
-        passwordResetTokenRepository.flush();
-
         String rawToken = secureTokenFactory.generate();
-        PasswordResetToken issued = passwordResetTokenRepository.save(PasswordResetToken.issue(
-                memberId, PasswordResetToken.Purpose.RESET, secureTokenFactory.hash(rawToken), now));
+        PasswordResetToken issued =
+                issueToken(memberId, PasswordResetToken.Purpose.RESET, rawToken, now);
 
         // refId는 방금 저장한 토큰 id다. 재요청마다 새 토큰이라 메일 기록도 매번 새로 생긴다 —
         // 이전 링크는 이미 만료됐고 새 링크가 나가야 하므로 덮어쓰지 않는 쪽이 맞다
@@ -170,6 +165,44 @@ public class PasswordService {
     }
 
     /**
+     * 최초 설정 링크 (ON-07 · Q-33·34) — 승인이 만든 계정에 7일짜리 토큰을 낸다.
+     *
+     * <p>메일을 보내지 않고 링크만 돌려주는 이유는 {@link InitialPasswordSetup}에 적었다 —
+     * 승인 통보 템플릿의 {@code refId}가 신청서 id라 auth가 조립할 수 없다.
+     *
+     * <p>호출자의 트랜잭션에서 돈다. 승인이 롤백되면 이 토큰도 함께 사라져야 한다 —
+     * 계정 없는 설정 링크가 살아남으면 링크를 여는 순간 데이터 이상으로 터진다.
+     */
+    @Override
+    public SetupLink issueLink(UUID memberId, Instant now) {
+        String rawToken = secureTokenFactory.generate();
+        PasswordResetToken issued =
+                issueToken(memberId, PasswordResetToken.Purpose.INITIAL_SETUP, rawToken, now);
+
+        return new SetupLink(link(rawToken), issued.getExpiresAt());
+    }
+
+    /**
+     * 활성 토큰 1개를 지키며 새로 발급한다 — 재설정(30분)과 최초 설정(7일)이 공유한다.
+     *
+     * <p>수명은 {@code purpose}가 정하므로 여기서는 갈리지 않는다.
+     */
+    private PasswordResetToken issueToken(UUID memberId, PasswordResetToken.Purpose purpose,
+                                          String rawToken, Instant now) {
+        // 구성원당 활성 토큰 1개 — 첫 발급이면 여기서 아무 일도 일어나지 않는다
+        passwordResetTokenRepository
+                .findByMemberIdAndStatus(memberId, PasswordResetToken.Status.ACTIVE)
+                .ifPresent(PasswordResetToken::expire);
+
+        // 만료 UPDATE를 먼저 내보낸다. Hibernate는 INSERT를 UPDATE보다 앞에 내보내므로
+        // 이 줄이 없으면 새 ACTIVE가 먼저 들어가 활성 1개 제약에 걸린다
+        passwordResetTokenRepository.flush();
+
+        return passwordResetTokenRepository.save(PasswordResetToken.issue(
+                memberId, purpose, secureTokenFactory.hash(rawToken), now));
+    }
+
+    /**
      * 메일 중복 발송을 막는 키에 이 값이 들어간다 — 같은 사람이 다른 표기로 오면 다른 사람이 된다.
      *
      * <p>실제로 일하는 것은 소문자 변환이다. 공백이 붙은 값은 요청 DTO의 @Email이 먼저 막아
@@ -191,7 +224,15 @@ public class PasswordService {
      */
     private String renderBody(String rawToken, Instant expiresAt) {
         return MAIL_BODY
-                .replace("{link}", passwordResetBaseUrl + "?token=" + rawToken)
+                .replace("{link}", link(rawToken))
                 .replace("{expiresAt}", EXPIRES_AT_FORMAT.format(expiresAt.atZone(SEOUL)));
+    }
+
+    /**
+     * 재설정과 최초 설정이 같은 화면으로 간다 — 실행 엔드포인트가 하나이기 때문이다
+     * (07 §A 각주 1). 링크만 보고 둘을 구별할 수 없는 것이 맞다.
+     */
+    private String link(String rawToken) {
+        return passwordResetBaseUrl + "?token=" + rawToken;
     }
 }

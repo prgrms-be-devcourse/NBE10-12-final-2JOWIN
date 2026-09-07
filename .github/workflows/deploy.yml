@@ -1,0 +1,213 @@
+# 백엔드 배포 (이슈 #93)
+#
+# 원칙: Actions 는 EC2 에 직접 붙지 않는다.
+#   이미지는 ECR 로, 명령은 SSM 으로 간다. SSH 키도 인바운드 22번도 없다.
+#
+# 승인 게이트가 보안 장치이기도 하다. 배포 역할의 신뢰 조건이
+# repo:<org>/<repo>:environment:prod 라서, 승인 전에는 OIDC 토큰 자체가
+# 발급되지 않는다. 브랜치 보호가 '코드가 들어오는 것'을 막는다면
+# 이건 'AWS 를 만지는 것'을 막는다.
+#
+# 설계 근거: cd.md
+name: deploy
+
+on:
+  push:
+    branches: [develop]
+    paths:
+      - 'backend/**'
+      - 'infra/prod/docker/**'
+      - '.github/workflows/deploy.yml'
+  workflow_dispatch:
+    inputs:
+      config_only:
+        description: '이미지를 바꾸지 않고 설정만 다시 내린다'
+        type: boolean
+        default: false
+
+concurrency:
+  # 진행 중인 배포를 취소하면 EC2 가 어중간한 상태로 남는다 —
+  # 이미지는 새 것인데 헬스체크·롤백이 끝나지 않은 상태.
+  # 취소가 아니라 줄 세우기여야 한다.
+  group: deploy-prod
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: ap-northeast-2
+  ECR_REPOSITORY: 2jo/backend
+  PROJECT_TAG: '2jo'
+  POLL_INTERVAL: '5'
+  # 최악 케이스 230초(pull 30 + up 10 + health 90 + 롤백 10 + health 90)에
+  # 여유 70초. aws ssm wait 는 기본 100초라 부족해서 직접 돈다.
+  POLL_TIMEOUT: '300'
+
+jobs:
+  preflight:
+    name: preflight
+    runs-on: ubuntu-latest
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+    steps:
+      # 시크릿이 없으면 조용히 스킵한다. bootstrap apply 전에 develop 에
+      # 백엔드 커밋이 들어올 때마다 빨간불이 뜨면 안 된다.
+      - id: gate
+        env:
+          HAS_ROLE: ${{ secrets.AWS_GHA_DEPLOY_ROLE_ARN != '' }}
+        run: echo "ready=${HAS_ROLE}" >> "$GITHUB_OUTPUT"
+
+  deploy:
+    name: deploy
+    needs: preflight
+    if: needs.preflight.outputs.ready == 'true'
+
+    # 이미지가 arm64(t4g Graviton)다. 이 레포는 퍼블릭이라 GitHub arm64
+    # 러너를 무료로 쓸 수 있다 — QEMU 에뮬레이션보다 훨씬 빠르다.
+    # 러너를 못 쓰게 되면 ubuntu-latest + docker/setup-qemu-action 으로 되돌린다.
+    runs-on: ubuntu-24.04-arm
+
+    # 승인 게이트. 승인 전에는 job 이 시작되지 않고 토큰도 발급되지 않는다.
+    environment: prod
+
+    permissions:
+      contents: read
+      id-token: write # OIDC
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: gradle/actions/setup-gradle@v4
+
+      # CI 가 PR 에서 이미 테스트까지 통과시켰다. 여기서는 jar 만 만든다.
+      - name: bootJar
+        if: ${{ !inputs.config_only }}
+        working-directory: backend
+        run: ./gradlew bootJar
+
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_GHA_DEPLOY_ROLE_ARN }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - id: ecr
+        name: ECR 로그인
+        run: |
+          set -euo pipefail
+          account="$(aws sts get-caller-identity --query Account --output text)"
+          registry="${account}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          echo "registry=${registry}" >> "$GITHUB_OUTPUT"
+          echo "image=${registry}/${ECR_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+          aws ecr get-login-password --region "$AWS_REGION" \
+            | docker login --username AWS --password-stdin "$registry"
+
+      # 태그는 git SHA 뿐이다. latest 를 쓰지 않아 ECR 이 IMMUTABLE 일 수 있고,
+      # 그래서 "직전 SHA 로 롤백"이 언제나 같은 이미지를 가리킨다.
+      - name: 이미지 빌드 · push
+        if: ${{ !inputs.config_only }}
+        run: |
+          set -euo pipefail
+          docker build \
+            -f infra/prod/docker/backend.Dockerfile \
+            -t "${{ steps.ecr.outputs.image }}" \
+            backend/
+          docker push "${{ steps.ecr.outputs.image }}"
+
+      - id: send
+        name: SSM 으로 deploy.sh 실행
+        run: |
+          set -euo pipefail
+          if [ "${{ inputs.config_only }}" = "true" ]; then
+            cmd="/opt/2jo/scripts/deploy.sh"
+          else
+            cmd="/opt/2jo/scripts/deploy.sh '${{ steps.ecr.outputs.image }}'"
+          fi
+
+          # 인스턴스 ID 를 몰라도 된다. 태그로 대상을 지정하면 배포 역할에
+          # ec2:DescribeInstances 를 주지 않아도 된다.
+          id="$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --targets "Key=tag:Project,Values=${PROJECT_TAG}" \
+            --comment "deploy ${GITHUB_SHA:0:7}" \
+            --timeout-seconds 600 \
+            --parameters "commands=[\"$cmd\"],executionTimeout=[\"600\"]" \
+            --region "$AWS_REGION" \
+            --query 'Command.CommandId' --output text)"
+          echo "command_id=${id}" >> "$GITHUB_OUTPUT"
+          echo "명령 ID: ${id}"
+
+      - id: poll
+        name: 결과 폴링
+        run: |
+          set -euo pipefail
+          elapsed=0
+          status="Pending"
+          rc="-1"
+
+          while [ "$elapsed" -lt "$POLL_TIMEOUT" ]; do
+            read -r status rc < <(
+              aws ssm list-command-invocations \
+                --command-id "${{ steps.send.outputs.command_id }}" \
+                --details --region "$AWS_REGION" \
+                --query 'CommandInvocations[0].[Status,ResponseCode]' \
+                --output text
+            ) || true
+
+            case "$status" in
+              Success|Failed|Cancelled|TimedOut) break ;;
+            esac
+
+            sleep "$POLL_INTERVAL"
+            elapsed=$((elapsed + POLL_INTERVAL))
+          done
+
+          echo "--- 서버 출력 ---"
+          aws ssm list-command-invocations \
+            --command-id "${{ steps.send.outputs.command_id }}" \
+            --details --region "$AWS_REGION" \
+            --query 'CommandInvocations[0].CommandPlugins[0].Output' \
+            --output text || true
+
+          echo "status=${status}" >> "$GITHUB_OUTPUT"
+          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+
+          # 타임아웃이면 추가 명령을 보내지 않는다. EC2 가 아직 롤백 중일 수
+          # 있고, 거기에 새 명령을 얹으면 상태가 더 꼬인다.
+          if [ "$elapsed" -ge "$POLL_TIMEOUT" ]; then
+            echo "::error::${POLL_TIMEOUT}초 안에 끝나지 않았다. SSM 으로 서버 상태를 확인할 것 (추가 명령은 보내지 않았다)"
+            exit 1
+          fi
+
+      # deploy.sh 의 종료 코드가 그대로 메시지가 된다.
+      # 분기 로직을 워크플로에 다시 쓰지 않는다.
+      - name: Discord 통보
+        if: always() && steps.send.outputs.command_id != ''
+        env:
+          DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
+          RC: ${{ steps.poll.outputs.rc }}
+          SHA: ${{ github.sha }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          [ -n "${DISCORD_WEBHOOK_URL:-}" ] || { echo "웹훅 없음 — 알림 생략"; exit 0; }
+
+          short="${SHA:0:7}"
+          case "$RC" in
+            0) title="배포 성공"        ; desc="${short} 반영 완료"                                   ; color=5763719  ;;
+            2) title="배포 실패 — 롤백됨"; desc="${short} 배포가 실패해 직전 이미지로 되돌렸다. 서비스는 정상." ; color=16705372 ;;
+            1) title="배포 실패"        ; desc="${short} 실패. 롤백 대상이 없다(최초 배포). 수동 확인 필요." ; color=15548997 ;;
+            3) title="배포 실패 + 롤백 실패"; desc="서비스가 정상이 아니다. 즉시 확인 필요. 시도: ${short}"  ; color=10038562 ;;
+            75) echo "다른 배포가 진행 중이었다 — 알림 생략"; exit 0 ;;
+            *) title="배포 결과 불명"   ; desc="종료 코드 ${RC}. 로그를 확인할 것."                    ; color=10038562 ;;
+          esac
+
+          jq -n --arg t "$title" --arg d "$desc
+          $RUN_URL" --argjson c "$color" \
+            '{embeds:[{title:$t,description:$d,color:$c}]}' \
+            | curl -sS -X POST "$DISCORD_WEBHOOK_URL" \
+                -H "Content-Type: application/json" -d @-

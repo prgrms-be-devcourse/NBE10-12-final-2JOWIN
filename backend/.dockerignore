@@ -1,0 +1,12 @@
+# 빌드 컨텍스트에서 제외할 것.
+# 없으면 backend/build/ 가 통째로 실려 수백 MB 가 데몬으로 전송된다.
+#
+# 주의: Dockerfile 이 build/libs/*.jar 를 COPY 하므로 그것만 다시 열어준다.
+#       (도커는 마지막에 일치한 패턴이 이긴다 — git 과 다르다)
+build/**
+!build/libs/*.jar
+
+.gradle/
+.git/
+.github/
+*.md

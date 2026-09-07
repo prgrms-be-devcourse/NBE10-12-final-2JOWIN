@@ -70,8 +70,8 @@ class NotificationPersistenceIntegrationTest {
         String businessNo = applicationId.toString().substring(0, 13);
         String email = "noti-" + memberId + "@twojo.test";
 
-        jdbc.update("insert into application (id, company_name, business_no, email, status)"
-                + " values (?, ?, ?, ?, 'APPROVED')", applicationId, "한빛오피스", businessNo, email);
+        jdbc.update("insert into application (id, company_name, business_no, email, applicant_name, status)"
+                + " values (?, ?, ?, ?, '김서연', 'APPROVED')", applicationId, "한빛오피스", businessNo, email);
         jdbc.update("insert into company (id, application_id, name, business_no, status)"
                 + " values (?, ?, ?, ?, 'ACTIVE')", companyId, applicationId, "한빛오피스", businessNo);
         jdbc.update("insert into member (id, company_id, email, name, role, status)"

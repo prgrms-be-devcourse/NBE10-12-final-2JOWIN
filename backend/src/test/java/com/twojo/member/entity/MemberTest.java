@@ -3,6 +3,7 @@ package com.twojo.member.entity;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.util.UUID;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
@@ -33,5 +34,27 @@ class MemberTest {
         // then — 두 컬럼이 함께 채워진다
         assertThat(member.getPasswordHash()).isEqualTo("$2a$10$K7LmQz9");
         assertThat(member.getPasswordChangedAt()).isEqualTo(변경_시각);
+    }
+
+    /**
+     * Q-33 · 전이표 §1 — 승인은 계정만 만들고 비밀번호는 본인이 링크로 정한다.
+     *
+     * <p>해시가 비어 있는 것이 로그인 차단의 근거다. 여기에 임의의 값이라도 들어가면
+     * 그 값을 아는 경로가 생기는 셈이고, 설정 링크를 받기 전에 로그인이 뚫린다.
+     *
+     * <p>{@code passwordChangedAt}도 비어야 한다 — 최초 설정이 곧 첫 변경 시점이라
+     * 그때 찍힌다. 지금으로 찍으면 "이 시각 이후 토큰만 유효"의 기준이 거짓이 된다.
+     */
+    @Test
+    void 가입_승인으로_생긴_관리자_계정은_비밀번호가_없다() {
+        // given, when — 한빛오피스의 신청이 승인되어 김서연 계정이 만들어지면
+        Member 김서연 = Member.companyAdmin(
+                UUID.randomUUID(), "seoyeon@hanbit.co.kr", "김서연");
+
+        // then — 계정은 활성이지만 비밀번호를 아직 갖지 않는다
+        assertThat(김서연.isActive()).isTrue();
+        assertThat(김서연.hasPassword()).isFalse();
+        assertThat(김서연.getPasswordHash()).isNull();
+        assertThat(김서연.getPasswordChangedAt()).isNull();
     }
 }

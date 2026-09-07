@@ -20,3 +20,70 @@ skip-check:
   # CKV2_AWS_62  이벤트 알림 — 알림을 받을 SNS/Lambda 가 필요하다.
   #              상태 변경은 CI 로그로 추적된다
   - CKV2_AWS_62
+
+  # ── cost-guard 모듈 (#89) ─────────────────────────────────────
+  # SNS · CloudWatch
+  # CKV_AWS_26   SNS KMS 암호화 — aws/sns 관리형 키를 쓰면 Budgets 가 이 토픽에
+  #              publish 할 때 kms 권한을 못 받아 알림 경로가 통째로 끊긴다.
+  #              고객 관리형 키는 월 $1. 흐르는 건 비용 숫자뿐이라 개인정보 없음
+  - CKV_AWS_26
+  # CKV_AWS_338  로그 1년 보존 — 4주 프로젝트다. 7일로 충분하고 그 이상은 요금
+  - CKV_AWS_338
+  # CKV_AWS_158  로그 그룹 KMS — 위와 같은 이유 (월 $1)
+  - CKV_AWS_158
+
+  # Lambda (discord_relay 하나뿐)
+  # CKV_AWS_117  Lambda 를 VPC 안에 — VPC 안에서 Discord 로 나가려면 NAT Gateway
+  #              가 필요하다. 월 $32 로 예산의 56% — 우리 가드레일이 막는 바로 그것
+  - CKV_AWS_117
+  # CKV_AWS_116  DLQ — 알림 한 건을 잃는 대가로 SQS 를 붙이지 않는다.
+  #              Budgets 알림과 일일 잡이 겹쳐 있어 단일 실패로 감시가 사라지지 않는다
+  - CKV_AWS_116
+  # CKV_AWS_173  환경변수 암호화 — 값은 SSM "경로" 문자열이다. 비밀이 아니다.
+  #              실제 웹훅 URL 은 SecureString 으로 런타임에 읽는다
+  - CKV_AWS_173
+  # CKV_AWS_50   X-Ray — 추적 비용이 붙는다. 함수 하나짜리 릴레이에 과하다
+  - CKV_AWS_50
+  # CKV_AWS_272  코드 서명 — 서명 프로파일을 따로 운영해야 한다. 4주 프로젝트에 과하다
+  - CKV_AWS_272
+
+  # IAM
+  # CKV_AWS_40   정책을 사용자에 직접 부착 — 의도한 것이다. 역할에만 붙이면
+  #              콘솔에서 사람이 직접 만드는 경로가 열린 채로 남는다 (§3.1)
+  - CKV_AWS_40
+  # CKV_AWS_111  · CKV_AWS_356  Resource "*" 인 쓰기 액션
+  #              남은 것은 전부 리소스를 좁힐 수 없는 액션이다 —
+  #              ssm:StartAutomationExecution(실행 ID 가 실행 시점 결정),
+  #              ec2:Describe*(리소스 수준 권한 미지원),
+  #              kms:Decrypt(kms:ViaService 조건으로 이미 SSM 경유만 허용).
+  #              좁힐 수 있는 것은 전부 좁혔다 — ec2:StopInstances 는 태그 조건,
+  #              iam:AttachRolePolicy 는 대상 역할 + PolicyARN 조건
+  - CKV_AWS_111
+  - CKV_AWS_356
+
+  # ── network · storage 모듈 (#90) ──────────────────────────────
+  # CKV_AWS_260  0.0.0.0/0 -> 80 — 공개 웹 서버다. Let's Encrypt HTTP-01
+  #              챌린지와 HTTPS 리다이렉트에 필요하다. Caddy 가 443 으로 넘긴다
+  - CKV_AWS_260
+  # CKV_AWS_130  서브넷 기본 공인 IP — NAT 가 없어서 공인 IP 가 없으면
+  #              cloud-init 이 인터넷에 못 닿는다. NAT 는 월 $32
+  - CKV_AWS_130
+  # CKV_AWS_136  ECR KMS 암호화 — AES256 로 간다. KMS 는 키당 월 $1
+  - CKV_AWS_136
+  # CKV2_AWS_11  VPC 플로우 로그 — 인스턴스 1대에 로그 수집·보관 비용이 붙는다.
+  #              열린 포트가 80·443 뿐이고 SSH 도 없어서 얻는 정보가 적다
+  - CKV2_AWS_11
+  # CKV2_AWS_5   SG 가 아무 리소스에도 안 붙음 — 오탐이다.
+  #              실제로는 module.network 출력 -> module.compute 변수 ->
+  #              aws_instance.vpc_security_group_ids 로 붙어 있는데,
+  #              checkov 가 모듈 경계를 넘는 변수 참조를 따라가지 못한다.
+  #              #91 에서 EC2 를 붙인 뒤 skip 을 지워보고 그대로 남아 확인했다
+  - CKV2_AWS_5
+
+  # ── compute 모듈 (#91) ────────────────────────────────────────
+  # CKV_AWS_126  상세 모니터링(1분 간격 CloudWatch) — 지표당 요금이 붙는다.
+  #              같은 지표를 node_exporter + Prometheus 로 이미 무료로 본다
+  - CKV_AWS_126
+  # CKV_AWS_135  EBS 최적화 — t4g 는 Nitro 라 항상 켜져 있고 끌 수도 없다.
+  #              속성을 명시해도 동작이 달라지지 않는 무의미한 선언이 된다
+  - CKV_AWS_135

@@ -58,9 +58,10 @@ export const adminHandlers = [
     await delay(120)
     const url = new URL(request.url)
     const status = url.searchParams.get('status')
+    // 심사 대기열이라 오래된 것이 위다 — 서버 기본 정렬 createdAt ASC (AdminApplicationController, #108)
     const list = db.applications
       .filter((a) => !status || a.status === status)
-      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt))
     return HttpResponse.json(paged(list, url))
   }),
 
@@ -113,7 +114,8 @@ export const adminHandlers = [
     if (denied) return denied
     await delay(120)
     const url = new URL(request.url)
-    const list = db.companies.slice().sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+    // 찾는 대상이라 이름순 — 서버 기본 정렬 name ASC (AdminCompanyController, #108)
+    const list = db.companies.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko'))
     return HttpResponse.json(paged(list, url))
   }),
 

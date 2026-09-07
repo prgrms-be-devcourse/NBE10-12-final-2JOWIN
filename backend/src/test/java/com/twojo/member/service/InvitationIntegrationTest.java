@@ -67,8 +67,8 @@ class InvitationIntegrationTest {
         초대이메일 = "newbie-" + 김서연 + "@twojo.test";
 
         jdbc.update("""
-                insert into application (id, company_name, business_no, email, status)
-                values (?, ?, ?, ?, 'APPROVED')
+                insert into application (id, company_name, business_no, email, applicant_name, status)
+                values (?, ?, ?, ?, '김서연', 'APPROVED')
                 """, applicationId, "한빛오피스", businessNo, 관리자이메일);
         jdbc.update("""
                 insert into company (id, application_id, name, business_no, status)
@@ -87,6 +87,8 @@ class InvitationIntegrationTest {
         jdbc.update("delete from refresh_token where member_id in (select id from member where company_id = ?)",
                 companyId);
         jdbc.update("delete from login_attempt where email = ?", 초대이메일);
+        // 초대가 안내 메일을 예약하므로(NT-01) 회사를 참조하는 발송 기록이 남는다 — 회사보다 먼저 지운다
+        jdbc.update("delete from email_log where company_id = ?", companyId);
         jdbc.update("delete from invitation where company_id = ?", companyId);
         jdbc.update("delete from member where company_id = ?", companyId);
         jdbc.update("delete from company where id = ?", companyId);

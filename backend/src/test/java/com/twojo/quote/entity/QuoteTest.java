@@ -6,6 +6,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.quote.entity.Quote.VatMode;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -21,7 +22,7 @@ class QuoteTest {
     @Test
     @DisplayName("작성 시작하면 DRAFT · 부가세 별도 · 금액 0원이다 (QT-01, Q-16)")
     void 작성_시작() {
-        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID());
+        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001", LocalDate.now().plusDays(30));
 
         assertThat(quote.getStatus()).isEqualTo(Quote.Status.DRAFT);
         assertThat(quote.getVatMode()).isEqualTo(VatMode.EXCLUDED);
@@ -39,7 +40,7 @@ class QuoteTest {
     @Test
     @DisplayName("항목을 교체하면 공급가액이 항목 합계로 재계산된다 (QT-02~08)")
     void 항목_교체시_재계산() {
-        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID());
+        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001", LocalDate.now().plusDays(30));
 
         quote.replaceItems(List.of(
                 item("1600 사무책상", 2, 240_000L, 0),   // 480,000
@@ -54,7 +55,7 @@ class QuoteTest {
     @Test
     @DisplayName("항목 교체는 누적이 아니라 전체 대체다 — 기존 항목은 사라진다")
     void 항목_교체는_전체_대체() {
-        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID());
+        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001", LocalDate.now().plusDays(30));
         quote.replaceItems(List.of(item("파티션", 10, 90_000L, 0)));
 
         quote.replaceItems(List.of(item("회의 테이블", 1, 350_000L, 0)));
@@ -63,18 +64,23 @@ class QuoteTest {
         assertThat(quote.getSupplyAmount()).isEqualTo(350_000L);
     }
 
+    /**
+     * Q-46 — 예전에는 여기서 세포함 역산(900,000 → 공급가액 818,182)을 기대했다.
+     * 그 방식은 QT-22("부가세는 <b>공급가액으로부터</b> 계산된다")와 어긋나서 폐기했다.
+     * 근거는 {@code QuoteAmounts} javadoc과 03 §3 Q-46에 있다.
+     */
     @Test
-    @DisplayName("부가세 포함으로 바꾸면 같은 항목 합계를 세포함으로 다시 해석한다 (QT-23)")
-    void 부가세_모드_변경시_재계산() {
-        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID());
+    @DisplayName("부가세 포함으로 바꿔도 금액은 그대로다 — vat_mode는 표시 기준이다 (Q-46)")
+    void 부가세_모드_변경은_금액을_바꾸지_않는다() {
+        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001", LocalDate.now().plusDays(30));
         quote.replaceItems(List.of(item("패브릭 소파", 2, 450_000L, 0)));   // 900,000
 
         quote.changeVatMode(VatMode.INCLUDED);
 
-        assertThat(quote.getTotalAmount()).isEqualTo(900_000L);
-        assertThat(quote.getSupplyAmount()).isEqualTo(818_182L);   // 900,000 / 1.1 반올림
-        assertThat(quote.getVatAmount()).isEqualTo(81_818L);
-        assertThat(quote.getSupplyAmount() + quote.getVatAmount()).isEqualTo(quote.getTotalAmount());
+        assertThat(quote.getVatMode()).isEqualTo(VatMode.INCLUDED);   // 플래그만 바뀐다
+        assertThat(quote.getSupplyAmount()).isEqualTo(900_000L);      // 단가는 항상 세전
+        assertThat(quote.getVatAmount()).isEqualTo(90_000L);
+        assertThat(quote.getTotalAmount()).isEqualTo(990_000L);
     }
 
     @Test
@@ -94,7 +100,7 @@ class QuoteTest {
     @Test
     @DisplayName("단가 0원 항목은 허용한다 (Q-02 — 할인 대신 단가 조정)")
     void 단가_0원_허용() {
-        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID());
+        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001", LocalDate.now().plusDays(30));
 
         quote.replaceItems(List.of(item("설치 서비스", 1, 0L, 0)));
 
@@ -126,7 +132,7 @@ class QuoteTest {
      * TODO: 발송 구현 이슈에서 {@code quote.send(...)} 로 교체한다.
      */
     private static Quote sentQuote() {
-        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID());
+        Quote quote = Quote.draft(UUID.randomUUID(), UUID.randomUUID(), "Q-2609-001", LocalDate.now().plusDays(30));
         quote.replaceItems(List.of(item("메쉬 의자", 1, 100_000L, 0)));
         try {
             var field = Quote.class.getDeclaredField("status");

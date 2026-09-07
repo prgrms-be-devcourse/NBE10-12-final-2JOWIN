@@ -80,7 +80,7 @@ class MailCommandImplTest {
     }
 
     @Test
-    @DisplayName("SIGNUP_APPROVED가 아닌데 companyId가 null이면 예외를 전파한다 (계약: 그 외는 값 필수)")
+    @DisplayName("플랫폼 발송 타입이 아닌데 companyId가 null이면 예외를 전파한다 (계약: 그 외는 값 필수)")
     void companyId_null이면_예외() {
         assertThatThrownBy(() -> mailCommand.schedule(
                 MailCommand.TemplateType.QUOTE_SENT, null, "a@b.com", REF_ID, "제목", "본문"))
@@ -95,5 +95,17 @@ class MailCommandImplTest {
         mailCommand.schedule(MailCommand.TemplateType.SIGNUP_APPROVED, null, "a@b.com", REF_ID, "제목", "본문");
 
         verify(emailLogRepository).save(any(EmailLog.class));
+    }
+
+    @Test
+    @DisplayName("SIGNUP_REJECTED도 companyId가 null이어도 예약된다 (플랫폼 발송, NT-13 반려분)")
+    void SIGNUP_REJECTED는_companyId_null_허용() {
+        givenSaveStampsId();
+
+        mailCommand.schedule(MailCommand.TemplateType.SIGNUP_REJECTED, null, "a@b.com", REF_ID, "제목", "본문");
+
+        ArgumentCaptor<EmailLog> saved = ArgumentCaptor.forClass(EmailLog.class);
+        verify(emailLogRepository).save(saved.capture());
+        assertThat(saved.getValue().getRefType()).isEqualTo("APPLICATION");
     }
 }

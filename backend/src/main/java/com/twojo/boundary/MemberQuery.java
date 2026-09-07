@@ -51,6 +51,17 @@ public interface MemberQuery {
      */
     MemberContact getContact(UUID memberId);
 
+    /**
+     * 회사별 구성원 수 — 플랫폼 관리자의 회사 목록 "이용 현황" (ON-12 · Q-41).
+     *
+     * <p>비활성 구성원도 센다. 07 §A가 세는 대상을 좁히지 않고, 회사 목록(MB-07)도
+     * 비활성을 함께 보여준다 — 두 화면의 수가 갈리면 어느 쪽이 맞는지 알 수 없다.
+     *
+     * <p>{@link #findAllActive}로 세지 않는 이유는 목록이 회사 수만큼 반복 호출되기
+     * 때문이다. 행을 실어 나르지 않고 수만 센다.
+     */
+    int countByCompany(UUID companyId);
+
     record MemberSummary(UUID id, String name, boolean active) {}
 
     /** 열람 페이지에 표시할 담당자 연락처 (AP-18). 세 필드 전부 표시용이며 판정에 쓰지 않는다. */

@@ -66,6 +66,29 @@ public class Member extends BaseTimeEntity {
         return member;
     }
 
+    /**
+     * 가입 승인으로 생기는 회사의 첫 기업 관리자 (ON-07).
+     *
+     * <p>{@code passwordHash}·{@code passwordChangedAt}이 둘 다 NULL이다 — 아직 설정 전이고
+     * (Q-33), 최초 설정이 곧 첫 변경 시점이라 그때 함께 찍힌다. {@link #invited}가 지금으로
+     * 찍는 것은 그쪽은 수락하며 비밀번호를 정하기 때문이다.
+     *
+     * <p>{@code passwordChangedAt}이 NULL인 동안 access token은 발급되지 않는다 —
+     * 비밀번호가 없으면 로그인 자체를 통과하지 못한다.
+     *
+     * <p>이름은 신청서의 신청자 이름이다 (08 v1.6.11). 전화번호는 받지 않는다 —
+     * 신청서에 없고, 본인이 프로필 수정(AU-07)으로 채운다.
+     */
+    public static Member companyAdmin(UUID companyId, String email, String name) {
+        Member member = new Member();
+        member.companyId = companyId;
+        member.email = email;
+        member.name = name;
+        member.role = Role.COMPANY_ADMIN;
+        member.status = Status.ACTIVE;
+        return member;
+    }
+
     /** 비활성 구성원은 로그인·재발급 모두 차단 — 권한 이전에 인증에서 막는다 (MB-10). */
     public boolean isActive() {
         return status == Status.ACTIVE;

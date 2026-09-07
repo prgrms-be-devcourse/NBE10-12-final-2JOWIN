@@ -1,0 +1,20 @@
+# 줄바꿈 규약
+#
+# 서버로 나가는 파일에 CRLF 가 섞이면 리눅스에서 조용히 깨진다.
+# 셸 스크립트는 첫 줄이 "#!/bin/bash\r" 로 읽혀 기동 자체가 실패한다.
+#
+# 지금은 각자의 core.autocrlf 설정 덕에 LF 로 들어가고 있는데,
+# 그건 사람 설정에 기대는 것이다. 여기서 강제한다.
+#
+# 범위를 인프라·CI 로 한정했다. 레포 전체에 거는 것은 팀 합의 사항이라
+# 나 혼자 정할 일이 아니다.
+
+infra/**/*.sh        text eol=lf
+infra/**/*.yml       text eol=lf
+infra/**/*.yaml      text eol=lf
+infra/**/*.tf        text eol=lf
+infra/**/*.hcl       text eol=lf
+infra/**/*.py        text eol=lf
+infra/**/Caddyfile   text eol=lf
+infra/**/*.Dockerfile text eol=lf
+.github/**/*.yml     text eol=lf

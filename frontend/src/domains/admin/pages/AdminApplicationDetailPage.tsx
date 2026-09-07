@@ -59,9 +59,10 @@ export function AdminApplicationDetailPage() {
         }
       />
 
-      <Grid columns={{ initial: '1', sm: '3' }} gap="3" mb="5">
+      <Grid columns={{ initial: '1', sm: '2', md: '4' }} gap="3" mb="5">
         <InfoCard label="회사명" value={application.companyName} />
         <InfoCard label="사업자등록번호" value={application.businessNo} mono />
+        <InfoCard label="신청자 (기업 관리자 이름)" value={application.applicantName} />
         <InfoCard label="이메일 (기업 관리자 계정)" value={application.email} />
       </Grid>
 

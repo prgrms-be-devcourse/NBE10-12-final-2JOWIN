@@ -1,0 +1,18 @@
+# 알림 목적지 — Discord #infra-alert.
+# 비용 알림·배포 알림과 같은 채널이다. 채널을 늘리면 어디를 봐야 할지 흩어진다.
+#
+# 웹훅 URL 은 여기 적지 않는다. .env 에서 온 환경변수를 참조한다 —
+# 값은 SSM SecureString 에 있고 저장소에는 남지 않는다.
+
+apiVersion: 1
+
+contactPoints:
+  - orgId: 1
+    name: discord-infra
+    receivers:
+      - uid: discord-infra
+        type: discord
+        settings:
+          url: ${DISCORD_WEBHOOK_URL}
+          title: '{{ template "default.title" . }}'
+        disableResolveMessage: false

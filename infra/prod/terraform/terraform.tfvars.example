@@ -1,0 +1,15 @@
+# 복사해서 terraform.tfvars 로 쓴다. terraform.tfvars 는 커밋되지 않는다.
+#
+# 전부 variables.tf 에 기본값이 있다. 기본값 그대로 쓸 거면 이 파일이 필요 없다.
+#
+# init 은 버킷 이름을 따로 넣어야 한다 (계정 ID 가 들어가서 코드에 못 박는다):
+#   terraform init -backend-config="bucket=2jo-tfstate-<계정ID>"
+
+# 100% 도달 시 정지할 인스턴스. compute 모듈 apply 후에 채운다.
+# stop_instance_ids = ["i-0abc123def456"]
+
+# 계정이 Organizations 멤버라 Budget Action 생성이 거부되면 false 로 내린다.
+# enable_budget_actions = false
+
+# 콘솔에서 직접 리소스를 만드는 경로까지 막으려면 IAM 사용자명을 넣는다.
+# developer_user_names = ["jomin4"]
