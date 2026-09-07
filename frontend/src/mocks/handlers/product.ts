@@ -10,7 +10,9 @@ import type { CreateProductRequest, ProductResponse, UpdateProductRequest } from
 
 const adminOnly = (request: Request) => (currentMember(request).role === 'COMPANY_ADMIN' ? null : error('FORBIDDEN'))
 const find = (id: string) => db.products.find((p) => p.id === id)
-const duplicated = (name: string, exceptId?: string) => db.products.some((p) => p.id !== exceptId && p.name.trim().toLowerCase() === name.trim().toLowerCase())
+// 서버(ProductService)와 DB UNIQUE(company_id, name)는 정확히 같은 문자열만 중복으로 본다 — 대소문자·앞뒤 공백을 무시하지 않는다.
+// 화면(ProductFormDialog)이 trim해서 보내므로 여기서도 trim만 하고 대소문자는 그대로 비교한다.
+const duplicated = (name: string, exceptId?: string) => db.products.some((p) => p.id !== exceptId && p.name === name.trim())
 
 export const productHandlers = [
   http.get('/api/v1/products', async ({ request }) => {
