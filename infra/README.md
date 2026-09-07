@@ -46,8 +46,8 @@ docker compose -f infra/dev/docker-compose.yml up -d
 
 | 모듈 | 만드는 것 |
 | --- | --- |
-| `network/` | VPC · 퍼블릭 서브넷 · IGW · 보안그룹(80/443만) — NAT Gateway 없음 |
-| `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(SSM) · cloud-init |
+| `network/` | VPC · 퍼블릭 서브넷 · IGW · 보안그룹(상시 80/443만) — NAT Gateway 없음 |
+| `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(ECR·S3만) · 키페어 · cloud-init |
 | `storage/` | ECR(수명주기 10개) · S3 백업 버킷(수명주기 7일) |
 | `mail/` | SES 도메인 인증 · DKIM · 발송 IAM |
 
