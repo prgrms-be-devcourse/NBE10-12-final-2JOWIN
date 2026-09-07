@@ -63,7 +63,9 @@ resource "aws_instance" "main" {
   }
 
   tags = {
-    Name = "${var.project}-prod"
+    # 컴포넌트는 역할로 적는다. "prod" 는 환경이지 컴포넌트가 아니다 —
+    # 계정을 여러 팀이 공유하므로 콘솔에서 무엇을 하는 서버인지 보여야 한다.
+    Name = "${var.project}-api"
     # cost-guard 의 일일 잡이 이 태그로 정지 대상을 찾는다.
     # 이름을 바꾸면 백스톱이 조용히 아무것도 못 멈추게 된다.
     Project = var.project

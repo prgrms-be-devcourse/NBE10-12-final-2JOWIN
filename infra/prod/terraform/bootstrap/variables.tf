@@ -36,7 +36,7 @@ variable "cost_environment" {
 variable "ecr_repository_name" {
   description = "배포 역할이 push 할 수 있는 유일한 ECR 리포지토리. storage 모듈이 실제로 만든다"
   type        = string
-  default     = "2jo/backend"
+  default     = "2jo-backend"
 }
 
 variable "state_version_retention_days" {
