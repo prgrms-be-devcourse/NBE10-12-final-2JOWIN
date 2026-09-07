@@ -1,0 +1,12 @@
+# 복사해서 terraform.tfvars 로 쓴다. terraform.tfvars 는 커밋되지 않는다(.gitignore).
+#
+#   cp terraform.tfvars.example terraform.tfvars
+#
+# 전부 variables.tf 에 기본값이 있다. 기본값 그대로 쓸 거면 tfvars 파일 자체가 필요 없다.
+# 계정 ID 는 변수가 아니다 — 실행 중인 자격증명에서 자동으로 읽는다.
+
+# aws_region       = "ap-northeast-2"
+# project          = "2jo"
+# github_repo      = "prgrms-be-devcourse/NBE10-12-final-2JOWIN"
+# prod_environment = "prod"
+# cost_environment = "cost-guard"

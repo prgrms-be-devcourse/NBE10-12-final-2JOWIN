@@ -14,7 +14,8 @@
  *   <li>C 최선진 — {@link com.twojo.boundary.QuoteCommand} · {@link com.twojo.boundary.DealQuery}
  *       · {@link com.twojo.boundary.QuoteQuery} · {@link com.twojo.boundary.SalesStatsQuery}</li>
  *   <li>D 이준형 — {@link com.twojo.boundary.ViewTokenCommand} · {@link com.twojo.boundary.ViewTokenQuery}
- *       · {@link com.twojo.boundary.MailCommand} (메일 예약 통로 — approval·auth가 호출)</li>
+ *       · {@link com.twojo.boundary.MailCommand} (메일 예약 통로 — approval·auth가 호출)
+ *       · {@link com.twojo.boundary.NotificationCommand} (인앱 알림 쓰기 통로 — approval·notification이 호출)</li>
  * </ul>
  * 시그니처 변경은 소유자 + 소비자 합의로만 한다.
  */

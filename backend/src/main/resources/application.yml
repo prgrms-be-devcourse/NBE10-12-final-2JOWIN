@@ -57,7 +57,7 @@ management:
         enabled: true
 
 ---
-# 로컬 개발 — infra/docker-compose.yml의 PostgreSQL 사용
+# 로컬 개발 — infra/dev/docker-compose.yml의 PostgreSQL 사용
 spring:
   config:
     activate:
