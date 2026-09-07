@@ -72,7 +72,7 @@ dependencies {
 	testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
 
 	// 테스트는 실제 PostgreSQL에서 — ddl-auto 기준 금지 (13-dev-workflow.md §3)
-	// 로컬: infra/docker-compose.yml의 twojo_test DB · CI: 서비스 컨테이너 PG (application-test.yml)
+	// 로컬: infra/dev/docker-compose.yml의 twojo_test DB · CI: 서비스 컨테이너 PG (application-test.yml)
 	testCompileOnly 'org.projectlombok:lombok'
 	testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 	testAnnotationProcessor 'org.projectlombok:lombok'
@@ -86,7 +86,7 @@ dependencyManagement {
 
 // ── 테스트 — 팀 플로우: 구현 → 단위 테스트(JUnit + Mockito) → Swagger API 테스트
 // contextLoads(스키마 검증)가 실제 PG를 쓰므로 ./gradlew test는 docker compose PG(5433) 선행 필요.
-// (개발 중엔 bootRun 때문에 어차피 떠 있다 — infra/docker-compose.yml)
+// (개발 중엔 bootRun 때문에 어차피 떠 있다 — infra/dev/docker-compose.yml)
 tasks.named('test') {
 	useJUnitPlatform()
 	finalizedBy 'jacocoTestReport'
@@ -117,7 +117,7 @@ tasks.withType(com.github.spotbugs.snom.SpotBugsTask).configureEach {
 }
 
 // CI 전용 — 실제 PG 컨테이너에 마이그레이션을 태워 검증 (13-dev-workflow.md §3)
-// 로컬: ./gradlew flywayMigrate -Pflyway-local (infra/docker-compose.yml의 PG 대상)
+// 로컬: ./gradlew flywayMigrate -Pflyway-local (infra/dev/docker-compose.yml의 PG 대상)
 flyway {
 	url = System.getenv('FLYWAY_URL') ?: 'jdbc:postgresql://localhost:5433/twojo'
 	user = System.getenv('FLYWAY_USER') ?: 'twojo'
