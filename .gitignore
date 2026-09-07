@@ -33,6 +33,9 @@ crash.*.log
 infra/**/*.zip
 
 # .terraform.lock.hcl 은 의도적으로 커밋한다 — 프로바이더 버전을 팀이 공유해야 한다
+# 단, 자식 모듈 것은 제외한다. 락 파일은 루트 모듈(스택)만 갖는다 —
+# 모듈 디렉터리에서 init 을 돌리면 생기는데, 커밋하면 루트 것과 어긋난다
+infra/prod/terraform/modules/*/.terraform.lock.hcl
 
 # Python 빌드 산출물 — 인프라 스크립트(cost_report.py · Lambda 소스)
 __pycache__/
