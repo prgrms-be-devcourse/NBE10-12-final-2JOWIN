@@ -81,3 +81,19 @@ variable "swap_size_gb" {
   type        = number
   default     = 2
 }
+
+# ── SSH ──────────────────────────────────────────────────────────────────
+# 배포는 SSH 로 한다. 22번은 상시 열지 않고 배포하는 동안만
+# 러너 공인 IP /32 를 열었다가 회수한다 — 그건 워크플로가 한다.
+#
+# 키는 두 개다. 한쪽이 유출돼도 한쪽만 교체하면 되기 때문이다.
+
+variable "key_name" {
+  description = "사람 접속용 AWS 키페어 이름. 개인키는 인프라 담당 로컬에만 둔다"
+  type        = string
+}
+
+variable "deploy_public_key" {
+  description = "배포용 SSH 공개키. 개인키는 GitHub Secrets 에 둔다. 공개키라 tfstate 에 들어가도 무방하다"
+  type        = string
+}

@@ -19,7 +19,7 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | GitHub OIDC provider | `token.actions.githubusercontent.com` | 계정당 1개 |
 | IAM 역할 | `2jo-tf-plan` | PR · `ReadOnlyAccess` + `.tflock` 쓰기 |
 | IAM 역할 | `2jo-tf-apply` | `environment:prod` · `AdministratorAccess` |
-| IAM 역할 | `2jo-gha-deploy` | `environment:prod` · ECR push + SSM 실행 |
+| IAM 역할 | `2jo-gha-deploy` | `environment:prod` · ECR push + 배포 중 22번 임시 개방 |
 
 ## 실행 순서
 

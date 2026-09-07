@@ -15,7 +15,7 @@ resource "aws_vpc" "main" {
   cidr_block = var.vpc_cidr
 
   # 둘 다 명시한다. enable_dns_hostnames 는 terraform 기본값이 false 라
-  # 빼면 SSM·ECR 같은 AWS 서비스 도메인 해석이 어긋난다.
+  # 빼면 ECR·S3 같은 AWS 서비스 도메인 해석이 어긋난다.
   enable_dns_support   = true
   enable_dns_hostnames = true
 
