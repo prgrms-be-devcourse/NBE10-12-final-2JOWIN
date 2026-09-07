@@ -26,13 +26,18 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
      * <p>선택 필터가 둘뿐이라 한 문장으로 둔다. {@code DealRepository}가 Specification으로 간 것은
      * 필터가 셋이라 파생 쿼리 조합이 폭발해서다 — 여기서는 그 비용이 나오지 않는다.
      * 정렬은 호출부의 Pageable이 정한다 (Q-39).
+     *
+     * <p><b>{@code cast(:param as string)}은 장식이 아니다.</b> 값이 null이면 JDBC가 타입을 몰라
+     * {@code bytea}로 바인딩해 PostgreSQL이 {@code function lower(bytea) does not exist}로 막는다.
+     * 캐스트가 파라미터 타입을 고정한다.
      */
     @Query("""
             select c from Customer c
             where c.companyId = :companyId
               and c.deletedAt is null
-              and (:keyword is null or lower(c.name) like lower(concat('%', :keyword, '%')))
-              and (:industry is null or c.industry = :industry)
+              and (cast(:keyword as string) is null
+                   or lower(c.name) like lower(concat('%', cast(:keyword as string), '%')))
+              and (cast(:industry as string) is null or c.industry = cast(:industry as string))
             """)
     Page<Customer> search(@Param("companyId") UUID companyId,
                           @Param("keyword") String keyword,
