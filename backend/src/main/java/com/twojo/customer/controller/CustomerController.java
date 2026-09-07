@@ -32,8 +32,7 @@ import org.springframework.web.bind.annotation.RestController;
  *
  * <p>{@link AccessContext}는 인증 필터가 심은 principal에서 타입으로 주입된다 (PR #30).
  * 고객사는 회사 공유 자원이라 역할 분기가 없다 — 전 구성원이 조회하고 수정한다 (SC-03).
- *
- * <p>삭제 2종은 아직 없다 — 차단 규칙(CU-08·14, 대표 담당자 보호)이 함께 가야 해서 별도 이슈다.
+
  */
 @RestController
 @RequestMapping("/api/v1/customers")

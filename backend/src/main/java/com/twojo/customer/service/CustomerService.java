@@ -53,7 +53,8 @@ public class CustomerService {
     public PageResponse<CustomerResponse> list(AccessContext ctx, String keyword, String industry,
                                                Pageable pageable) {
         return PageResponse.from(
-                customerRepository.search(ctx.companyId(), blankToNull(keyword), blankToNull(industry), pageable)
+                customerRepository.search(ctx.companyId(), escapeLike(blankToNull(keyword)),
+                                blankToNull(industry), pageable)
                         .map(CustomerResponse::of));
     }
 
@@ -68,8 +69,8 @@ public class CustomerService {
     /**
      * 상세 (CU-05·12) — 담당자 목록과 Deal 이력을 함께 싣는다.
      *
-     * <p>Deal 이력은 C의 {@code summariesByCustomer}로 받는다. 이 시점에 고객사가 회사 스코프로
-     * 확인됐으므로 그 딜들도 같은 회사 것이다.
+     * <p>Deal 이력은 {@code DealQuery.summariesByCustomer}로 받는다 (11 §7.2). 이 시점에 고객사가
+     * 회사 스코프로 확인됐으므로 그 딜들도 같은 회사 것이다.
      */
     public CustomerDetailResponse get(AccessContext ctx, UUID customerId) {
         Customer customer = findInScope(ctx, customerId);
@@ -158,12 +159,21 @@ public class CustomerService {
      */
     private CustomerContact findContactInScope(AccessContext ctx, UUID customerId, UUID contactId) {
         findInScope(ctx, customerId);
-        return contactRepository.findByIdAndCustomerId(contactId, customerId)
+        return contactRepository.findByCustomerIdAndId(customerId, contactId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
     /** 빈 검색어는 필터가 아니다 — {@code ?keyword=}로 온 빈 문자열을 조건에서 뺀다. */
     private static String blankToNull(String value) {
         return value == null || value.isBlank() ? null : value.trim();
+    }
+
+    /**
+     * LIKE 와일드카드를 글자로 되돌린다 — {@code ?keyword=%}로 회사 전체가 나오면 안 된다 (CU-04).
+     * 이스케이프 문자는 쿼리의 {@code escape '!'}와 짝이다. 자기 자신을 먼저 바꾼다.
+     */
+    private static String escapeLike(String value) {
+        return value == null ? null
+                : value.replace("!", "!!").replace("%", "!%").replace("_", "!_");
     }
 }

@@ -186,10 +186,36 @@ class CustomerServiceTest {
     }
 
     @Test
+    @DisplayName("담당자 수정에서 보내지 않은 필드는 그대로다 (08 §B PATCH 규약)")
+    void updateContact_nullFields_unchanged() {
+        고객사있음();
+        CustomerContact contact = 담당자("이수정");
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.of(contact));
+
+        ContactResponse response = customerService.updateContact(SALES, CUSTOMER_ID, CONTACT_ID,
+                new UpdateContactRequest(null, null, "010-9999-8888", null));
+
+        assertThat(response.name()).isEqualTo("이수정");
+        assertThat(response.title()).isEqualTo("총무팀 대리");
+        assertThat(response.email()).isEqualTo("이수정@dodam.co.kr");
+        assertThat(response.phone()).isEqualTo("010-9999-8888");
+    }
+
+    @Test
+    @DisplayName("검색어의 LIKE 와일드카드는 글자로 넘어간다 — ?keyword=%로 전체가 나오면 안 된다 (CU-04)")
+    void list_wildcardKeyword_escaped() {
+        given(customerRepository.search(eq(COMPANY_ID), eq("!%"), isNull(), any())).willReturn(Page.empty());
+
+        customerService.list(SALES, "%", null, PageRequest.of(0, 20));
+
+        then(customerRepository).should().search(eq(COMPANY_ID), eq("!%"), isNull(), any());
+    }
+
+    @Test
     @DisplayName("다른 고객사의 담당자 id를 넣으면 404 — 부모 경유 격리 (06)")
     void updateContact_foreignContact_notFound() {
         고객사있음();
-        given(contactRepository.findByIdAndCustomerId(CONTACT_ID, CUSTOMER_ID)).willReturn(Optional.empty());
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.empty());
 
         assertThatThrownBy(() -> customerService.updateContact(SALES, CUSTOMER_ID, CONTACT_ID,
                 new UpdateContactRequest("이수정", null, null, null)))
@@ -208,7 +234,7 @@ class CustomerServiceTest {
                 new UpdateContactRequest("이수정", null, null, null)))
                 .isInstanceOf(BusinessException.class);
 
-        then(contactRepository).should(never()).findByIdAndCustomerId(any(), any());
+        then(contactRepository).should(never()).findByCustomerIdAndId(any(), any());
     }
 
     @Test
@@ -218,7 +244,7 @@ class CustomerServiceTest {
         CustomerContact previous = 담당자("이수정");
         previous.markPrimary();
         CustomerContact target = 담당자("박건우");
-        given(contactRepository.findByIdAndCustomerId(CONTACT_ID, CUSTOMER_ID)).willReturn(Optional.of(target));
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.of(target));
         given(contactRepository.findByCustomerIdAndIsPrimaryTrue(CUSTOMER_ID)).willReturn(Optional.of(previous));
 
         ContactResponse response = customerService.setPrimaryContact(SALES, CUSTOMER_ID, CONTACT_ID);
@@ -237,7 +263,7 @@ class CustomerServiceTest {
         고객사있음();
         CustomerContact target = 담당자("이수정");
         target.markPrimary();
-        given(contactRepository.findByIdAndCustomerId(CONTACT_ID, CUSTOMER_ID)).willReturn(Optional.of(target));
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.of(target));
 
         ContactResponse response = customerService.setPrimaryContact(SALES, CUSTOMER_ID, CONTACT_ID);
 

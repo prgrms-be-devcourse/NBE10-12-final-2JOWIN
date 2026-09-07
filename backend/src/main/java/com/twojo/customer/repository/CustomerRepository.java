@@ -21,10 +21,14 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
      * 목록·검색 (CU-03·04) — 회사 스코프와 미삭제는 항상 걸고, keyword·industry는 null이면 조건에서 빠진다.
      *
      * <p><b>담당 축이 없다</b> — 고객사는 회사 공유 자원이라 영업 담당자도 회사 전체를 본다 (SC-03).
-     * Deal 목록과 달리 스코프 분기가 없는 이유다.
+     * 그래서 스코프 분기가 없다.
      *
      * <p>선택 필터가 둘뿐이라 한 문장으로 둔다. 파생 쿼리로 쓰면 조합이 넷으로 늘어난다.
      * 정렬은 호출부의 Pageable이 정한다 (Q-39).
+     *
+     * <p><b>{@code escape '!'}가 붙은 이유</b> — 검색어의 {@code %}·{@code _}는 LIKE 와일드카드다.
+     * 이스케이프하지 않으면 {@code ?keyword=%} 한 글자로 회사 전체가 나온다. 호출부가
+     * {@code CustomerService.escapeLike}로 미리 접두어를 붙여 넘긴다.
      *
      * <p><b>{@code cast(:param as string)}은 장식이 아니다.</b> 값이 null이면 JDBC가 타입을 몰라
      * {@code bytea}로 바인딩해 PostgreSQL이 {@code function lower(bytea) does not exist}로 막는다.
@@ -35,7 +39,7 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
             where c.companyId = :companyId
               and c.deletedAt is null
               and (cast(:keyword as string) is null
-                   or lower(c.name) like lower(concat('%', cast(:keyword as string), '%')))
+                   or lower(c.name) like lower(concat('%', cast(:keyword as string), '%')) escape '!')
               and (cast(:industry as string) is null or c.industry = cast(:industry as string))
             """)
     Page<Customer> search(@Param("companyId") UUID companyId,

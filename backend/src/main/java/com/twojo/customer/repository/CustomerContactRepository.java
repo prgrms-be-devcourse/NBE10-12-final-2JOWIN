@@ -35,9 +35,10 @@ public interface CustomerContactRepository extends JpaRepository<CustomerContact
 
     /**
      * 부모 경유 단건 — 수정·대표 지정이 쓴다.
-     * {@code cid}가 그 고객사 소속이 아니면 빈 Optional, 호출부에서 404로 변환한다 (SC-09).
+     * 담당자가 그 고객사 소속이 아니면 빈 Optional, 호출부에서 404로 변환한다 (SC-09).
+     * 인자 순서는 위 {@code existsByCustomerIdAndId}와 같다 — 둘 다 UUID라 바뀌어도 컴파일된다.
      */
-    Optional<CustomerContact> findByIdAndCustomerId(UUID id, UUID customerId);
+    Optional<CustomerContact> findByCustomerIdAndId(UUID customerId, UUID id);
 
     /**
      * 현재 대표 담당자 (CU-11) — 대표를 교체할 때 옛 대표를 먼저 해제하는 데 쓴다.

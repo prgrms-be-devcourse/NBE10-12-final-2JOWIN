@@ -27,10 +27,7 @@ public record CustomerDetailResponse(
     /**
      * 엔티티와 경계 조회 결과 → 응답.
      *
-     * <p>{@code createdByMemberName}은 호출부가 {@code MemberQuery.get}으로 받아 넘긴다.
-     * 그 계약은 <b>없으면 {@code RESOURCE_NOT_FOUND}를 던진다</b>이므로 여기로 null이 오지 않는다 —
-     * {@code customer.created_by_member_id}가 {@code member}를 NOT NULL FK로 물고 있어
-     * 등록자 행이 없는 고객사가 존재할 수 없다.
+     * <p>{@code createdByMemberName}은 호출부가 채워 넘긴다 — 사유는 그쪽 주석에 있다.
      */
     public static CustomerDetailResponse of(Customer customer, String createdByMemberName,
                                             List<ContactResponse> contacts,
