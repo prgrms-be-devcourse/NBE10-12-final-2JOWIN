@@ -1,10 +1,14 @@
 import { delay, http, HttpResponse } from 'msw'
-import { currentMember, db, noContent, notFound, now, paged } from '../store'
-import type { NotificationResponse } from '../../shared/api/types'
+import { currentMember, db, error, noContent, notFound, now, paged } from '../store'
+import type { NotificationResponse, NotificationSettingResponse, UpdateNotificationSettingsRequest } from '../../shared/api/types'
+import { MAIL_SETTING_TYPES } from '../../shared/ui/status'
 
 /**
  * 인앱 알림 목 — notification/controller/NotificationController · NotificationResponse.
  * 본인 수신분만 (NT-08) — 타인 것은 읽음 처리도 404 (SC-09). 정렬 createdAt DESC · id DESC 고정.
+ *
+ * 알림 수신 설정(`/me/notification-settings`, NT-07)도 여기다 — 경로는 /me지만 소유는 D의 notification
+ * 모듈(#127)이라 `notification` 키로 켜고 끈다. auth를 실 API로 돌려도 이 둘은 #127 전까지 목이다.
  */
 
 const mine = (memberId: string) => db.notifications.filter((n) => n.recipientMemberId === memberId)
@@ -36,5 +40,23 @@ export const notificationHandlers = [
     const at = now()
     for (const n of mine(member.id)) n.readAt ??= at
     return noContent()
+  }),
+
+  // ── 알림 수신 설정 (NT-07, Q-23 메일 채널만) — 백엔드 #127 전까지 목
+  http.get('/api/v1/me/notification-settings', ({ request }) => {
+    const member = currentMember(request)
+    const saved = db.notificationSettings.get(member.id)
+    // 행 없으면 기본 ON
+    const body: NotificationSettingResponse = { settings: saved ?? MAIL_SETTING_TYPES.map((type) => ({ type, emailEnabled: true })) }
+    return HttpResponse.json(body)
+  }),
+
+  http.put('/api/v1/me/notification-settings', async ({ request }) => {
+    const member = currentMember(request)
+    const body = (await request.json()) as UpdateNotificationSettingsRequest
+    if (!body.settings?.length) return error('VALIDATION_FAILED', [{ field: 'settings', reason: '설정을 입력해 주세요.' }])
+    db.notificationSettings.set(member.id, body.settings)
+    const response: NotificationSettingResponse = { settings: body.settings }
+    return HttpResponse.json(response)
   }),
 ]
