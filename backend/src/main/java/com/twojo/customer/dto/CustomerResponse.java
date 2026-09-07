@@ -1,5 +1,6 @@
 package com.twojo.customer.dto;
 
+import com.twojo.customer.entity.Customer;
 import java.time.Instant;
 import java.util.UUID;
 
@@ -16,4 +17,12 @@ public record CustomerResponse(
         String size,
         String note,
         UUID createdByMemberId,
-        Instant createdAt) {}
+        Instant createdAt) {
+
+    /** 엔티티 → 응답. 응답 모양이 바뀔 때 열 파일을 하나로 둔다 — 서비스는 판단만 담는다. */
+    public static CustomerResponse of(Customer customer) {
+        return new CustomerResponse(customer.getId(), customer.getName(), customer.getIndustry(),
+                customer.getSize(), customer.getNote(), customer.getCreatedByMemberId(),
+                customer.getCreatedAt());
+    }
+}
