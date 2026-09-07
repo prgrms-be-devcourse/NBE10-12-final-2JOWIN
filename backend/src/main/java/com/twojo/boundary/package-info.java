@@ -15,7 +15,9 @@
  *       · {@link com.twojo.boundary.QuoteQuery} · {@link com.twojo.boundary.SalesStatsQuery}</li>
  *   <li>D 이준형 — {@link com.twojo.boundary.ViewTokenCommand} · {@link com.twojo.boundary.ViewTokenQuery}
  *       · {@link com.twojo.boundary.MailCommand} (메일 예약 통로 — approval·auth가 호출)
- *       · {@link com.twojo.boundary.NotificationCommand} (인앱 알림 쓰기 통로 — approval·notification이 호출)</li>
+ *       · {@link com.twojo.boundary.NotificationCommand} (인앱 알림 쓰기 통로 — approval·notification이 호출)
+ *       · {@link com.twojo.boundary.NotificationSettingQuery} · {@link com.twojo.boundary.NotificationSettingCommand}
+ *         (메일 수신 설정 통로 — auth가 호출; NT-07)</li>
  * </ul>
  * 시그니처 변경은 소유자 + 소비자 합의로만 한다.
  */
