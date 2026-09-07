@@ -37,7 +37,7 @@ permissions:
 
 env:
   AWS_REGION: ap-northeast-2
-  ECR_REPOSITORY: 2jo/backend
+  ECR_REPOSITORY: 2jo-backend
   PROJECT_TAG: '2jo'
   POLL_INTERVAL: '5'
   # 최악 케이스 230초(pull 30 + up 10 + health 90 + 롤백 10 + health 90)에

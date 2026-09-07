@@ -127,7 +127,7 @@ variable "primary_az_suffix" {
 variable "ecr_repository_name" {
   description = "백엔드 이미지 저장소 이름"
   type        = string
-  default     = "2jo/backend"
+  default     = "2jo-backend"
 }
 
 variable "image_retention_count" {
