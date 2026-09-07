@@ -14,8 +14,11 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 
 /**
- * 다음 할 일 (AC-09) — 배정 컬럼 없음 (Q-29): deal의 순수 자식.
- * "내 할 일" = 내 담당 Deal의 미완료 할 일. 이관 시 Deal을 따라 자동 이동.
+ * 다음 할 일 (AC-09) — 배정 컬럼이 없다 (Q-29). "내 할 일" = 내 담당 Deal의 미완료 할 일이고,
+ * 이관되면 Deal을 따라 자동으로 옮겨간다.
+ *
+ * <p><b>회사는 직접 보유한다</b> — 딜과 무관하게 독립 조회되는 대상이라 관리자 범위 조회에
+ * 회사 축이 필요하다. 06 §테넌트 격리가 activity·task를 부모 경유 격리의 명시적 예외로 둔다 (v1.6.5).
  */
 @Getter
 @Entity
@@ -25,6 +28,8 @@ public class Task extends BaseTimeEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;
+
+    private UUID companyId;
 
     private UUID dealId;
 
@@ -37,14 +42,18 @@ public class Task extends BaseTimeEntity {
     /**
      * 다음 할 일 등록 (AC-09).
      *
-     * <p>배정 대상이 없다 (Q-29) — Deal의 순수 자식이라 "내 할 일"은 내가 담당하는 Deal에서
-     * 파생된다. 담당이 이관되면 할 일도 Deal을 따라 자동으로 옮겨간다.
+     * <p>배정 대상이 없다 (Q-29) — "내 할 일"은 내가 담당하는 Deal에서 파생된다.
+     * 담당이 이관되면 할 일도 Deal을 따라 자동으로 옮겨간다.
+     *
+     * <p>{@code companyId}는 그 담당 축과 무관하다 — 기업 관리자(COMPANY_ALL) 범위 조회에
+     * 회사 축이 필요해서 갖는다 (ERD v1.6.5). 딜의 회사와 어긋나는 조합은 복합 FK가 막는다.
      *
      * <p>{@code dueDate}는 필수다 — AC-09가 "할 일과 예정일"을 함께 요구하고,
      * {@code task.due_date}도 NOT NULL이다. 기한 없는 할 일은 만들어지지 않는다.
      */
-    public static Task create(UUID dealId, String content, LocalDate dueDate) {
+    public static Task create(UUID companyId, UUID dealId, String content, LocalDate dueDate) {
         Task task = new Task();
+        task.companyId = Objects.requireNonNull(companyId, "companyId");
         task.dealId = Objects.requireNonNull(dealId, "dealId");
         task.content = Objects.requireNonNull(content, "content");
         task.dueDate = Objects.requireNonNull(dueDate, "dueDate");
