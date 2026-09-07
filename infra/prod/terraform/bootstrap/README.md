@@ -20,9 +20,6 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | IAM 역할 | `2jo-tf-plan` | PR · `ReadOnlyAccess` + `.tflock` 쓰기 |
 | IAM 역할 | `2jo-tf-apply` | `environment:prod` · `AdministratorAccess` |
 | IAM 역할 | `2jo-gha-deploy` | `environment:prod` · ECR push + SSM 실행 |
-| IAM 역할 | `2jo-gha-cost` | `environment:cost-guard` · 비용 조회 + 인스턴스 정지 |
-
-> 비용 Deny 가드레일은 여기 없다. `modules/cost-guard` 가 `2jo-tf-apply` 에 붙인다.
 
 ## 실행 순서
 

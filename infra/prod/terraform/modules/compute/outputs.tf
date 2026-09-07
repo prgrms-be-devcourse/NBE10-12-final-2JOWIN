@@ -1,9 +1,5 @@
 output "instance_id" {
-  description = <<-EOT
-    EC2 인스턴스 ID.
-    cost-guard 의 stop_instance_ids 에 넣어 100% 정지 액션을 완성한다 —
-    Budget Action 은 태그를 못 받고 ID 만 받기 때문이다.
-  EOT
+  description = "EC2 인스턴스 ID"
   value       = aws_instance.main.id
 }
 

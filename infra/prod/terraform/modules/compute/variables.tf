@@ -13,13 +13,13 @@ variable "aws_region" {
 }
 
 variable "instance_type" {
-  description = "EC2 인스턴스 타입. cost-guard 의 allowed_instance_types 안에 있어야 한다"
+  description = "EC2 인스턴스 타입"
   type        = string
-  default     = "t4g.medium" # 2 vCPU · 4 GiB · arm64(Graviton)
+  default     = "t3.medium" # 2 vCPU · 4 GiB · x86_64
 }
 
 variable "root_volume_size_gb" {
-  description = "루트 EBS 크기(GB). cost-guard 의 max_volume_size_gb 이하여야 한다"
+  description = "루트 EBS 크기(GB)"
   type        = number
   default     = 40
 
