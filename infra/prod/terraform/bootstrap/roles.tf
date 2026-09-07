@@ -91,8 +91,10 @@ data "aws_iam_policy_document" "trust_env_cost" {
 
 # ── 1. tf-plan — PR 의 plan · Infracost ──────────────────────────
 resource "aws_iam_role" "tf_plan" {
-  name                 = "${var.project}-tf-plan"
-  description          = "PR 의 terraform plan · Infracost 전용. 읽기 + 상태 락 파일만"
+  name = "${var.project}-tf-plan"
+  # PR 의 terraform plan · Infracost 전용. 읽기 + 상태 락 파일만.
+  # description 은 AWS 가 허용 문자를 제한해 영문으로 둔다(한글 불가).
+  description          = "PR-only: terraform plan and Infracost. Read-only plus state lock file."
   assume_role_policy   = data.aws_iam_policy_document.trust_pull_request.json
   max_session_duration = 3600
 }
@@ -125,8 +127,9 @@ resource "aws_iam_role_policy" "tf_plan_lock" {
 # Admin + Deny 가드레일 조합이다. 최소 권한 열거는 4주 안에 유지가 불가능하다.
 # 경계를 "뭐든 만들 수 있지만 비싼 건 못 만든다" 로 잡는다.
 resource "aws_iam_role" "tf_apply" {
-  name                 = "${var.project}-tf-apply"
-  description          = "develop 머지 후 terraform apply. cost-guard 의 Deny 정책이 여기에 붙는다"
+  name = "${var.project}-tf-apply"
+  # develop 머지 후 terraform apply. cost-guard 의 Deny 정책이 여기에 붙는다.
+  description          = "Infrastructure apply after merge to develop. cost-guard Deny policy attaches here."
   assume_role_policy   = data.aws_iam_policy_document.trust_env_prod.json
   max_session_duration = 3600
 }
@@ -195,8 +198,9 @@ data "aws_iam_policy_document" "gha_deploy" {
 }
 
 resource "aws_iam_role" "gha_deploy" {
-  name                 = "${var.project}-gha-deploy"
-  description          = "백엔드 배포 워크플로. ECR push + 2jo 인스턴스에 SSM 실행만"
+  name = "${var.project}-gha-deploy"
+  # 백엔드 배포 워크플로. ECR push + 2jo 인스턴스에 SSM 실행만.
+  description          = "Backend deploy workflow: ECR push and SSM run on Project=2jo instances only."
   assume_role_policy   = data.aws_iam_policy_document.trust_env_prod.json
   max_session_duration = 3600
 }
@@ -240,8 +244,9 @@ data "aws_iam_policy_document" "gha_cost" {
 }
 
 resource "aws_iam_role" "gha_cost" {
-  name                 = "${var.project}-gha-cost"
-  description          = "일일 누적 비용 잡. 비용 조회 + 2jo 인스턴스 정지만"
+  name = "${var.project}-gha-cost"
+  # 일일 누적 비용 잡. 비용 조회 + 2jo 인스턴스 정지만.
+  description          = "Daily cumulative cost job: read Cost Explorer and stop Project=2jo instances."
   assume_role_policy   = data.aws_iam_policy_document.trust_env_cost.json
   max_session_duration = 3600
 }
