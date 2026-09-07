@@ -96,10 +96,14 @@ public class QuoteController {
         return quoteService.preview(ctx, quoteId);
     }
 
-    /** Q-39 — 음수 페이지·과대 size를 그대로 넘기면 500이 된다. 여기서 잘라낸다 */
+    /**
+     * Q-39 — 음수 페이지·과대 size를 그대로 넘기면 500이 된다. 여기서 잘라낸다.
+     * <p>{@code size}가 0 이하면 기본값으로 돌린다 — {@code clamp}로 1을 만들면
+     * "한 건짜리 페이지"라는 뜻이 되어, 값을 비운 요청의 의도와 다르다.
+     */
     private static Pageable pageable(int page, int size) {
         int safePage = Math.max(page, 0);
-        int safeSize = Math.clamp(size, 1, MAX_PAGE_SIZE);
-        return PageRequest.of(safePage, safeSize == 0 ? DEFAULT_PAGE_SIZE : safeSize, DEFAULT_SORT);
+        int safeSize = size <= 0 ? DEFAULT_PAGE_SIZE : Math.min(size, MAX_PAGE_SIZE);
+        return PageRequest.of(safePage, safeSize, DEFAULT_SORT);
     }
 }
