@@ -1,0 +1,124 @@
+# 서비스 필수 3종 — caddy · backend · postgres
+#
+# 모니터링 6종은 compose.monitoring.yml 로 분리한다(#93).
+# 나눠 두면 메모리가 부족할 때 모니터링만 내릴 수 있다.
+#
+# 실행 (env 파일이 둘인 것이 의도다):
+#   docker compose \
+#     --env-file /opt/2jo/.env \
+#     --env-file /opt/2jo/.env.image \
+#     -f /opt/2jo/compose/compose.yml up -d
+#
+#   .env        SSM 에서 온 값. fetch-secrets.sh 가 통째로 새로 쓴다
+#   .env.image  BACKEND_IMAGE 하나. deploy.sh 가 배포마다 쓴다
+#
+# 한 파일에 두면 시크릿을 새로 받을 때마다 배포 중인 이미지 태그가 지워진다.
+#
+# 설계 근거: containers.md §3
+name: twojo
+
+# 도커 기본 json-file 드라이버는 로테이션이 없다. 컨테이너들이 로그를 쏟으면
+# 디스크를 조용히 채우고, 디스크가 차면 PostgreSQL 이 쓰기를 거부한다.
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+services:
+  # ── 유일하게 호스트 포트를 게시하는 컨테이너 ──────────────────────────
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp" # HTTP/3 (QUIC)
+    environment:
+      # Caddyfile 안에서 {$DOMAIN} 으로 치환된다
+      DOMAIN: ${DOMAIN:?DOMAIN 이 .env 에 없다}
+      ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL 이 .env 에 없다}
+    volumes:
+      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 발급받은 인증서가 여기 있다. 잃으면 재발급해야 한다.
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      backend:
+        # healthy 를 기다리지 않는다. 백엔드가 아직 안 떠도 Caddy 는
+        # TLS 를 먼저 받아 두는 편이 낫다.
+        condition: service_started
+    mem_limit: 96m
+    logging: *default-logging
+    networks: [twojo-net]
+
+  # ── 애플리케이션 ──────────────────────────────────────────────────────
+  backend:
+    # 태그는 git SHA 다. deploy.sh 가 .env 에 써 넣는다.
+    # latest 를 쓰지 않으므로 롤백 대상이 바뀌지 않는다.
+    image: ${BACKEND_IMAGE:?BACKEND_IMAGE 가 .env 에 없다 (deploy.sh 가 채운다)}
+    restart: unless-stopped
+    expose:
+      - "8080" # 도커 네트워크 안에서만 보인다. 호스트에 게시하지 않는다.
+    env_file:
+      - ../.env
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+    depends_on:
+      postgres:
+        # Flyway 마이그레이션이 PG 준비 전에 돌지 않게 한다.
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/actuator/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 10
+      start_period: 60s
+    # 힙은 MaxRAMPercentage=60 -> ~768m (Dockerfile 의 JAVA_TOOL_OPTIONS)
+    mem_limit: 1280m
+    # mem_limit 과 같게 두면 이 컨테이너의 스왑이 0 이 된다.
+    # JVM 힙이 스왑되면 GC 가 힙 전체를 훑으면서 스왑 페이지를 다시 읽어
+    # 50ms 짜리 GC 가 수 초가 된다. cgroup v2 라 mem_swappiness 는 안 먹는다.
+    memswap_limit: 1280m
+    logging: *default-logging
+    networks: [twojo-net]
+
+  # ── 데이터베이스 ──────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    expose:
+      - "5432"
+    environment:
+      POSTGRES_USER: ${DB_USERNAME:?DB_USERNAME 이 .env 에 없다}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD 가 .env 에 없다}
+      POSTGRES_DB: ${DB_NAME:-twojo}
+    volumes:
+      # 잃으면 치명적이다. S3 백업에서 복원해야 한다.
+      - twojo-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    command:
+      - postgres
+      - -c
+      - shared_buffers=128MB
+    mem_limit: 512m
+    # shared_buffers 를 디스크로 내리면 캐시하려고 올린 의미가 없다.
+    memswap_limit: 512m
+    logging: *default-logging
+    networks: [twojo-net]
+
+networks:
+  twojo-net:
+    driver: bridge
+
+volumes:
+  twojo-pgdata:
+  caddy-data:
+  caddy-config:
+# docker compose down -v 를 배포 스크립트에 절대 넣지 않는다.
+# -v 가 위 볼륨을 전부 지운다 — DB 데이터와 TLS 인증서가 함께 날아간다.
