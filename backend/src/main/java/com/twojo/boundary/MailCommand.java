@@ -133,8 +133,8 @@ public interface MailCommand {
         }
 
         /**
-         * 플랫폼 발송(신청자 수신) 여부 — {@code true}면 {@code companyId}가 null이다
-         * ({@code email_log} DDL 주석: "플랫폼 발송(NT-13)은 null"). 가입 승인·반려 시점엔 회사가 없다.
+         * 플랫폼 발송(신청자 수신) 여부 — {@code true}면 {@code companyId}로 null을 허용한다.
+         * (가입 반려처럼 아직 회사가 없는 경우 사용되며, 가입 승인은 방금 생성된 회사의 id가 넘어온다.)
          */
         public boolean isPlatformIssued() {
             return this == SIGNUP_APPROVED || this == SIGNUP_REJECTED;

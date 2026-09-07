@@ -18,7 +18,9 @@ public interface NotificationSettingCommand {
      * 알림 설정 변경은 독립 비즈니스 트랜잭션이라 호출 구조를 강제하지 않는다.
      *
      * <p>{@code notification_setting}을 {@code (member_id, type)}로 upsert한다 — 같은 구성원의 동시 PUT에서도
-     * {@code uk_notification_setting} 위반이 없다. PUT이 항상 4종을 다 보내므로 폐기 행이 남지 않는다.
+     * {@code uk_notification_setting} 위반이 없다. PUT이 항상 4종을 다 보내므로 그 4종 행은 매번 갱신된다.
+     * 나중에 설정 대상에서 뺀 타입의 행은 삭제하지 않아 DB에 남지만, {@link NotificationSettingQuery#settingsOf}
+     * 조회 시 건너뛴다.
      */
     void replaceSettings(UUID memberId, Map<NotificationSettingType, Boolean> settings);
 }
