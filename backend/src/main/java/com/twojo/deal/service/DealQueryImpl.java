@@ -51,6 +51,14 @@ class DealQueryImpl implements DealQuery {
                 .orElse(false);
     }
 
+    /** 없으면 RESOURCE_NOT_FOUND — 수신인 검증의 기준값이라 없으면 호출자가 진행할 수 없다 */
+    @Override
+    public UUID customerIdOf(UUID dealId) {
+        return dealRepository.findByIdAndDeletedAtIsNull(dealId)
+                .map(Deal::getCustomerId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
     /** CU-08 — 진행 중 Deal이 하나라도 있으면 고객사를 삭제할 수 없다 */
     @Override
     public boolean hasOpenDeals(UUID customerId) {
