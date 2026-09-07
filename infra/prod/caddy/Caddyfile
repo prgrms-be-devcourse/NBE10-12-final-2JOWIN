@@ -8,6 +8,14 @@
 {
 	# Let's Encrypt 만료 알림을 받을 주소. .env 에서 온다.
 	email {$ACME_EMAIL}
+
+	# 이 한 줄이면 :2019/metrics 가 열린다.
+	# 엣지 지표가 따로 필요한 이유: 앱이 죽으면 backend 의 http_server_requests
+	# 자체가 안 나온다. "요청이 0"으로 보여 장애를 놓치는데, Caddy 는 그때도
+	# 502 를 센다. 관리 포트는 도커 네트워크 안이라 밖에서 못 닿는다.
+	servers {
+		metrics
+	}
 }
 
 api.{$DOMAIN} {
