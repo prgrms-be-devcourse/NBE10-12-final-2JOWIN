@@ -22,7 +22,7 @@ docs/       기획·설계 문서 세트 (명세 변경은 팀 합의 + 버전 �
 
 ```bash
 # 1. 로컬 PostgreSQL (포트 5433 — 로컬 네이티브 PG와 충돌 방지)
-docker compose -f infra/docker-compose.yml up -d
+docker compose -f infra/dev/docker-compose.yml up -d
 
 # 2. 백엔드 (http://localhost:8080)
 cd backend && ./gradlew bootRun --args='--spring.profiles.active=local'
@@ -42,7 +42,7 @@ MSW 목([fixtures.ts](frontend/src/mocks/fixtures.ts))이 **같은 ID·같은 �
 | 시연 계정 | `seoyeon@hanbit.co.kr`(관리자 김서연) · `jihun@hanbit.co.kr`(영업 박지훈) — 비밀번호 `test1234!` |
 | 플랫폼 관리자 | `admin@2jo.io` / `test1234!` |
 | 데이터 | 고객사 7 · 상품 8(중지 1) · 딜 17(성사 3·실패 1) · 견적 12(7상태 전부) · 주문 3(이달 성사 4,840만) |
-| 데이터 초기화 | `docker compose -f infra/docker-compose.yml down -v && docker compose -f infra/docker-compose.yml up -d` |
+| 데이터 초기화 | `docker compose -f infra/dev/docker-compose.yml down -v && docker compose -f infra/dev/docker-compose.yml up -d` |
 
 ## 테스트 방식
 
