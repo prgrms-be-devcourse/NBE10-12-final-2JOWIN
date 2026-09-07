@@ -337,3 +337,25 @@ jobs:
           set -euo pipefail
           terraform init -input=false -no-color
           terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
+
+      # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면
+      # S3 만 바뀌고 서버는 옛 설정으로 계속 돈다 (cd.md §6.3).
+      #
+      # 이미지는 건드리지 않는 설정 전용 모드다. 서버가 아직 없으면
+      # 대상이 0개라 실패하는데, 그건 정상이므로 워크플로를 깨지 않는다.
+      - name: 서버에 설정 재동기화 (설정 전용 배포)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          id="$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --targets "Key=tag:Project,Values=2jo" \
+            --comment "config sync after apply" \
+            --timeout-seconds 600 \
+            --parameters 'commands=["/opt/2jo/scripts/deploy.sh"],executionTimeout=["600"]' \
+            --region ap-northeast-2 \
+            --query 'Command.CommandId' --output text)" || {
+            echo "::notice::대상 인스턴스가 없거나 SSM 호출이 실패했다 — 서버가 아직 없으면 정상이다"
+            exit 0
+          }
+          echo "명령 ID: ${id}"
