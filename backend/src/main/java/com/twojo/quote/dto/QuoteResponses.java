@@ -34,13 +34,24 @@ public final class QuoteResponses {
         }
     }
 
-    /** 상세 — 항목 포함. 정렬은 엔티티의 {@code @OrderBy("sortOrder ASC")}가 보장한다 (QT-07) */
+    /**
+     * 상세 — 항목 포함. 정렬은 엔티티의 {@code @OrderBy("sortOrder ASC")}가 보장한다 (QT-07).
+     * 필드는 08의 {@code QuoteDetailResponse}를 따른다.
+     *
+     * @param supersededByQuoteId QT-28 대체 견적 — <b>지금은 항상 null이다.</b>
+     *                            전용 컬럼이 없고 {@code cloned_from_quote_id}의 역방향으로 구하는
+     *                            값인데(06 ERD: "복제 계보 · QT-28 대체 이동"), 복제(QT-19)가 아직
+     *                            없어 그 관계를 가진 견적이 존재할 수 없다. <b>키는 지금 내보낸다</b> —
+     *                            나중에 생기면 프론트가 필드 추가를 기다리지 않아도 된다
+     */
     public record QuoteDetail(
             UUID id, String quoteNo, String status, String vatMode,
             Long supplyAmount, Long vatAmount, Long totalAmount,
-            LocalDate validUntil, String terms, UUID dealId,
-            UUID clonedFromQuoteId,
+            LocalDate validUntil, String terms,
+            UUID dealId, String dealTitle,
+            UUID clonedFromQuoteId, UUID supersededByQuoteId,
             Instant sentAt, Instant firstViewedAt, Instant respondedAt, String rejectReason,
+            String responderName, String responderTitle,
             List<Line> items, Integer version, Instant createdAt) {
 
         /**
@@ -58,14 +69,17 @@ public final class QuoteResponses {
             }
         }
 
-        public static QuoteDetail of(Quote quote) {
+        /** {@code dealTitle}은 범위 판정에서 이미 조회한 Deal 요약에서 온다 — 추가 조회가 없다 */
+        public static QuoteDetail of(Quote quote, String dealTitle) {
             return new QuoteDetail(quote.getId(), quote.getQuoteNo(),
                     quote.getStatus().name(), quote.getVatMode().name(),
                     quote.getSupplyAmount(), quote.getVatAmount(), quote.getTotalAmount(),
-                    quote.getValidUntil(), quote.getTerms(), quote.getDealId(),
-                    quote.getClonedFromQuoteId(),
+                    quote.getValidUntil(), quote.getTerms(),
+                    quote.getDealId(), dealTitle,
+                    quote.getClonedFromQuoteId(), null,
                     quote.getSentAt(), quote.getFirstViewedAt(), quote.getRespondedAt(),
                     quote.getRejectReason(),
+                    quote.getResponderName(), quote.getResponderTitle(),
                     quote.getItems().stream().map(Line::of).toList(),
                     quote.getVersion(), quote.getCreatedAt());
         }

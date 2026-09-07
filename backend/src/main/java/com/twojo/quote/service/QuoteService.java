@@ -74,7 +74,7 @@ public class QuoteService {
     @Transactional
     public QuoteResponses.QuoteDetail create(AccessContext ctx, QuoteRequests.CreateQuote request) {
         UUID dealId = request.dealId();
-        requireDealInScope(ctx, dealId);
+        DealQuery.DealSummary deal = requireDealInScope(ctx, dealId);
 
         // 종결(WON·LOST) Deal에는 견적을 붙이지 않는다 (Q-25). 없는 Deal도 false지만
         // 위에서 이미 404로 갈라졌으므로 여기 도달하면 "종결"이 유일한 원인이다.
@@ -88,7 +88,7 @@ public class QuoteService {
 
         LocalDate validUntil = LocalDate.now(SEOUL).plusDays(DEFAULT_VALIDITY_DAYS);
         Quote quote = quoteRepository.save(Quote.draft(ctx.companyId(), dealId, quoteNo, validUntil));
-        return QuoteResponses.QuoteDetail.of(quote);
+        return QuoteResponses.QuoteDetail.of(quote, deal.title());
     }
 
     /**
@@ -111,7 +111,8 @@ public class QuoteService {
 
     /** 상세 — 항목 포함 */
     public QuoteResponses.QuoteDetail get(AccessContext ctx, UUID quoteId) {
-        return QuoteResponses.QuoteDetail.of(findInScope(ctx, quoteId));
+        ScopedQuote scoped = findInScope(ctx, quoteId);
+        return QuoteResponses.QuoteDetail.of(scoped.quote(), scoped.dealTitle());
     }
 
     /**
@@ -122,7 +123,7 @@ public class QuoteService {
      * 다만 <b>범위 판정은 구성원 규칙</b>을 쓴다 — 부르는 쪽이 로그인한 구성원이기 때문이다.
      */
     public QuoteQuery.PublicQuoteView preview(AccessContext ctx, UUID quoteId) {
-        return QuoteQueryImpl.toPublicView(findInScope(ctx, quoteId));
+        return QuoteQueryImpl.toPublicView(findInScope(ctx, quoteId).quote());
     }
 
     /**
@@ -134,13 +135,19 @@ public class QuoteService {
     @Transactional
     public QuoteResponses.QuoteDetail update(AccessContext ctx, UUID quoteId,
                                              QuoteRequests.UpdateQuote request) {
-        Quote quote = findInScope(ctx, quoteId);
+        ScopedQuote scoped = findInScope(ctx, quoteId);
+        Quote quote = scoped.quote();
         quote.checkVersion(request.version());
 
         quote.update(request.validUntil(), parseVatMode(request.vatMode()), request.terms());
         quote.replaceItems(request.items().stream().map(line -> toItem(ctx, line)).toList());
 
-        return QuoteResponses.QuoteDetail.of(quote);
+        // @Version 증가를 응답에 반영한다 (08 검증 노트 #4 — Response는 항상 최신 version).
+        // 없으면 flush가 커밋 시점에 일어나 응답에는 읽어온 값이 실리고, 그 version으로
+        // 다음 저장을 하면 409가 난다 — 편집기의 두 번째 저장부터 막힌다.
+        quoteRepository.flush();
+
+        return QuoteResponses.QuoteDetail.of(quote, scoped.dealTitle());
     }
 
     /**
@@ -169,11 +176,20 @@ public class QuoteService {
     /**
      * 회사 스코프 + 담당 축으로 견적 한 건을 찾는다. 없으면 404 — <b>존재와 권한을 구별하지 않는다</b> (SC-09).
      */
-    private Quote findInScope(AccessContext ctx, UUID quoteId) {
+    private ScopedQuote findInScope(AccessContext ctx, UUID quoteId) {
         Quote quote = quoteRepository.findWithItemsByIdAndCompanyId(quoteId, ctx.companyId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-        requireDealInScope(ctx, quote.getDealId());
-        return quote;
+        DealQuery.DealSummary deal = requireDealInScope(ctx, quote.getDealId());
+        return new ScopedQuote(quote, deal.title());
+    }
+
+    /**
+     * 범위 판정을 통과한 견적과 그 Deal의 제목.
+     *
+     * <p>제목을 따로 조회하지 않으려고 함께 들고 다닌다 — 범위 판정이 이미 Deal 요약을
+     * 가져오므로, 응답에 {@code dealTitle}을 채우는 데 드는 추가 조회가 없다.
+     */
+    private record ScopedQuote(Quote quote, String dealTitle) {
     }
 
     /**
@@ -183,14 +199,15 @@ public class QuoteService {
      * 그 던짐이 회사 확인까지 해주지는 않으므로 {@code summariesByIds}로 회사를 먼저 본다 —
      * 그 목록이 비면 "다른 회사의 Deal"이고, 답은 없는 것과 같아야 한다.
      */
-    private void requireDealInScope(AccessContext ctx, UUID dealId) {
-        if (dealQuery.summariesByIds(ctx.companyId(), List.of(dealId)).isEmpty()) {
-            throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
-        }
+    private DealQuery.DealSummary requireDealInScope(AccessContext ctx, UUID dealId) {
+        DealQuery.DealSummary deal = dealQuery.summariesByIds(ctx.companyId(), List.of(dealId))
+                .stream().findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
         if (ctx.scope() == AccessScope.OWNED_ONLY
                 && !ctx.memberId().equals(dealQuery.assigneeIdOf(dealId))) {
             throw new BusinessException(ErrorCode.RESOURCE_NOT_FOUND);
         }
+        return deal;
     }
 
     /**

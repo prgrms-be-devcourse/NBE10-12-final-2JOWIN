@@ -123,6 +123,29 @@ class QuoteOptimisticLockTest {
                 version);
     }
 
+    /**
+     * 응답의 version이 DB와 같아야 한다 (08 검증 노트 #4).
+     *
+     * <p><b>동시성 테스트가 이걸 잡지 못했다</b> (리뷰 #101 ①). 거기서는 진 쪽의 예외만 보고
+     * 이긴 쪽의 응답을 읽지 않는다. flush 없이 DTO를 만들면 응답에는 읽어온 값(0)이 실리고
+     * DB는 1이 되는데, 그 응답 version으로 다음 저장을 하면 409다 —
+     * <b>편집기의 두 번째 저장부터 막힌다.</b> 목으로는 flush 자체가 없어 재현되지 않는다.
+     */
+    @Test
+    @DisplayName("수정 응답의 version이 DB 값과 같다 — 그 값으로 곧바로 다시 저장할 수 있다")
+    void 응답_version은_최신이다() {
+        var 첫_응답 = quoteService.update(ctx, quoteId, 수정요청(0, 100_000L));
+
+        Integer dbVersion = jdbc.queryForObject(
+                "select version from quote where id = ?", Integer.class, quoteId);
+        assertThat(첫_응답.version()).isEqualTo(dbVersion);
+
+        // 받은 version으로 이어서 저장된다 — 화면이 응답을 그대로 들고 다음 저장을 한다
+        var 둘째_응답 = quoteService.update(ctx, quoteId, 수정요청(첫_응답.version(), 200_000L));
+        assertThat(둘째_응답.version()).isEqualTo(첫_응답.version() + 1);
+        assertThat(둘째_응답.totalAmount()).isEqualTo(220_000L);   // 200,000 + 부가세
+    }
+
     @Test
     @DisplayName("같은 견적을 동시에 수정하면 한쪽만 성공한다 — 나머지는 전부 409로 갈 예외를 받는다")
     void 동시_수정은_한쪽만_성공한다() throws InterruptedException {
