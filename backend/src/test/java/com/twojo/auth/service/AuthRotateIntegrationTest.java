@@ -57,8 +57,8 @@ class AuthRotateIntegrationTest {
         String email = "it-" + memberId + "@twojo.test";
 
         jdbc.update("""
-                insert into application (id, company_name, business_no, email, status)
-                values (?, ?, ?, ?, 'APPROVED')
+                insert into application (id, company_name, business_no, email, applicant_name, status)
+                values (?, ?, ?, ?, '김서연', 'APPROVED')
                 """, applicationId, "통합테스트상사", businessNo, email);
         jdbc.update("""
                 insert into company (id, application_id, name, business_no, status)
