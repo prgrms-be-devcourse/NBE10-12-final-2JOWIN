@@ -1,9 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Button, Checkbox, Dialog, Flex, Text, TextField } from '@radix-ui/themes'
 import { ApiError } from '../../../shared/api/client'
-import { ErrorCallout } from '../../../shared/ui'
+import { ErrorCallout, Field } from '../../../shared/ui'
 import type { ContactResponse, CreateContactRequest } from '../../../shared/api/types'
-import { Field } from './CustomerFormDialog'
 
 interface Props {
   open: boolean

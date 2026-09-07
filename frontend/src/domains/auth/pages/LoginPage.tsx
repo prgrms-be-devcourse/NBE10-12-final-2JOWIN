@@ -1,7 +1,8 @@
 import { useState, type FormEvent } from 'react'
 import { Box, Button, Card, Checkbox, Flex, Heading, Link, Text, TextField } from '@radix-ui/themes'
 import { BRAND, Logo } from '../../../shared/brand'
-import { useNavigate } from 'react-router'
+import { Link as RouterLink, useNavigate } from 'react-router'
+import { useQueryClient } from '@tanstack/react-query'
 import { ErrorCallout } from '../../../shared/ui'
 import { ApiError } from '../../../shared/api/client'
 import { login } from '../api'
@@ -19,6 +20,7 @@ import { login } from '../api'
  */
 export function LoginPage() {
   const navigate = useNavigate()
+  const queryClient = useQueryClient()
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [rememberMe, setRememberMe] = useState(false)
@@ -31,7 +33,8 @@ export function LoginPage() {
     setLoading(true)
     try {
       // access는 응답 바디, refresh는 Set-Cookie — 클라이언트가 access를 메모리에 담는다 (§6.3-7)
-      await login(email, password, rememberMe)
+      await login({ email, password, rememberMe })
+      queryClient.clear() // 직전 계정의 /me·목록 캐시가 새 세션에 비치지 않게 (12 §6.3-8)
       navigate('/')
     } catch (error) {
       setErrorCode(error instanceof ApiError ? error.code : 'INTERNAL_ERROR')
@@ -101,8 +104,8 @@ export function LoginPage() {
                     로그인 상태 유지
                   </Flex>
                 </Text>
-                <Link href="/password-reset" size="2">
-                  비밀번호 재설정
+                <Link asChild size="2">
+                  <RouterLink to="/password-reset/request">비밀번호 재설정</RouterLink>
                 </Link>
               </Flex>
 
@@ -112,6 +115,16 @@ export function LoginPage() {
             </Flex>
           </form>
         </Card>
+
+        {/* 회사 사용 신청 (ON-01) · 플랫폼 관리자는 별도 입구 (AU-08) */}
+        <Flex justify="center" gap="4" mt="4">
+          <Link asChild size="2" color="gray">
+            <RouterLink to="/apply">회사 사용 신청</RouterLink>
+          </Link>
+          <Link asChild size="2" color="gray">
+            <RouterLink to="/admin/login">플랫폼 관리자</RouterLink>
+          </Link>
+        </Flex>
       </Box>
     </Box>
   )

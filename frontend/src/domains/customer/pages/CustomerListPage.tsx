@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router'
-import { Badge, Button, Card, Flex, IconButton, Select, Skeleton, Table, Text, TextField } from '@radix-ui/themes'
-import { ChevronLeftIcon, ChevronRightIcon, Cross2Icon, MagnifyingGlassIcon, PlusIcon } from '@radix-ui/react-icons'
-import { EmptyState, ErrorCallout, PageHeader } from '../../../shared/ui'
+import { Badge, Button, Card, Flex, IconButton, Select, Table, Text, TextField } from '@radix-ui/themes'
+import { Cross2Icon, MagnifyingGlassIcon, PlusIcon } from '@radix-ui/react-icons'
+import { EmptyState, ErrorCallout, PageHeader, Pagination, TableSkeleton } from '../../../shared/ui'
 import { ApiError } from '../../../shared/api/client'
 import { dateShort } from '../../../shared/lib/format'
 import type { CustomerResponse } from '../../../shared/api/types'
@@ -82,7 +82,7 @@ export function CustomerListPage() {
       {error && <ErrorCallout code={error instanceof ApiError ? error.code : 'INTERNAL_ERROR'} onRetry={() => refetch()} />}
 
       {isPending ? (
-        <TableSkeleton />
+        <TableSkeleton columns={[3, 1, 1, 1]} />
       ) : data && data.content.length === 0 ? (
         filtered ? (
           <EmptyState
@@ -118,24 +118,7 @@ export function CustomerListPage() {
               </Table.Body>
             </Table.Root>
 
-            <Flex align="center" justify="between" px="3" pt="3" mt="2" style={{ borderTop: '1px solid var(--gray-a4)' }}>
-              <Text size="1" color="gray">
-                전체 {total}곳 중 {page * PAGE_SIZE + 1}–{Math.min((page + 1) * PAGE_SIZE, total)}
-              </Text>
-              {data.totalPages > 1 && (
-                <Flex align="center" gap="2">
-                  <IconButton variant="soft" color="gray" size="1" aria-label="이전 페이지" disabled={page === 0} onClick={() => update({ page: String(page - 1) })}>
-                    <ChevronLeftIcon />
-                  </IconButton>
-                  <Text size="1" color="gray">
-                    {page + 1} / {data.totalPages}
-                  </Text>
-                  <IconButton variant="soft" color="gray" size="1" aria-label="다음 페이지" disabled={page + 1 >= data.totalPages} onClick={() => update({ page: String(page + 1) })}>
-                    <ChevronRightIcon />
-                  </IconButton>
-                </Flex>
-              )}
-            </Flex>
+            <Pagination data={data} unit="곳" onPageChange={(next) => update({ page: String(next) })} />
           </Card>
         )
       )}
@@ -240,19 +223,3 @@ function SearchInput({ value, onChange }: { value: string; onChange: (value: str
   )
 }
 
-function TableSkeleton() {
-  return (
-    <Card>
-      <Flex direction="column" gap="3" p="2">
-        {[0, 1, 2, 3, 4].map((i) => (
-          <Flex key={i} gap="4" align="center">
-            <Skeleton height="20px" style={{ flex: 3 }} />
-            <Skeleton height="20px" width="80px" />
-            <Skeleton height="20px" width="90px" />
-            <Skeleton height="20px" width="70px" />
-          </Flex>
-        ))}
-      </Flex>
-    </Card>
-  )
-}

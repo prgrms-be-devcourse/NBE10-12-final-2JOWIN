@@ -13,6 +13,8 @@ export default defineConfig({
     proxy: {
       '/api': { target: 'http://localhost:8080', changeOrigin: true },
       '/public': { target: 'http://localhost:8080', changeOrigin: true },
+      // 플랫폼 관리자 API (AU-08). `/admin`은 SPA 화면 경로라 `/admin/api`만 넘긴다
+      '/admin/api': { target: 'http://localhost:8080', changeOrigin: true },
     },
   },
 })

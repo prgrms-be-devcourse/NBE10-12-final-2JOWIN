@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Box, Button, Callout, Card, Flex, Heading, Text, TextField } from '@radix-ui/themes'
 import { CheckCircledIcon } from '@radix-ui/react-icons'
-import { useSearchParams } from 'react-router'
+import { Navigate, useSearchParams } from 'react-router'
 import { ErrorCallout } from '../../../shared/ui'
 import { ApiError } from '../../../shared/api/client'
 import { resetPassword } from '../api'
@@ -27,13 +27,16 @@ export function PasswordSetupPage() {
   const mismatch = confirm.length > 0 && password !== confirm
   const tooShort = password.length > 0 && password.length < 8
 
+  // 토큰 없이 들어오면 재설정 요청 화면으로 — 이 화면은 메일 링크 전용이다 (AU-05)
+  if (!params.get('token')) return <Navigate to="/password-reset/request" replace />
+
   async function handleSubmit(event: FormEvent) {
     event.preventDefault()
     if (mismatch || tooShort) return
     setErrorCode(undefined)
     setLoading(true)
     try {
-      await resetPassword(params.get('token'), password)
+      await resetPassword({ token: params.get('token') ?? '', newPassword: password })
       setDone(true)
     } catch (error) {
       setErrorCode(error instanceof ApiError ? error.code : 'INTERNAL_ERROR')
