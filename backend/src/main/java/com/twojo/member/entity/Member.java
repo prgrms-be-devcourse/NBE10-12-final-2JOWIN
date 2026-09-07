@@ -47,6 +47,25 @@ public class Member extends BaseTimeEntity {
 
     private Instant passwordChangedAt;   // AU-04·05 — 이 시각 이후 발급 토큰만 유효
 
+    /**
+     * 초대 수락으로 생기는 계정 (MB-03) — 처음부터 활성이다.
+     *
+     * <p>역할은 초대에 박혀 있던 값이다. 수락자가 고르지 않는다 (MB-02).
+     * passwordChangedAt은 이 시각이 최초 설정 시점이라 지금으로 찍는다.
+     */
+    public static Member invited(UUID companyId, String email, String passwordHash,
+                                 String name, Role role, Instant now) {
+        Member member = new Member();
+        member.companyId = companyId;
+        member.email = email;
+        member.passwordHash = passwordHash;
+        member.name = name;
+        member.role = role;
+        member.status = Status.ACTIVE;
+        member.passwordChangedAt = now;
+        return member;
+    }
+
     /** 비활성 구성원은 로그인·재발급 모두 차단 — 권한 이전에 인증에서 막는다 (MB-10). */
     public boolean isActive() {
         return status == Status.ACTIVE;
