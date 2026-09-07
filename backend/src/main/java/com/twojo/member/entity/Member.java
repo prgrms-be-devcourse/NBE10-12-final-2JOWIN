@@ -47,6 +47,25 @@ public class Member extends BaseTimeEntity {
 
     private Instant passwordChangedAt;   // AU-04·05 — 이 시각 이후 발급 토큰만 유효
 
+    /**
+     * 초대 수락으로 생기는 계정 (MB-03) — 처음부터 활성이다.
+     *
+     * <p>역할은 초대에 박혀 있던 값이다. 수락자가 고르지 않는다 (MB-02).
+     * passwordChangedAt은 이 시각이 최초 설정 시점이라 지금으로 찍는다.
+     */
+    public static Member invited(UUID companyId, String email, String passwordHash,
+                                 String name, Role role, Instant now) {
+        Member member = new Member();
+        member.companyId = companyId;
+        member.email = email;
+        member.passwordHash = passwordHash;
+        member.name = name;
+        member.role = role;
+        member.status = Status.ACTIVE;
+        member.passwordChangedAt = now;
+        return member;
+    }
+
     /** 비활성 구성원은 로그인·재발급 모두 차단 — 권한 이전에 인증에서 막는다 (MB-10). */
     public boolean isActive() {
         return status == Status.ACTIVE;
@@ -69,5 +88,25 @@ public class Member extends BaseTimeEntity {
     public void changePassword(String newPasswordHash, Instant changedAt) {
         this.passwordHash = newPasswordHash;
         this.passwordChangedAt = changedAt;
+    }
+
+    /**
+     * 프로필 수정 (AU-07) — 이름과 연락처만.
+     *
+     * <p>연락처는 null을 그대로 받는다. 비울 수 있는 값이라 "안 보냄"과 "비움"을 구별하지 않는다.
+     */
+    public void updateProfile(String name, String phone) {
+        this.name = name;
+        this.phone = phone;
+    }
+
+    /**
+     * 역할 변경 (MB-08).
+     *
+     * <p>회사에 활성 관리자가 남는지는 호출 전에 확인된다 (MB-11). 엔티티는 자기 회사에
+     * 다른 관리자가 몇 명인지 알 수 없다 — 그 판단은 서비스의 몫이다.
+     */
+    public void changeRole(Role newRole) {
+        this.role = newRole;
     }
 }

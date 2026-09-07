@@ -30,6 +30,7 @@ class EmailLogTest {
         assertThat(MailCommand.TemplateType.QUOTE_SENT.refType()).isEqualTo("QUOTE_VIEW_TOKEN");
         assertThat(MailCommand.TemplateType.SIGNUP_APPROVED.refType()).isEqualTo("APPLICATION");
         assertThat(MailCommand.TemplateType.PASSWORD_RESET.refType()).isEqualTo("PASSWORD_RESET_TOKEN");
+        assertThat(MailCommand.TemplateType.INVITATION.refType()).isEqualTo("INVITATION");
     }
 
     @Test

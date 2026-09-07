@@ -94,7 +94,8 @@ public interface MailCommand {
      *
      * <p>{@link #refType()}는 {@code email_log.ref_type}에 그대로 들어가는 문자열 — {@code refId}가 가리키는
      * 토큰/엔티티 계열을 나타낸다({@code QUOTE_SENT} → {@code quote_view_token}, {@code PASSWORD_RESET}
-     * → {@code password_reset_token}, {@code SIGNUP_APPROVED} → {@code application}).
+     * → {@code password_reset_token}, {@code SIGNUP_APPROVED} → {@code application},
+     * {@code INVITATION} → {@code invitation}).
      */
     enum TemplateType {
 
@@ -105,7 +106,14 @@ public interface MailCommand {
         SIGNUP_APPROVED("APPLICATION"),
 
         /** NT-14 비밀번호 재설정 안내 — 기존 구성원 수신 (auth, AU-05) */
-        PASSWORD_RESET("PASSWORD_RESET_TOKEN");
+        PASSWORD_RESET("PASSWORD_RESET_TOKEN"),
+
+        /**
+         * NT-01 초대 안내 — 초대받은 사람 수신 (member, {@code InvitationService.issue}).
+         * {@code refId}는 {@code invitation} 행 id — 재발송이 새 행을 만들어(Q-31) {@code email_log} 행도
+         * 발송마다 하나다. {@code QUOTE_SENT}와 같은 패턴이라 {@code uk_email_log_dedup} 충돌이 없다.
+         */
+        INVITATION("INVITATION");
 
         private final String refType;
 

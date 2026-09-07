@@ -1,0 +1,306 @@
+# 인프라 CI — infra/prod/terraform/** 를 머지 전에 검증한다 (이슈 #88)
+#
+# 워크플로 레벨 paths 필터를 쓰지 않는다. ci.yml 과 같은 이유 —
+# required check 로 지정되면 워크플로가 아예 안 돈 PR 에서 체크가 pending 으로 남아
+# 머지가 영원히 막힌다. 잡 레벨 if 스킵은 "skipped" 로 보고되어 통과시킨다.
+#
+# 잡 구성
+#   terraform-check  fmt · validate         자격증명 불필요
+#   tflint           프로바이더 규칙 위반    자격증명 불필요
+#   checkov          보안 오설정             자격증명 불필요
+#   infracost        월 비용 한도 게이트      INFRACOST_API_KEY 필요
+#   terraform-plan   PR 에 plan 결과 코멘트   OIDC 역할 필요 (bootstrap apply 이후)
+#   terraform-apply  develop 머지 후 적용     OIDC 역할 + Environment 승인
+#
+# bootstrap/ 는 plan·apply 대상이 아니다. 사람이 로컬에서 1회 돌리는 스택이고,
+# CI 가 apply 하면 상태 버킷 자체를 CI 가 흔들게 된다. 정적 검사만 받는다.
+name: infra
+
+on:
+  pull_request:
+    branches: [develop, 'release/**', main]
+  push:
+    branches: [develop]
+    paths:
+      - 'infra/prod/terraform/**'
+      - '.github/workflows/infra.yml'
+
+concurrency:
+  # apply 를 중간에 끊으면 상태가 깨진다. PR 검사만 취소한다.
+  group: infra-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+env:
+  TF_ROOT: infra/prod/terraform
+  TF_VERSION: 1.15.8
+  TFLINT_VERSION: v0.64.0
+  TF_IN_AUTOMATION: 'true'
+
+jobs:
+  changes:
+    name: infra-changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      aws_ready: ${{ steps.gate.outputs.aws_ready }}
+      infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
+      stack_ready: ${{ steps.gate.outputs.stack_ready }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'infra/prod/terraform/**'
+              - '.github/workflows/infra.yml'
+
+      # 아직 없는 것들 때문에 CI 가 빨간불로 남지 않게 한다.
+      # bootstrap apply 전에는 OIDC 역할이 없고, 메인 스택 코드도 아직 없다.
+      # 준비되면 시크릿·코드가 생기면서 해당 잡이 저절로 켜진다.
+      - id: gate
+        shell: bash
+        env:
+          HAS_PLAN_ROLE: ${{ secrets.AWS_TF_PLAN_ROLE_ARN != '' }}
+          HAS_INFRACOST_KEY: ${{ secrets.INFRACOST_API_KEY != '' }}
+        run: |
+          set -euo pipefail
+          {
+            echo "aws_ready=${HAS_PLAN_ROLE}"
+            echo "infracost_ready=${HAS_INFRACOST_KEY}"
+            # 메인 스택은 TF_ROOT 바로 아래 .tf 파일. bootstrap/ 은 여기 해당 없음
+            if compgen -G "${TF_ROOT}/*.tf" > /dev/null; then
+              echo "stack_ready=true"
+            else
+              echo "stack_ready=false"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+  # ── 자격증명 없이 도는 검사 3종 ─────────────────────────────────
+  terraform-check:
+    name: terraform-check
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: fmt
+        working-directory: ${{ env.TF_ROOT }}
+        run: terraform fmt -check -recursive -diff
+
+      # 스택이 늘어나도 워크플로를 고치지 않도록 .tf 가 있는 디렉터리를 찾아 전부 돈다.
+      - name: validate
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          set -euo pipefail
+          dirs=$(find . -name '*.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u)
+          if [ -z "$dirs" ]; then
+            echo "::error::검사할 terraform 디렉터리를 찾지 못했다"
+            exit 1
+          fi
+          for dir in $dirs; do
+            echo "::group::validate $dir"
+            terraform -chdir="$dir" init -backend=false -input=false -no-color
+            terraform -chdir="$dir" validate -no-color
+            echo "::endgroup::"
+          done
+
+  tflint:
+    name: tflint
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: terraform-linters/setup-tflint@v6
+        with:
+          tflint_version: ${{ env.TFLINT_VERSION }}
+
+      - name: tflint
+        working-directory: ${{ env.TF_ROOT }}
+        env:
+          # 플러그인 다운로드가 GitHub API 레이트리밋에 걸리는 것을 막는다
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          cfg="$PWD/.tflint.hcl"
+          tflint --init --config="$cfg"
+          for dir in $(find . -name '*.tf' -not -path '*/.terraform/*' -printf '%h\n' | sort -u); do
+            echo "::group::tflint $dir"
+            tflint --chdir="$dir" --config="$cfg" --format=compact
+            echo "::endgroup::"
+          done
+
+  checkov:
+    name: checkov
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write # SARIF 업로드 (PR 라인 어노테이션)
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: bridgecrewio/checkov-action@v12
+        with:
+          directory: infra/prod/terraform
+          config_file: infra/prod/terraform/.checkov.yaml
+          framework: terraform
+          output_format: cli,sarif
+          output_file_path: console,checkov.sarif
+          soft_fail: false
+
+      - name: SARIF 업로드
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: checkov.sarif
+          category: checkov
+
+  # ── 비용 게이트 — cost-guard 1계층 ───────────────────────────────
+  # 3계층 중 유일하게 "돈이 나가기 전에" 막는다.
+  # IAM Deny 는 apply 시점, Budgets 는 이미 쓴 뒤다.
+  infracost:
+    name: infracost
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.infra == 'true' &&
+      needs.changes.outputs.infracost_ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write
+    env:
+      # 하드 한도는 $50 (cost-guard.md). 여유를 두고 $45 에서 막는다.
+      COST_LIMIT: ${{ vars.INFRACOST_COST_LIMIT || '45' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: infracost/actions/setup@v4
+        with:
+          api-key: ${{ secrets.INFRACOST_API_KEY }}
+
+      # plan 이 아니라 HCL 을 직접 파싱한다 — AWS 자격증명 없이 돈다.
+      - name: 비용 산출
+        run: infracost breakdown --path="${TF_ROOT}" --format=json --out-file=/tmp/infracost.json
+
+      - name: PR 코멘트
+        uses: infracost/actions/comment@v4
+        with:
+          path: /tmp/infracost.json
+          behavior: update
+
+      # 증분(diff)이 아니라 총액으로 판정한다.
+      # diff 게이트는 "최초 인프라 PR 은 당연히 한도를 넘는다"($0 → $37) 문제가 생겨
+      # baseline 파일이나 우회 라벨이 필요하다. 총액 게이트는 그 문제가 없다.
+      - name: 한도 게이트
+        run: |
+          set -euo pipefail
+          total=$(jq -r '.totalMonthlyCost // "0"' /tmp/infracost.json)
+          echo "월 예상 비용 ${total} / 한도 ${COST_LIMIT} (USD)"
+          if awk -v t="$total" -v l="$COST_LIMIT" 'BEGIN { exit !(t > l) }'; then
+            echo "::error::월 예상 비용 ${total} USD 가 한도 ${COST_LIMIT} USD 를 넘었다. 하드 한도는 50 USD (cost-guard.md)"
+            exit 1
+          fi
+          echo "한도 이내"
+
+  # ── AWS 자격증명이 필요한 잡 ────────────────────────────────────
+  # bootstrap apply 로 OIDC 역할이 생기고 메인 스택 코드가 들어오면 켜진다.
+  terraform-plan:
+    name: terraform-plan
+    needs: changes
+    if: >-
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.infra == 'true' &&
+      needs.changes.outputs.aws_ready == 'true' &&
+      needs.changes.outputs.stack_ready == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # OIDC 토큰 발급
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_TF_PLAN_ROLE_ARN }}
+          aws-region: ap-northeast-2
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: plan
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          set -euo pipefail
+          terraform init -input=false -no-color
+          terraform plan -input=false -no-color -lock-timeout=120s | tee /tmp/plan.txt
+
+      - name: PR 코멘트
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const fs = require('fs');
+            const raw = fs.readFileSync('/tmp/plan.txt', 'utf8');
+            // 코멘트 상한(65536자)을 넘지 않게 뒤에서 자른다 — 요약은 마지막에 나온다
+            const plan = raw.length > 60000 ? '...(앞부분 생략)\n' + raw.slice(-60000) : raw;
+            const marker = '<!-- terraform-plan -->';
+            const fence = '```';
+            const body = marker + '\n### terraform plan\n\n' + fence + 'hcl\n' + plan + '\n' + fence;
+            const { data: comments } = await github.rest.issues.listComments({
+              ...context.repo, issue_number: context.issue.number,
+            });
+            const prev = comments.find(c => c.body && c.body.startsWith(marker));
+            if (prev) {
+              await github.rest.issues.updateComment({ ...context.repo, comment_id: prev.id, body });
+            } else {
+              await github.rest.issues.createComment({
+                ...context.repo, issue_number: context.issue.number, body,
+              });
+            }
+
+  terraform-apply:
+    name: terraform-apply
+    needs: changes
+    if: >-
+      github.event_name == 'push' &&
+      needs.changes.outputs.aws_ready == 'true' &&
+      needs.changes.outputs.stack_ready == 'true'
+    runs-on: ubuntu-latest
+    # 승인 게이트. Environment 에 Required reviewers 를 걸면
+    # 승인 전에는 OIDC 토큰 자체가 발급되지 않는다 — 브랜치 기준으로는 안 되는 것
+    environment: prod
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_TF_APPLY_ROLE_ARN }}
+          aws-region: ap-northeast-2
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: apply
+        working-directory: ${{ env.TF_ROOT }}
+        run: |
+          set -euo pipefail
+          terraform init -input=false -no-color
+          terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
