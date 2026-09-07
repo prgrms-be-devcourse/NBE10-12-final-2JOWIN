@@ -57,7 +57,7 @@ class ApplicationServiceTest {
         given(applicationRepository.findByEmailLowerAndStatus(
                 "seoyeon@hanbit.co.kr", Application.Status.PENDING))
                 .willReturn(Optional.empty());
-        given(applicationRepository.save(any(Application.class)))
+        given(applicationRepository.saveAndFlush(any(Application.class)))
                 .willAnswer(invocation -> invocation.getArgument(0));
 
         // when — 같은 이메일로 다시 신청하면
@@ -93,6 +93,6 @@ class ApplicationServiceTest {
         // 대기 신청 조회에 닿지도 않는다 — 닿으면 순서가 뒤집힌 것이다
         then(applicationRepository).should(never())
                 .findByEmailLowerAndStatus(anyString(), any());
-        then(applicationRepository).should(never()).save(any());
+        then(applicationRepository).should(never()).saveAndFlush(any());
     }
 }

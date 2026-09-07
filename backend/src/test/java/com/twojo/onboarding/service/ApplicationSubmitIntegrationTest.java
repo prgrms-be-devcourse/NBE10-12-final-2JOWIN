@@ -7,6 +7,7 @@ import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.onboarding.dto.CreateApplicationRequest;
 import java.util.UUID;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
@@ -17,7 +18,7 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
 /**
- * 대기 신청의 이메일 점유는 표기를 타지 않는다 (05 §1 · Q-14).
+ * 대기 신청의 이메일 점유 — 표기를 타지 않고(Q-14), DB 제약으로도 한 번 더 막힌다(V102).
  *
  * <p><b>목으로는 성립하지 않는다.</b> 목 저장소를 쓰면 "무엇이 돌아오는가"를 테스트가
  * 정해주고, 저장된 표기와 조회 표기가 실제로 맞는지가 검증 경로에서 사라진다. 저장을 거쳐
@@ -67,6 +68,57 @@ class ApplicationSubmitIntegrationTest {
 
         // then — 대기 행은 여전히 하나다. 우회로 두 건이 쌓이지 않았다
         assertThat(대기_신청_수()).isEqualTo(1);
+    }
+
+    /**
+     * V102 · PR #108 1차 리뷰 — 사전 검사만으로는 동시 요청 둘이 함께 통과한다.
+     *
+     * <p>스레드를 띄우지 않는다. 경합 재현은 CI에서 플래키하다(tests.md §2). 대신 검사를
+     * 우회해 직접 행을 넣어 <b>제약이 실제로 있고 문다</b>는 것을 확인한다 — 경합에서
+     * 진 요청이 닿는 자리가 여기다.
+     *
+     * <p>표기를 바꿔 넣는 것은 인덱스가 {@code lower(email)}로 걸렸는지 함께 보기 위해서다.
+     * 조회는 소문자로 비교하는데 인덱스가 원문으로 걸리면 검사가 막은 것을 DB가 통과시킨다.
+     */
+    @Test
+    void 대기_신청이_있으면_같은_이메일_행이_DB에서도_거부된다() {
+        // given — 김서연의 검토 대기 신청이 하나 있다
+        applicationService.submit(new CreateApplicationRequest(
+                "한빛오피스", 사업자번호, 소문자_이메일, "김서연"));
+
+        // when — 서비스 검사를 우회해 대문자 표기로 대기 행을 직접 넣으면
+        // then — 부분 유니크 인덱스가 막는다
+        assertThatThrownBy(() -> 신청_행을_직접_넣는다("PENDING", 소문자_이메일.toUpperCase()))
+                .isInstanceOf(DataIntegrityViolationException.class);
+    }
+
+    /**
+     * Q-15 — 반려 이력을 남기고 재신청을 허용한 결정이 제약에 갇히면 안 된다.
+     *
+     * <p>{@code uk_application_pending}을 부분 인덱스가 아니라 전체 유니크로 걸면, 한 번
+     * 반려된 사람은 그 이메일로 영원히 다시 신청할 수 없다. 조건절이 그것을 막는다.
+     */
+    @Test
+    void 종결된_신청은_같은_이메일이라도_제약을_받지_않는다() {
+        // given — 김서연의 검토 대기 신청이 하나 있다
+        applicationService.submit(new CreateApplicationRequest(
+                "한빛오피스", 사업자번호, 소문자_이메일, "김서연"));
+
+        // when, then — 같은 이메일의 반려·승인 행은 몇 건이든 공존한다 (이력 보존)
+        신청_행을_직접_넣는다("REJECTED", 소문자_이메일);
+        신청_행을_직접_넣는다("REJECTED", 소문자_이메일);
+        신청_행을_직접_넣는다("APPROVED", 소문자_이메일);
+
+        // then — 대기 행은 여전히 하나뿐이다
+        assertThat(대기_신청_수()).isEqualTo(1);
+    }
+
+    /** 서비스의 사전 검사를 거치지 않고 행을 심는다 — 제약 자체를 보기 위한 우회다. */
+    private void 신청_행을_직접_넣는다(String 상태, String 이메일) {
+        jdbc.update("""
+                insert into application (id, company_name, business_no, email, applicant_name, status)
+                values (?, '한빛오피스', ?, ?, '김서연', ?)
+                """, UUID.randomUUID(), 사업자번호, 이메일, 상태);
     }
 
     private Integer 대기_신청_수() {

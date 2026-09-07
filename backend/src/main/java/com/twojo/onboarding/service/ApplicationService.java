@@ -10,6 +10,7 @@ import com.twojo.onboarding.repository.ApplicationRepository;
 import java.time.Instant;
 import java.util.Locale;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,6 +22,9 @@ import org.springframework.transaction.annotation.Transactional;
  * 데 쓰일 수 있지만, 접수 결과를 알려주지 않으면 신청자가 무엇을 고쳐야 할지 알 수 없다.
  *
  * <p>사업자번호 중복은 여기서 보지 않는다. 재신청을 허용하므로(Q-15) 막을 자리는 승인이다.
+ *
+ * <p>대기 신청 중복은 사전 검사와 {@code uk_application_pending} 두 겹으로 막는다 —
+ * 검사만으로는 동시 요청 둘이 함께 통과한다 (V102).
  */
 @Service
 @RequiredArgsConstructor
@@ -42,11 +46,32 @@ public class ApplicationService {
         requireNotMember(email);
         requireNoPendingApplication(email);
 
-        return ApplicationResponse.of(applicationRepository.save(Application.submit(
+        return ApplicationResponse.of(saveOrConflict(Application.submit(
                 request.companyName().trim(),
                 request.businessNo().trim(),
                 email,
                 request.applicantName().trim())));
+    }
+
+    /**
+     * 사전 검사를 통과했는데도 부분 유니크에 걸리는 동시 요청을 409로 바꾼다.
+     *
+     * <p>인증 없이 누구나 부르는 경로라 그 창이 실제로 열려 있다. 검사와 INSERT 사이에
+     * 다른 요청이 같은 이메일로 대기 행을 만들면 여기서 걸린다.
+     *
+     * <p><b>{@code save()}가 아니라 {@code saveAndFlush()}다.</b> {@code save()}는 INSERT를
+     * 커밋 시점까지 미루므로 예외가 이 try 블록 밖에서 터져 500이 된다.
+     *
+     * <p>{@code GlobalExceptionHandler}가 아니라 여기서 잡는다 — 그 예외는 모든 도메인의
+     * 모든 제약 위반에서 나므로, 어느 제약인지 아는 자리에서 잡아야 한다.
+     * 이 트랜잭션에서 걸릴 수 있는 제약은 {@code uk_application_pending} 하나다.
+     */
+    private Application saveOrConflict(Application application) {
+        try {
+            return applicationRepository.saveAndFlush(application);
+        } catch (DataIntegrityViolationException e) {
+            throw new BusinessException(ErrorCode.APPLICATION_ALREADY_PENDING);
+        }
     }
 
     /**
