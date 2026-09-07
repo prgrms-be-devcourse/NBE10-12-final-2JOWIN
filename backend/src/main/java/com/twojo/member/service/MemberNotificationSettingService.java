@@ -56,12 +56,17 @@ public class MemberNotificationSettingService {
         return new NotificationSettingResponse(toEntries(settings));
     }
 
-    /** 응답 순서를 상수 선언 순서로 고정한다 — 맵의 순회 순서에 화면 배치를 맡기지 않는다. */
+    /**
+     * 응답 순서를 상수 선언 순서로 고정한다 — 맵의 순회 순서에 화면 배치를 맡기지 않는다.
+     *
+     * <p>빠진 항목을 켜진 것으로 읽는다. 계약이 네 항목을 다 채워 주므로 실제로는 쓰이지 않는 자리인데,
+     * 굳이 꺼진 쪽으로 두면 값이 비었을 때 구성원이 원한 적 없는 방향으로 기운다.
+     */
     private List<NotificationSettingResponse.Entry> toEntries(
             Map<NotificationSettingType, Boolean> settings) {
         return Arrays.stream(NotificationSettingType.values())
                 .map(type -> new NotificationSettingResponse.Entry(
-                        type.name(), Boolean.TRUE.equals(settings.get(type))))
+                        type.name(), settings.getOrDefault(type, true)))
                 .toList();
     }
 
