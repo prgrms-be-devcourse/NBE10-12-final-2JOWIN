@@ -35,12 +35,12 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | --- | --- |
 | `prod/terraform/bootstrap/` | tfstate 버킷 · GitHub OIDC · TF 실행 역할 — **1회만 실행** |
 | `prod/terraform/modules/` | 재사용 모듈 (아래 표) |
-| `prod/terraform/` (루트) | 실제 환경 구성 — `main.tf` · `variables.tf` · `terraform.tfvars` · `backend.tf` |
+| `prod/terraform/` (루트) | 실제 환경 구성 — `main.tf` · `variables.tf` · `backend.tf`. 버킷 이름은 `init -backend-config` 로 주입한다 (계정 ID가 들어가서 코드에 못 박는다) |
 | `prod/docker/` | `backend.Dockerfile` — 빌드 컨텍스트는 `backend/` |
 | `prod/compose/` | EC2 위 스택 — Caddy · backend · PostgreSQL · 모니터링 |
 | `prod/caddy/` | `Caddyfile` — TLS 종단 · `/actuator` 차단 · 재시도 버퍼 |
 | `prod/monitoring/` | Prometheus · Loki · Promtail · Grafana 설정과 대시보드 |
-| `prod/scripts/` | `deploy.sh` · `fetch-secrets.sh` · `backup.sh` · `tunnel.sh` |
+| `prod/scripts/` | `cost_report.py` · `deploy.sh` · `fetch-secrets.sh` · `backup.sh` · `tunnel.sh` |
 
 ### terraform 모듈
 
@@ -50,7 +50,7 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(SSM) · cloud-init |
 | `storage/` | ECR(수명주기 10개) · S3 백업 버킷(수명주기 7일) |
 | `mail/` | SES 도메인 인증 · DKIM · 발송 IAM |
-| `cost-guard/` | Budgets · Budget Actions · SNS · Discord 알림 Lambda |
+| `cost-guard/` | IAM Deny 가드레일 · Budgets · Budget Action 2종 · SNS → Discord Lambda |
 
 ### 최초 실행 순서
 
@@ -84,5 +84,6 @@ docker build -f infra/prod/docker/backend.Dockerfile backend/
 | --- | --- |
 | `backend/.dockerignore` | 빌드 컨텍스트 제외 목록 |
 | `.github/workflows/deploy.yml` | 백엔드 CD |
-| `.github/workflows/infra.yml` | terraform plan / apply |
+| `.github/workflows/infra.yml` | terraform fmt · validate · tflint · checkov · Infracost · plan / apply |
+| `.github/workflows/cost-report.yml` | 일일 누적 비용 리포트 + 한도 초과 시 EC2 정지 |
 | `frontend/.env.production` | `VITE_API_BASE_URL` |
