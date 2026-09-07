@@ -94,7 +94,7 @@ public interface MailCommand {
      *
      * <p>{@link #refType()}는 {@code email_log.ref_type}에 그대로 들어가는 문자열 — {@code refId}가 가리키는
      * 토큰/엔티티 계열을 나타낸다({@code QUOTE_SENT} → {@code quote_view_token}, {@code PASSWORD_RESET}
-     * → {@code password_reset_token}, {@code SIGNUP_APPROVED} → {@code application},
+     * → {@code password_reset_token}, {@code SIGNUP_APPROVED}·{@code SIGNUP_REJECTED} → {@code application},
      * {@code INVITATION} → {@code invitation}).
      */
     enum TemplateType {
@@ -104,6 +104,12 @@ public interface MailCommand {
 
         /** NT-13 가입 승인 통보 — 신청자 수신 (onboarding, ON-07). Q-33: 승인 메일에 비밀번호 설정 링크 */
         SIGNUP_APPROVED("APPLICATION"),
+
+        /**
+         * NT-13 가입 반려 통보 — 신청자 수신 (onboarding, {@code ApplicationAdminService.reject}, ON-05·14).
+         * {@code refId}는 {@code application} 행 id — 신청 1건은 반려가 1회뿐이라 {@code uk_email_log_dedup} 충돌이 없다.
+         */
+        SIGNUP_REJECTED("APPLICATION"),
 
         /** NT-14 비밀번호 재설정 안내 — 기존 구성원 수신 (auth, AU-05) */
         PASSWORD_RESET("PASSWORD_RESET_TOKEN"),
@@ -124,6 +130,14 @@ public interface MailCommand {
         /** {@code email_log.ref_type}에 저장되는 값. */
         public String refType() {
             return refType;
+        }
+
+        /**
+         * 플랫폼 발송(신청자 수신) 여부 — {@code true}면 {@code companyId}가 null이다
+         * ({@code email_log} DDL 주석: "플랫폼 발송(NT-13)은 null"). 가입 승인·반려 시점엔 회사가 없다.
+         */
+        public boolean isPlatformIssued() {
+            return this == SIGNUP_APPROVED || this == SIGNUP_REJECTED;
         }
     }
 }
