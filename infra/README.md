@@ -40,7 +40,7 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | `prod/compose/` | EC2 위 스택 — Caddy · backend · PostgreSQL · 모니터링 |
 | `prod/caddy/` | `Caddyfile` — TLS 종단 · `/actuator` 차단 · 재시도 버퍼 |
 | `prod/monitoring/` | Prometheus · Loki · Promtail · Grafana 설정과 대시보드 |
-| `prod/scripts/` | `cost_report.py` · `deploy.sh` · `fetch-secrets.sh` · `backup.sh` · `tunnel.sh` |
+| `prod/scripts/` | `deploy.sh` · `backup.sh` |
 
 ### terraform 모듈
 
@@ -74,7 +74,7 @@ docker build -f infra/prod/docker/backend.Dockerfile backend/
 
 - **AWS 환경은 prod 하나뿐이다.** 예산 ₩80,000 안에서 두 번째 상시 환경이 불가능하다 → terraform에 `envs/` 계층을 두지 않았다.
 - 그래서 **인프라 변경을 미리 시험할 AWS 환경이 없다.** `terraform plan` PR 코멘트 · Infracost 비용 게이트 · GitHub Environment 승인으로 대신한다.
-- 시크릿은 저장소에 두지 않는다. SSM Parameter Store → `scripts/fetch-secrets.sh` → `/opt/2jo/.env`.
+- 시크릿은 저장소에 두지 않는다. GitHub Secrets → 배포 워크플로가 SSH stdin 으로 → `/opt/2jo/.env` (600).
 
 ## 이 디렉터리 밖 관련 파일
 

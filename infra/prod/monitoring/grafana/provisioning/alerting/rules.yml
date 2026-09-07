@@ -25,7 +25,7 @@ groups:
           severity: critical
         annotations:
           summary: '스크레이프 대상이 응답하지 않는다'
-          description: 'SSM 으로 접속해 docker compose ps 를 확인할 것'
+          description: 'SSH 로 접속해 docker compose ps 를 확인할 것'
         noDataState: NoData
         execErrState: Error
         data:

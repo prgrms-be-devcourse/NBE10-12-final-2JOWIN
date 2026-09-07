@@ -15,7 +15,13 @@
 
 기동: `docker compose -f compose.yml -f compose.monitoring.yml up -d`
 
-**공개망에 노출되지 않는다.** 호스트에 게시되는 포트는 Caddy 의 80·443 뿐이고, Grafana 를 보려면 SSM 포트 포워딩으로 터널을 뚫는다.
+**공개망에 노출되지 않는다.** 호스트에 게시되는 포트는 Caddy 의 80·443 뿐이다. Grafana 를 보려면 SSH 로컬 포워딩으로 터널을 뚫는다.
+
+```bash
+ssh -N -L 3000:localhost:3000 ec2-user@api.jomin4.cloud
+```
+
+22번은 상시 열려 있지 않다. 사람이 접속하려면 보안그룹에 자기 IP `/32` 를 직접 열고 끝나면 회수한다 — 배포 워크플로가 하는 것과 같은 일을 손으로 하는 것이다.
 
 ## 스크레이프 대상 5종
 
@@ -76,14 +82,14 @@ Grafana Unified Alerting 이 평가와 발송을 모두 한다. Alertmanager 를
 | postgres_exporter | 9628 |
 | JVM (Micrometer) | 4701 |
 
-## 필요한 SSM 파라미터
+## 필요한 시크릿
 
-값은 terraform 으로 만들지 않는다. `fetch-secrets.sh` 가 파라미터 이름의 마지막 조각을 환경변수 키로 바꾼다.
+값은 terraform 으로 만들지 않는다(tfstate 가 평문이다). 배포 워크플로가 GitHub Secrets 에서 `.env` 를 조립해 넣는다.
 
-| SSM 경로 | 환경변수 | 쓰는 곳 |
-| --- | --- | --- |
-| `/2jo/prod/discord-webhook-url` | `DISCORD_WEBHOOK_URL` | Grafana 연락 지점 |
-| `/2jo/prod/grafana-admin-password` | `GRAFANA_ADMIN_PASSWORD` | Grafana 관리자 |
+| 환경변수 | 쓰는 곳 |
+| --- | --- |
+| `DISCORD_WEBHOOK_URL` | Grafana 연락 지점 |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana 관리자 |
 
 ## 다음 단계 (팀 논의 후)
 
