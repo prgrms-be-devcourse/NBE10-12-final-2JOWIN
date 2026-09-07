@@ -8,6 +8,8 @@ import static org.mockito.Mockito.never;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.CompanyQuery;
+import com.twojo.boundary.MailCommand;
 import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
@@ -19,11 +21,11 @@ import com.twojo.member.token.InvitationTokenGenerator;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -47,11 +49,22 @@ class InvitationServiceTest {
     private static final AccessContext 박지훈_영업 =
             new AccessContext(한빛오피스, 박지훈, Role.SALES_REP, AccessScope.OWNED_ONLY);
 
+    private static final String 초대_주소 = "http://localhost:5173/invite";
+
     @Mock private InvitationRepository invitationRepository;
     @Mock private MemberRepository memberRepository;
     @Mock private InvitationTokenGenerator tokenGenerator;
+    @Mock private CompanyQuery companyQuery;
+    @Mock private MailCommand mailCommand;
 
-    @InjectMocks private InvitationService invitationService;
+    private InvitationService invitationService;
+
+    @BeforeEach
+    void setUp() {
+        invitationService = new InvitationService(
+                invitationRepository, memberRepository, tokenGenerator,
+                companyQuery, mailCommand, 초대_주소);
+    }
 
     /** 07 §A 역할 칸 "기업 관리자" — 영업 담당자가 사람을 부를 수 있으면 조직이 통제되지 않는다. */
     @Test
