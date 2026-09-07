@@ -10,7 +10,12 @@
 # 설계 근거: containers.md §3.3 · storage.md §3.3
 set -euo pipefail
 
-BUCKET="${BACKUP_BUCKET:?BACKUP_BUCKET 이 필요하다}"
+# 인스턴스가 자기 자신에 대해 아는 것(버킷·리전). cloud-init 이 쓴다.
+CONF=/etc/2jo.conf
+# shellcheck source=/dev/null
+[ -r "$CONF" ] && . "$CONF"
+
+BUCKET="${BUCKET:?BUCKET 을 모른다 — /etc/2jo.conf 를 확인할 것}"
 AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 COMPOSE_PROJECT="${COMPOSE_PROJECT:-twojo}"
 

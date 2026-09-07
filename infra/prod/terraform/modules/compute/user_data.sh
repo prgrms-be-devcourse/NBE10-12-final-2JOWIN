@@ -23,6 +23,19 @@ fail() {
   exit 0
 }
 
+# ── 0. 인스턴스가 자기 자신에 대해 아는 것 ───────────────────────────────
+# deploy.sh · backup.sh 가 나중에 SSM 으로 불릴 때는 이 값들을 알 방법이 없다.
+# terraform 이 아는 것을 여기서 한 번 파일로 떨어뜨린다.
+# 시크릿은 넣지 않는다 — 그건 SSM SecureString 에서 온다.
+log "인스턴스 설정 기록: /etc/2jo.conf"
+cat >/etc/2jo.conf <<CONF
+APP_DIR=$APP_DIR
+BUCKET=$CONFIG_BUCKET
+AWS_REGION=$AWS_REGION
+SSM_PREFIX=$SSM_PREFIX
+CONF
+chmod 644 /etc/2jo.conf
+
 # ── 1. 도커 ──────────────────────────────────────────────────────────────
 log "도커 설치"
 dnf install -y docker || fail "docker 설치"
@@ -56,7 +69,11 @@ fi
 # 재생성된다. S3 에 두면 이후에는 SSM 으로 재동기화만 하면 된다.
 log "설정 번들 동기화: s3://$CONFIG_BUCKET/config/"
 install -d "$APP_DIR"
-aws s3 sync "s3://$CONFIG_BUCKET/config/" "$APP_DIR/" --region "$AWS_REGION" --delete ||
+# .env 계열은 S3 에 없다. --delete 대상에서 빼지 않으면 재동기화할 때마다
+# 시크릿과 이미지 태그가 지워진다.
+aws s3 sync "s3://$CONFIG_BUCKET/config/" "$APP_DIR/" \
+  --region "$AWS_REGION" --delete \
+  --exclude ".env" --exclude ".env.image" ||
   fail "설정 번들 동기화"
 
 # ── 4. 시크릿 ────────────────────────────────────────────────────────────
