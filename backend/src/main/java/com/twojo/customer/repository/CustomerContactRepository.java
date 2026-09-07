@@ -11,10 +11,15 @@ import org.springframework.data.jpa.repository.JpaRepository;
  *
  * <p>{@code customer_contact}에는 {@code company_id}가 없다 — 부모(고객사) 경유 격리이기 때문이다
  * (docs/06 설계 원칙). 따라서 회사 판정은 부모를 통해서만 가능하며, 담당자 단독 조회에는
- * 테넌트 조건을 걸 수 없다. <b>여기의 모든 조회가 {@code customerId}를 함께 받는 이유다</b> —
- * 서비스는 부모 고객사를 회사 스코프로 먼저 찾은 뒤에만 이 메서드들을 부른다.
+ * 테넌트 조건을 걸 수 없다.
  *
- * <p><b>{@code findById}를 쓰지 않는다</b> — 부모를 거치지 않아 타사 담당자가 그대로 나온다.
+ * <p><b>구성원 요청을 받는 경로({@code CustomerService})에서는 {@code customerId}를 함께 받는
+ * 메서드만 쓴다</b> — 부모 고객사를 회사 스코프로 먼저 찾은 뒤에 부르므로 그 조회가 테넌트 방어가 된다.
+ * 거기서 {@code findById}를 쓰면 부모를 거치지 않아 타사 담당자가 그대로 나온다.
+ *
+ * <p><b>예외는 {@code CustomerQueryImpl.getContact}다</b> — 회사 검증 없이 {@code findById}를 쓴다.
+ * {@code contactId}만으로는 회사 판정이 불가능하고, 호출자(D)가 {@code existsContactInCustomer}로
+ * 소속을 확인한 뒤 부르는 후속 조회라 확정된 설계다 (docs/11 §7.2). <b>되돌리지 말 것.</b>
  *
  * <p>소프트 삭제가 없다 — 삭제는 차단 규칙(CU-14, PRIMARY_CONTACT_REQUIRED)을 통과하면 실제로 지운다.
  */

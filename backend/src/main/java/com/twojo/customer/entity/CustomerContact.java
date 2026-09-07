@@ -39,6 +39,9 @@ public class CustomerContact extends BaseTimeEntity {
     /**
      * 담당자 등록 (CU-09·10). 대표 여부는 여기서 정하지 않는다 —
      * 별도 엔드포인트 {@code POST .../contacts/{cid}/set-primary}가 담당한다 (CU-11).
+     *
+     * <p>단, <b>담당자가 없는 고객사의 첫 담당자는 서비스가 대표로 지정한다</b>
+     * (#107 설계 결정 1). 대표가 붙는 경로는 그 자동 지정과 {@code set-primary} 둘이다.
      */
     public static CustomerContact create(UUID customerId, String name, String title,
                                          String phone, String email) {
