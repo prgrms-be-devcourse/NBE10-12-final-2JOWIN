@@ -168,10 +168,7 @@ public class CustomerService {
         return value == null || value.isBlank() ? null : value.trim();
     }
 
-    /**
-     * LIKE 와일드카드를 글자로 되돌린다 — {@code ?keyword=%}로 회사 전체가 나오면 안 된다 (CU-04).
-     * 이스케이프 문자는 쿼리의 {@code escape '!'}와 짝이다. 자기 자신을 먼저 바꾼다.
-     */
+    /** 검색어의 LIKE 와일드카드를 글자로 되돌린다 (CU-04). */
     private static String escapeLike(String value) {
         return value == null ? null
                 : value.replace("!", "!!").replace("%", "!%").replace("_", "!_");

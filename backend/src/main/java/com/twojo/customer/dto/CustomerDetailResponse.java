@@ -24,11 +24,7 @@ public record CustomerDetailResponse(
         List<DealSummary> deals,
         Instant createdAt) {
 
-    /**
-     * 엔티티와 경계 조회 결과 → 응답.
-     *
-     * <p>{@code createdByMemberName}은 호출부가 채워 넘긴다 — 사유는 그쪽 주석에 있다.
-     */
+    /** 엔티티와 경계 조회 결과 → 응답. */
     public static CustomerDetailResponse of(Customer customer, String createdByMemberName,
                                             List<ContactResponse> contacts,
                                             List<DealQuery.DealSummary> deals) {

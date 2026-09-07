@@ -27,8 +27,9 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
      * 정렬은 호출부의 Pageable이 정한다 (Q-39).
      *
      * <p><b>{@code escape '!'}가 붙은 이유</b> — 검색어의 {@code %}·{@code _}는 LIKE 와일드카드다.
-     * 이스케이프하지 않으면 {@code ?keyword=%} 한 글자로 회사 전체가 나온다. 호출부가
-     * {@code CustomerService.escapeLike}로 미리 접두어를 붙여 넘긴다.
+     * 이스케이프하지 않으면 {@code ?keyword=%} 한 글자로 회사 전체가 나온다. 그래서 이 메서드는
+     * <b>이미 이스케이프된 검색어</b>를 받는다 — 호출부가 {@code %}·{@code _}·{@code !} 앞에
+     * {@code !}를 붙여 넘긴다. 표시 문자가 {@code !}인 것은 {@code lower()}가 바꾸지 못해서다.
      *
      * <p><b>{@code cast(:param as string)}은 장식이 아니다.</b> 값이 null이면 JDBC가 타입을 몰라
      * {@code bytea}로 바인딩해 PostgreSQL이 {@code function lower(bytea) does not exist}로 막는다.
