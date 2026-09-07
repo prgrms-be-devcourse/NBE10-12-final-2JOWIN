@@ -15,7 +15,8 @@
 -- 짓는다 (task_company_id_fkey).
 ALTER TABLE task ADD COLUMN company_id UUID REFERENCES company (id);
 
--- 기존 행을 부모 딜의 회사로 채운다. 복합 FK가 붙기 전이라 값이 어긋날 수 없다.
+-- 기존 행을 부모 딜의 회사로 채운다. 값을 deal에서 그대로 복사하므로 정의상 딜의 회사와
+-- 같다 — 아래 복합 FK는 이 백필이 아니라 이후 INSERT를 막는 장치다.
 UPDATE task SET company_id = d.company_id FROM deal d WHERE d.id = task.deal_id;
 
 ALTER TABLE task ALTER COLUMN company_id SET NOT NULL;
