@@ -3,10 +3,9 @@ import { demoAccounts } from '../fixtures'
 import { currentMember, db, error, noContent, session } from '../store'
 import type {
   AcceptInvitationRequest, ApplicationResponse, ChangePasswordRequest, CreateApplicationRequest, ExecutePasswordResetRequest,
-  InvitationInfoResponse, LoginRequest, LoginResponse, MeResponse, NotificationSettingResponse, RefreshTokenResponse,
-  UpdateMeRequest, UpdateNotificationSettingsRequest,
+  InvitationInfoResponse, LoginRequest, LoginResponse, MeResponse, RefreshTokenResponse,
+  UpdateMeRequest,
 } from '../../shared/api/types'
-import { MAIL_SETTING_TYPES } from '../../shared/ui/status'
 
 /**
  * 인증·계정 목 — 도메인 핸들러의 견본이다 (12-frontend-plan.md §5).
@@ -99,22 +98,8 @@ export const authHandlers = [
     return noContent()
   }),
 
-  http.get('/api/v1/me/notification-settings', ({ request }) => {
-    const member = currentMember(request)
-    const saved = db.notificationSettings.get(member.id)
-    // 행 없으면 기본 ON
-    const body: NotificationSettingResponse = { settings: saved ?? MAIL_SETTING_TYPES.map((type) => ({ type, emailEnabled: true })) }
-    return HttpResponse.json(body)
-  }),
-
-  http.put('/api/v1/me/notification-settings', async ({ request }) => {
-    const member = currentMember(request)
-    const body = (await request.json()) as UpdateNotificationSettingsRequest
-    if (!body.settings?.length) return error('VALIDATION_FAILED', [{ field: 'settings', reason: '설정을 입력해 주세요.' }])
-    db.notificationSettings.set(member.id, body.settings)
-    const response: NotificationSettingResponse = { settings: body.settings }
-    return HttpResponse.json(response)
-  }),
+  // /me/notification-settings(NT-07)는 여기 없다 — 백엔드가 D의 notification 모듈(#127)이라
+  // 목도 `notification` 키에 둔다. auth를 실 API로 돌려도 그 탭은 #127 전까지 목으로 남는다.
 ]
 
 /**
@@ -159,12 +144,16 @@ export const invitationHandlers = [
       ...(!body.companyName?.trim() ? [{ field: 'companyName', reason: '회사명을 입력해 주세요.' }] : []),
       ...(!body.businessNo?.trim() ? [{ field: 'businessNo', reason: '사업자등록번호를 입력해 주세요.' }] : []),
       ...(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email ?? '') ? [{ field: 'email', reason: '올바른 이메일 형식이 아닙니다.' }] : []),
+      ...(!body.applicantName?.trim() ? [{ field: 'applicantName', reason: '신청자 이름을 입력해 주세요.' }] : []),
     ]
     if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
-    if (db.members.some((m) => m.email === body.email)) return error('EMAIL_ALREADY_MEMBER')
-    if (db.applications.some((a) => a.email === body.email && a.status === 'PENDING')) return error('APPLICATION_ALREADY_PENDING')
+    // 서버는 저장·조회 모두 소문자로 정규화한다 (ApplicationService.normalize) — 구성원 검사가 먼저다 (Q-14)
+    const email = body.email.trim().toLowerCase()
+    if (db.members.some((m) => m.email.toLowerCase() === email)) return error('EMAIL_ALREADY_MEMBER')
+    if (db.applications.some((a) => a.email === email && a.status === 'PENDING')) return error('APPLICATION_ALREADY_PENDING')
     const created: ApplicationResponse = {
-      id: crypto.randomUUID(), companyName: body.companyName.trim(), businessNo: body.businessNo.trim(), email: body.email.trim(),
+      id: crypto.randomUUID(), companyName: body.companyName.trim(), businessNo: body.businessNo.trim(), email,
+      applicantName: body.applicantName.trim(),
       status: 'PENDING', rejectReason: null, decidedAt: null, createdAt: new Date().toISOString(),
     }
     db.applications.unshift(created)

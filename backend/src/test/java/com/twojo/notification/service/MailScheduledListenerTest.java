@@ -31,7 +31,7 @@ class MailScheduledListenerTest {
     @Mock
     private MailDispatcher mailDispatcher;
     @Mock
-    private MailFailureRecorder mailFailureRecorder;
+    private MailOutcomeWriter mailOutcomeWriter;
     @InjectMocks
     private MailScheduledListener listener;
 
@@ -45,7 +45,7 @@ class MailScheduledListenerTest {
         willThrow(new TaskRejectedException("queue full")).given(mailDispatcher).dispatch(any());
 
         assertThatCode(() -> listener.handle(event())).doesNotThrowAnyException();
-        verify(mailFailureRecorder).markFailed(EMAIL_LOG_ID);
+        verify(mailOutcomeWriter).markFailed(EMAIL_LOG_ID);
     }
 
     @Test
@@ -54,14 +54,14 @@ class MailScheduledListenerTest {
         willThrow(new IllegalStateException("shutting down")).given(mailDispatcher).dispatch(any());
 
         assertThatCode(() -> listener.handle(event())).doesNotThrowAnyException();
-        verify(mailFailureRecorder).markFailed(EMAIL_LOG_ID);
+        verify(mailOutcomeWriter).markFailed(EMAIL_LOG_ID);
     }
 
     @Test
     @DisplayName("FAILED 기록마저 던져도 handle()은 예외를 전파하지 않는다 (커밋된 요청 500 방지)")
     void 기록_실패도_전파하지_않는다() {
         willThrow(new TaskRejectedException("queue full")).given(mailDispatcher).dispatch(any());
-        willThrow(new RuntimeException("DB down")).given(mailFailureRecorder).markFailed(any());
+        willThrow(new RuntimeException("DB down")).given(mailOutcomeWriter).markFailed(any());
 
         assertThatCode(() -> listener.handle(event())).doesNotThrowAnyException();
     }
@@ -71,6 +71,6 @@ class MailScheduledListenerTest {
     void 정상이면_기록_안_함() {
         listener.handle(event());
 
-        verify(mailFailureRecorder, never()).markFailed(any());
+        verify(mailOutcomeWriter, never()).markFailed(any());
     }
 }

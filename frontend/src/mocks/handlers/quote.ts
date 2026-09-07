@@ -8,7 +8,7 @@ import type {
   CreateQuoteRequest, OrderDetailResponse, QuoteDetailResponse, QuoteResponse, ResendViewTokenRequest, SendQuoteRequest,
   SendQuoteResponse, UpdateQuoteRequest,
 } from '../../shared/api/types'
-import { VAT_MODES, isOpenStage, type VatMode } from '../../shared/ui/status'
+import { VAT_MODES, isOpenStage } from '../../shared/ui/status'
 
 /**
  * 견적 목 (구성원용 `/api/v1/quotes`) — 07-api-spec.md §C (QT · AP-13·14 · OD-01~07) · 08-dto.md §C.
@@ -50,15 +50,15 @@ const toDetail = (q: QuoteRow): QuoteDetailResponse => ({
   version: q.version, createdAt: q.createdAt,
 })
 
-/** 서버 계산 (QT-08·22·23) — 별도: vat = supply×10% · 포함: total = 항목 합, vat = total×10/110 */
-function calc(items: { quantity: number; unitPrice: number }[], vatMode: VatMode) {
-  const sum = items.reduce((acc, i) => acc + i.quantity * i.unitPrice, 0)
-  if (vatMode === 'INCLUDED') {
-    const vat = Math.round((sum * 10) / 110)
-    return { supplyAmount: sum - vat, vatAmount: vat, totalAmount: sum }
-  }
-  const vat = Math.round(sum * 0.1)
-  return { supplyAmount: sum, vatAmount: vat, totalAmount: sum + vat }
+/**
+ * 서버 계산 미러 (quote/entity/QuoteAmounts — QT-08·22, Q-46).
+ * 단가는 항상 세전: supply = 항목 합계 · vat = round(supply × 10%) · total = supply + vat.
+ * vatMode는 견적서 표시 기준일 뿐 금액에 영향이 없다 (Q-46).
+ */
+function calc(items: { quantity: number; unitPrice: number }[]) {
+  const supplyAmount = items.reduce((acc, i) => acc + i.quantity * i.unitPrice, 0)
+  const vatAmount = Math.round(supplyAmount * 0.1)
+  return { supplyAmount, vatAmount, totalAmount: supplyAmount + vatAmount }
 }
 
 /** 열람 링크 발급 — 만료일 = 유효기간 당일 23:59:59 KST (Q-17). 목 전용 원문 토큰은 `link-{quoteId}` */
@@ -157,7 +157,7 @@ export const quoteHandlers = [
     quote.validUntil = body.validUntil
     quote.vatMode = body.vatMode
     quote.terms = body.terms?.trim() || null
-    Object.assign(quote, calc(items, body.vatMode))
+    Object.assign(quote, calc(items))
     return HttpResponse.json(toDetail(quote))
   }),
 

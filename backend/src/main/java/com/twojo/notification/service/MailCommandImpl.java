@@ -23,7 +23,8 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>{@code refId}가 발송마다 유일하므로(계약) 사전 중복 체크 없이 항상 INSERT한다. 혹시 겹치면
  * {@code uk_email_log_dedup} 위반이 호출자 커밋 시점에 전파돼 롤백된다. 동기 실패는 삼키지 않는다.
  *
- * <p>{@code companyId}는 {@code SIGNUP_APPROVED} 계열만 null이다(계약). 그 외 null은 "회사 스코프
+ * <p>{@code companyId}는 플랫폼 발송({@code SIGNUP_APPROVED}·{@code SIGNUP_REJECTED},
+ * {@link MailCommand.TemplateType#isPlatformIssued()})만 null이다(계약). 그 외 null은 "회사 스코프
  * 조회·실패 지표에서 안 보이는 행"이 되므로 조용히 통과시키지 않고 즉시 던진다 — 처리되지 않은 예외는
  * {@code Exception} 폴백이 500 {@code INTERNAL_ERROR}로 닫는다.
  *
@@ -41,8 +42,8 @@ class MailCommandImpl implements MailCommand {
     @Transactional(propagation = Propagation.MANDATORY)
     public void schedule(TemplateType type, UUID companyId, String recipientEmail,
                          UUID refId, String subject, String body) {
-        if (type != TemplateType.SIGNUP_APPROVED) {
-            Objects.requireNonNull(companyId, "companyId");   // 계약: SIGNUP_APPROVED 계열만 null
+        if (!type.isPlatformIssued()) {
+            Objects.requireNonNull(companyId, "companyId");   // 계약: 플랫폼 발송(SIGNUP_*)만 null 허용
         }
         EmailLog row = emailLogRepository.save(
                 EmailLog.schedule(companyId, type, recipientEmail, refId));

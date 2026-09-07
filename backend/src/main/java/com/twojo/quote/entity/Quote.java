@@ -163,6 +163,76 @@ public class Quote extends BaseTimeEntity {
     }
 
     /**
+     * 고객 첫 열람 (AP-02·07) — 발송됨(SENT) → 열람됨(VIEWED), 첫 열람 시각을 남긴다.
+     *
+     * <p><b>멱등이다.</b> SENT가 아니면 아무 일도 하지 않는다 — 예외를 던지지 않는다.
+     * <ul>
+     *   <li>이미 VIEWED — 두 번째 열람이다. {@code firstViewedAt}을 덮으면 "<b>첫</b> 열람 시각"이라는
+     *       값의 의미가 사라진다 (AP-07)</li>
+     *   <li>응답 완료(APPROVED·REJECTED) — 응답한 링크의 <b>열람은 허용</b>이다.
+     *       차단되는 것은 재응답뿐이다 (전이표 §7, v1.6.1)</li>
+     * </ul>
+     *
+     * <p>열람은 고객이 링크를 여는 것뿐이라 실패할 이유가 없다. 여기서 예외를 던지면
+     * 정상적인 재열람이 오류 화면이 된다.
+     */
+    public void markViewed(Instant viewedAt) {
+        if (status != Status.SENT) {
+            return;
+        }
+        this.status = Status.VIEWED;
+        this.firstViewedAt = viewedAt;
+    }
+
+    /**
+     * 고객 승인 (AP-08·19) — 열람됨(VIEWED) → 승인됨(APPROVED).
+     *
+     * <p>응답자 이름·직책은 <b>검증하지 않는다</b>. 계정 없는 고객이 직접 밝히는 자기 신고이고
+     * (Q-44), 시스템이 확인할 방법이 없다는 사실을 화면이 안내한다. 길이 제한은 08의
+     * {@code @Size(max = 50)}가 웹 계층에서 건다.
+     */
+    public void approve(String responderName, String responderTitle, Instant respondedAt) {
+        requireRespondable();
+        this.status = Status.APPROVED;
+        recordResponder(responderName, responderTitle, respondedAt);
+    }
+
+    /**
+     * 고객 반려 (AP-09·10·19) — 열람됨(VIEWED) → 반려됨(REJECTED). 종결이다.
+     *
+     * <p>재제안은 복제(QT-19)로 새 견적을 만든다 — 반려된 견적은 되살아나지 않는다 (전이표 §6).
+     */
+    public void reject(String reason, String responderName, String responderTitle, Instant respondedAt) {
+        requireRespondable();
+        this.status = Status.REJECTED;
+        this.rejectReason = reason;
+        recordResponder(responderName, responderTitle, respondedAt);
+    }
+
+    private void recordResponder(String responderName, String responderTitle, Instant respondedAt) {
+        this.responderName = responderName;
+        this.responderTitle = responderTitle;
+        this.respondedAt = respondedAt;
+    }
+
+    /**
+     * 승인·반려가 열리는 상태 — <b>열람됨(VIEWED)뿐이다</b> (전이표 §6).
+     *
+     * <p>SENT에서 바로 승인하는 행은 표에 없다. 고객이 링크를 열면 열람 API가
+     * {@code markViewed}를 먼저 부르므로 정상 흐름에 그 경로가 없고, 온다면 호출 순서가
+     * 뒤바뀐 것이라 드러나는 편이 낫다.
+     *
+     * <p>만료·회수·이미 응답한 견적도 여기서 막힌다. 다만 <b>링크 상태로 걸러지는 것들</b>
+     * (만료 링크 410 · 응답 완료 링크 409)은 열람 API가 먼저 잡으므로, 여기 닿는 것은
+     * 링크는 멀쩡한데 견적 상태가 어긋난 경우다.
+     */
+    private void requireRespondable() {
+        if (status != Status.VIEWED) {
+            throw new BusinessException(ErrorCode.QUOTE_NOT_RESPONDABLE);
+        }
+    }
+
+    /**
      * 금액 3분리 재계산 (QT-08·22) — 항목 합계가 계산의 <b>유일한</b> 입력이다.
      * <p>단가가 항상 세전이므로 항목 합계가 곧 공급가액이다 (Q-46).
      */
