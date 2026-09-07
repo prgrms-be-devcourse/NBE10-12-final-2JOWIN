@@ -97,6 +97,12 @@ public class MemberQueryService implements MemberQuery {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
     }
 
+    /** 회사 목록의 이용 현황 (ON-12 · Q-41) — 비활성 포함, 행을 불러오지 않는다. */
+    @Override
+    public int countByCompany(UUID companyId) {
+        return Math.toIntExact(memberRepository.countByCompanyId(companyId));
+    }
+
     private AuthCredential toCredential(Member member) {
         return new AuthCredential(
                 member.getId(), member.getCompanyId(), member.getName(), member.getRole(),
