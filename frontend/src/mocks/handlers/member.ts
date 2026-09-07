@@ -23,7 +23,8 @@ export const memberHandlers = [
     await delay(120)
     const forbidden = adminOnly(request)
     if (forbidden) return forbidden
-    const list = db.members.slice().sort((a, b) => a.createdAt.localeCompare(b.createdAt)).map(toMember)
+    // 서버 기본 정렬 name ASC (MemberController.DEFAULT_SORT) — 목도 같은 순서로 보여준다
+    const list = db.members.slice().sort((a, b) => a.name.localeCompare(b.name, 'ko')).map(toMember)
     return HttpResponse.json(paged(list, new URL(request.url)))
   }),
 
