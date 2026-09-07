@@ -1,6 +1,8 @@
 package com.twojo.member.service;
 
 import com.twojo.boundary.AccessContext;
+import com.twojo.boundary.CompanyQuery;
+import com.twojo.boundary.MailCommand;
 import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
@@ -12,9 +14,11 @@ import com.twojo.member.repository.InvitationRepository;
 import com.twojo.member.repository.MemberRepository;
 import com.twojo.member.token.InvitationTokenGenerator;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 import java.util.UUID;
-import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -26,13 +30,51 @@ import org.springframework.transaction.annotation.Transactional;
  * 같은 행의 토큰만 갈아끼우면 몇 번 보냈는지가 사라진다 — 행으로 남겨야 이력이 된다.
  */
 @Service
-@RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class InvitationService {
+
+    /** 메일 본문은 프론트를 거치지 않는 최종 표시물이라 서버가 KST로 바꿔 넣는다. */
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
+    /** Locale.ROOT — 지역 설정에 따라 연도가 불교력으로 찍히는 것을 막는다. */
+    private static final DateTimeFormatter EXPIRES_AT_FORMAT =
+            DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm", Locale.ROOT);
+
+    private static final String MAIL_SUBJECT = "[2JO] 초대 안내";
+
+    private static final String MAIL_BODY = """
+            {companyName}에서 2JO 사용에 초대했습니다.
+
+            아래 링크에서 이름과 비밀번호를 입력하면 계정이 만들어집니다.
+
+            {link}
+
+            이 링크는 {expiresAt} (KST)까지 유효합니다.
+            """;
 
     private final InvitationRepository invitationRepository;
     private final MemberRepository memberRepository;
     private final InvitationTokenGenerator tokenGenerator;
+    private final CompanyQuery companyQuery;
+    private final MailCommand mailCommand;
+    private final String invitationBaseUrl;
+
+    /** @RequiredArgsConstructor를 쓰지 않는 이유는 baseUrl 하나 — @Value는 생성자 파라미터에 붙는다. */
+    public InvitationService(InvitationRepository invitationRepository,
+                             MemberRepository memberRepository,
+                             InvitationTokenGenerator tokenGenerator,
+                             CompanyQuery companyQuery,
+                             MailCommand mailCommand,
+                             @Value("${app.invitation.base-url}") String invitationBaseUrl) {
+        this.invitationRepository = invitationRepository;
+        this.memberRepository = memberRepository;
+        this.tokenGenerator = tokenGenerator;
+        this.companyQuery = companyQuery;
+        this.mailCommand = mailCommand;
+        this.invitationBaseUrl = invitationBaseUrl.endsWith("/")
+                ? invitationBaseUrl.substring(0, invitationBaseUrl.length() - 1)
+                : invitationBaseUrl;
+    }
 
     /** 발송 (MB-01·02·13). */
     @Transactional
@@ -96,7 +138,7 @@ public class InvitationService {
     /**
      * 새 대기 행 발급 — 원문 토큰이 존재하는 유일한 자리다.
      *
-     * <p>DB에는 해시만 남으므로 이 메서드가 끝나면 원문을 아는 곳이 사라진다.
+     * <p>DB에는 해시만 남는다. 원문은 여기서 조립하는 메일 본문으로만 나가고 반환값에는 담기지 않는다.
      */
     private Invitation issue(AccessContext ctx, String email, Role role, Instant now) {
         String rawToken = tokenGenerator.generate();
@@ -104,9 +146,47 @@ public class InvitationService {
         Invitation invitation = invitationRepository.save(Invitation.issue(
                 ctx.companyId(), ctx.memberId(), email, role, tokenGenerator.hash(rawToken), now));
 
-        // TODO(NT-01) 안내 메일 예약. MailCommand.TemplateType에 초대 상수가 없어 아직 못 부른다
-        //  (D 요청 중, 이슈 #79). 그전까지 rawToken은 이 메서드를 벗어나지 않아 링크가 도달하지 않는다.
+        sendInvitationMail(invitation, rawToken);
+
         return invitation;
+    }
+
+    /**
+     * 초대 안내 메일 예약 (NT-01).
+     *
+     * <p>발송 식별자는 방금 저장한 초대 행 id다. 재발송이 행을 새로 만들므로 메일 기록도 발송마다
+     * 하나씩 생긴다 — 중복 발송을 막는 키에 이 값이 들어가서, 같은 값이 두 번 오면 두 번째가 막힌다.
+     *
+     * <p>수신 주소를 여기서 다시 다듬지 않는다. 발송은 create가 소문자로 맞춘 값을, 재발송은 그렇게
+     * 저장된 값을 그대로 넘긴다 — 표기가 흔들리면 위 키가 달라져 중복 방어가 무력해진다.
+     */
+    private void sendInvitationMail(Invitation invitation, String rawToken) {
+        mailCommand.schedule(
+                MailCommand.TemplateType.INVITATION,
+                invitation.getCompanyId(),
+                invitation.getEmail(),
+                invitation.getId(),
+                MAIL_SUBJECT,
+                renderBody(invitation, rawToken));
+    }
+
+    /**
+     * 평문 최소 렌더 — 승인 통보·재설정 안내와 같은 수준이다. 템플릿 엔진도 확정 문안도 아직 없다.
+     *
+     * <p>formatted() 대신 replace를 쓴다. 포맷 문자열의 줄바꿈은 %n이어야 하는데 그 값은
+     * 실행 환경을 따라가고, 메일 본문의 줄바꿈은 환경과 무관해야 한다.
+     */
+    private String renderBody(Invitation invitation, String rawToken) {
+        return MAIL_BODY
+                .replace("{companyName}", companyQuery.get(invitation.getCompanyId()).name())
+                .replace("{link}", link(rawToken))
+                .replace("{expiresAt}",
+                        EXPIRES_AT_FORMAT.format(invitation.getExpiresAt().atZone(SEOUL)));
+    }
+
+    /** 수락 화면은 토큰을 경로로 받는다 — 재설정 링크가 쿼리로 붙는 것과 갈리는 지점이다. */
+    private String link(String rawToken) {
+        return invitationBaseUrl + "/" + rawToken;
     }
 
     private void requireAdmin(AccessContext ctx) {
