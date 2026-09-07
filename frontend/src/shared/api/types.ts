@@ -10,7 +10,7 @@
 
 import type {
   ActivityChannel, ActivityType, ApplicationStatus, AuditActorType, CompanyStatus, DealStage, InvitationStatus,
-  MemberStatus, NotificationType, ProductStatus, QuoteStatus, Role, VatMode,
+  MemberStatus, NotificationSettingType, NotificationType, ProductStatus, QuoteStatus, Role, VatMode,
 } from '../ui/status'
 
 // ── 공통 (08-dto.md §0 · global/response · global/error)
@@ -98,7 +98,7 @@ export interface NotificationSettingResponse {
   settings: NotificationSettingEntry[]
 }
 export interface NotificationSettingEntry {
-  type: NotificationType
+  type: NotificationSettingType   // 4값 — 08 v1.6.14, boundary NotificationSettingType
   emailEnabled: boolean
 }
 /** 08 §A UpdateNotificationSettingsRequest — PUT 전체 교체 */
