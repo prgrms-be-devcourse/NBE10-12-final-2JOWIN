@@ -32,6 +32,19 @@ public interface DealQuery {
      */
     boolean isOpen(UUID dealId);
 
+    /**
+     * 그 Deal의 고객사 id — <b>견적 발송의 수신인 검증</b>에 쓴다 (QT-13, AP-13).
+     *
+     * <p>수신인으로 지정된 담당자가 <b>이 Deal의 고객사 소속인지</b> 확인하려면 고객사 id가
+     * 있어야 하는데, {@code quote}에는 {@code deal_id}만 있다.
+     * {@code customer_contact}에 {@code company_id}가 없어 복합 FK로 막을 수 없는 영역이라
+     * (ERD "DB로 못 막는 것"), 이 검증을 빠뜨리면 <b>무관한 고객사 담당자에게 열람 링크가 나간다.</b>
+     *
+     * <p>없거나 소프트 삭제된 Deal이면 {@code RESOURCE_NOT_FOUND}를 던진다 —
+     * {@link #assigneeIdOf}와 같은 규약이다. 검증의 기준값이 없으면 호출자가 진행할 수 없다.
+     */
+    UUID customerIdOf(UUID dealId);
+
     /** B의 CU-08 판정 — 고객사 삭제 차단 (v2.0.1 보강) */
     boolean hasOpenDeals(UUID customerId);
 

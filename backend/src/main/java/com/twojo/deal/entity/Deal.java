@@ -163,6 +163,31 @@ public class Deal extends BaseTimeEntity {
         this.stage = next;
     }
 
+    /**
+     * 견적 발송에 따른 <b>자동 승급</b> (Q-25) — 리드·상담이면 견적(QUOTE)으로 올린다.
+     *
+     * <p>전이표 §5의 별도 행이다: "리드·상담 → 견적 발송 → 견적(QUOTE) · <b>시스템</b>".
+     * {@link #advance}와 세 가지가 다르다.
+     * <ul>
+     *   <li><b>두 칸을 뛴다</b> — 리드에서 곧장 견적이다. advance를 두 번 부르면 상담을 거친
+     *       것처럼 보이고, 타임라인에 없던 단계 이동이 기록된다</li>
+     *   <li><b>행위자가 시스템</b>이다 — 담당자의 수동 이동(DL-07)이 아니다</li>
+     *   <li><b>이미 견적·협상이면 무동작</b>이다 — 전이표가 "견적 <b>미만이면</b> 승급"으로
+     *       규정한다. 협상 딜의 견적을 발송하는 것은 정상이라 예외로 만들면 발송이 막힌다.
+     *       협상을 견적으로 <b>내리지도</b> 않는다</li>
+     * </ul>
+     *
+     * <p>종결(WON·LOST) Deal이면 막는다 — 조용히 무동작하면 "종결된 딜에 견적이 발송됐다"는
+     * 모순이 아무 흔적 없이 지나간다. 발송 자체를 어디서 막을지는 호출자의 몫이고,
+     * 여기서는 그 모순이 도달했을 때 드러나게 한다.
+     */
+    public void promoteToQuoteStage() {
+        requireOpen();
+        if (stage == Stage.LEAD || stage == Stage.CONSULT) {
+            this.stage = Stage.QUOTE;
+        }
+    }
+
     /** 이전 단계로 되돌리기 (DL-08) — 리드에서는 되돌릴 곳이 없다 */
     public void revert() {
         requireOpen();
