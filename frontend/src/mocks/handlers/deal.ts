@@ -56,9 +56,13 @@ export const dealHandlers = [
     const assigneeId = url.searchParams.get('assigneeId')
     const customerId = url.searchParams.get('customerId')
     if (stage && !DEAL_STAGES.includes(stage as DealStage)) return error('VALIDATION_FAILED', [{ field: 'stage', reason: '알 수 없는 단계입니다.' }])
-    const list = visibleDeals(currentMember(request))
+    const member = currentMember(request)
+    // 영업 담당자(OWNED_ONLY)는 assigneeId를 무엇으로 보내든 본인으로 고정된다 — 서버 DealService.list와 같다 (SC-02).
+    // 남의 id를 넣으면 0건이 아니라 "내 것"이 나온다.
+    const scopedAssigneeId = member.role === 'COMPANY_ADMIN' ? assigneeId : member.id
+    const list = visibleDeals(member)
       .filter((d) => !stage || d.stage === stage)
-      .filter((d) => !assigneeId || d.assigneeMemberId === assigneeId)
+      .filter((d) => !scopedAssigneeId || d.assigneeMemberId === scopedAssigneeId)
       .filter((d) => !customerId || d.customerId === customerId)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map(toItem)
