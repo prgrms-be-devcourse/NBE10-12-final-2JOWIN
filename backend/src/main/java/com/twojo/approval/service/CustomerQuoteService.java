@@ -163,7 +163,9 @@ public class CustomerQuoteService {
 
         boolean firstView = "SENT".equals(view.status());
         quoteCommand.markViewed(view.quoteId());   // 무조건 선행 (전이표 §6 — VIEWED에서만 응답). 비-SENT면 C가 무동작
-        if (firstView) {                           // GET 경로와 일관 (PR #101·#136)
+        if (firstView) {
+            // GET 경로와 일관 (PR #101·#136). 동시 GET과 같은 SENT 스냅샷을 보면 NT-03이 겹칠 수 있다 —
+            // FirstViewRecorder javadoc의 "동시 첫 열람 NT-03 중복" 한계(B-9)와 같은 레이스, v1 허용.
             notificationCommand.notifyForDeal(NotificationType.QUOTE_VIEWED, view.companyId(),
                     view.dealId(), messages.quoteViewed(view.quoteNo()), view.quoteId());
         }
