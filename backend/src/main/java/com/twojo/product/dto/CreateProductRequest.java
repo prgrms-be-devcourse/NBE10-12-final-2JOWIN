@@ -3,6 +3,7 @@ package com.twojo.product.dto;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.PositiveOrZero;
+import jakarta.validation.constraints.Size;
 
 /**
  * 상품 등록 요청 (PR-01·02) — 기업 관리자만 (PR-09).
@@ -14,7 +15,7 @@ import jakarta.validation.constraints.PositiveOrZero;
  * <p>{@code unitPrice}는 <b>세전</b>이다 (Q-46). 부가세는 견적 계산에서 붙는다 (QT-22).
  */
 public record CreateProductRequest(
-        @NotBlank String name,
-        @NotBlank String unit,
+        @NotBlank @Size(max = 255) String name,
+        @NotBlank @Size(max = 50) String unit,
         @NotNull @PositiveOrZero Long unitPrice,
         String description) {}

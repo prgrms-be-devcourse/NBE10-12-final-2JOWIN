@@ -1,6 +1,7 @@
 package com.twojo.activity.entity;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.time.Instant;
 import java.time.LocalDate;
@@ -10,19 +11,28 @@ import org.junit.jupiter.api.Test;
 
 class TaskTest {
 
+    private static final UUID COMPANY_ID = UUID.randomUUID();
     private static final UUID DEAL_ID = UUID.randomUUID();
     private static final LocalDate DUE = LocalDate.of(2026, 9, 10);
     private static final Instant T1 = Instant.parse("2026-09-02T10:00:00Z");
     private static final Instant T2 = Instant.parse("2026-09-02T11:00:00Z");
 
     private Task 할일() {
-        return Task.create(DEAL_ID, "견적서 재발송", DUE);
+        return Task.create(COMPANY_ID, DEAL_ID, "견적서 재발송", DUE);
     }
 
     @Test
     @DisplayName("새 할 일은 미완료다 — doneAt이 null")
     void create_notDone() {
         assertThat(할일().getDoneAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("회사 없이는 만들 수 없다 — 관리자 범위 조회의 축이라 비면 안 된다 (ERD v1.6.5)")
+    void create_requiresCompanyId() {
+        assertThatThrownBy(() -> Task.create(null, DEAL_ID, "견적서 재발송", DUE))
+                .isInstanceOf(NullPointerException.class)
+                .hasMessage("companyId");
     }
 
     @Test
