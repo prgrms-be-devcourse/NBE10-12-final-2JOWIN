@@ -143,7 +143,7 @@ jobs:
       - name: 중복 버전 검사
         run: |
           cd backend/src/main/resources/db/migration
-          dup=$(ls V*.sql 2>/dev/null | sed -E 's/^(V[0-9]+)__.*/\1/' | sort | uniq -d)
+          dup=$(find . -maxdepth 1 -name 'V*.sql' -printf '%f\n' | sed -E 's/^(V[0-9]+)__.*/\1/' | sort | uniq -d)
           if [ -n "$dup" ]; then
             echo "::error::중복된 Flyway 버전이 있습니다: $dup"
             echo "도메인 번호대를 확인하세요 — A=1xx · B=2xx · C=3xx · D=4xx (docs/13-dev-workflow.md §0.2)"
