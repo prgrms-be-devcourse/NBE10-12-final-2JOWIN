@@ -56,6 +56,16 @@ public class ApplicationAdminService {
             이 링크는 {expiresAt} (KST)까지 유효합니다.
             """;
 
+    private static final String REJECTED_SUBJECT = "[2JO] 사용 신청이 반려되었습니다";
+
+    private static final String REJECTED_BODY = """
+            {applicantName}님, {companyName}의 2JO 사용 신청이 반려되었습니다.
+
+            사유: {reason}
+
+            내용을 보완해 같은 이메일로 다시 신청할 수 있습니다.
+            """;
+
     private final ApplicationRepository applicationRepository;
     private final CompanyRepository companyRepository;
     private final MemberCommand memberCommand;
@@ -116,8 +126,8 @@ public class ApplicationAdminService {
 
         application.reject(request.reason().trim(), Instant.now());
 
-        // TODO(NT-13 반려분) 반려 통보 메일. MailCommand.TemplateType에 반려 상수가 없어 아직 못 부른다
-        //  — 값 추가는 D 단독이다(계약 §TemplateType). 그전까지 결과가 신청자에게 도달하지 않는다.
+        sendRejectedMail(application);
+
         return ApplicationResponse.of(application);
     }
 
@@ -165,6 +175,36 @@ public class ApplicationAdminService {
                 application.getId(),
                 APPROVED_SUBJECT,
                 renderApprovedBody(application, link));
+    }
+
+    /**
+     * 반려 통보 (NT-13 · ON-06).
+     *
+     * <p>회사 id 자리가 null이다 — 반려는 회사를 만들지 않는다. 계약이 가입 통보 계열에만
+     * 이 자리를 비워 두도록 허용한다.
+     *
+     * <p>발송 식별자는 신청서 id다. 한 신청은 한 번만 반려되므로 중복 발송을 막는 키가 그대로
+     * 재발송을 막는다 — 승인 통보와 같은 방식이다.
+     */
+    private void sendRejectedMail(Application application) {
+        mailCommand.schedule(
+                MailCommand.TemplateType.SIGNUP_REJECTED,
+                null,
+                application.getEmail(),
+                application.getId(),
+                REJECTED_SUBJECT,
+                renderRejectedBody(application));
+    }
+
+    /**
+     * 반려 사유를 본문에 싣는다. 사유를 기록하게 한 것(ON-14)과 결과를 통보하는 것(ON-06)이
+     * 이어지지 않으면, 받는 사람은 무엇을 고쳐 다시 신청해야 하는지 알 수 없다.
+     */
+    private String renderRejectedBody(Application application) {
+        return REJECTED_BODY
+                .replace("{applicantName}", application.getApplicantName())
+                .replace("{companyName}", application.getCompanyName())
+                .replace("{reason}", application.getRejectReason());
     }
 
     /**
