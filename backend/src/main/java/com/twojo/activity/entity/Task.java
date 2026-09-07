@@ -42,14 +42,14 @@ public class Task extends BaseTimeEntity {
     /**
      * 다음 할 일 등록 (AC-09).
      *
-     * <p>배정 대상이 없다 (Q-29) — Deal의 순수 자식이라 "내 할 일"은 내가 담당하는 Deal에서
-     * 파생된다. 담당이 이관되면 할 일도 Deal을 따라 자동으로 옮겨간다.
+     * <p>배정 대상이 없다 (Q-29) — "내 할 일"은 내가 담당하는 Deal에서 파생된다.
+     * 담당이 이관되면 할 일도 Deal을 따라 자동으로 옮겨간다.
+     *
+     * <p>{@code companyId}는 그 담당 축과 무관하다 — 기업 관리자(COMPANY_ALL) 범위 조회에
+     * 회사 축이 필요해서 갖는다 (ERD v1.6.5). 딜의 회사와 어긋나는 조합은 복합 FK가 막는다.
      *
      * <p>{@code dueDate}는 필수다 — AC-09가 "할 일과 예정일"을 함께 요구하고,
      * {@code task.due_date}도 NOT NULL이다. 기한 없는 할 일은 만들어지지 않는다.
-     *
-     * <p>{@code companyId}는 배정과 무관하다 — 기업 관리자(COMPANY_ALL) 범위 조회에
-     * 회사 축이 필요해서 갖는다 (ERD v1.6.5). 딜의 회사와 어긋나는 조합은 복합 FK가 막는다.
      */
     public static Task create(UUID companyId, UUID dealId, String content, LocalDate dueDate) {
         Task task = new Task();

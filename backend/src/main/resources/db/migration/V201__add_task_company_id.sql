@@ -15,8 +15,9 @@
 -- 짓는다 (task_company_id_fkey).
 ALTER TABLE task ADD COLUMN company_id UUID REFERENCES company (id);
 
--- 기존 행을 부모 딜의 회사로 채운다. 값을 deal에서 그대로 복사하므로 정의상 딜의 회사와
--- 같다 — 아래 복합 FK는 이 백필이 아니라 이후 INSERT를 막는 장치다.
+-- 기존 행을 부모 딜의 회사로 채운다. 값을 deal에서 그대로 복사하므로 정의상 딜의 회사와 같다.
+-- 아래 복합 FK가 NOT VALID 없이 붙으므로 이 백필 결과도 그 자리에서 검증된다 — 백필이 틀리면
+-- 마이그레이션 자체가 실패해 잘못된 데이터가 남지 않는다.
 UPDATE task SET company_id = d.company_id FROM deal d WHERE d.id = task.deal_id;
 
 ALTER TABLE task ALTER COLUMN company_id SET NOT NULL;
@@ -30,6 +31,6 @@ ALTER TABLE task ALTER COLUMN company_id SET NOT NULL;
 ALTER TABLE task DROP CONSTRAINT task_deal_id_fkey;
 ALTER TABLE task ADD CONSTRAINT fk_task_deal FOREIGN KEY (company_id, deal_id) REFERENCES deal (company_id, id);
 
--- 관리자 범위 조회용. 기존 ix_task_deal_done은 지우지 않는다 — 조회 축이 둘이다
--- (영업 OWNED_ONLY = 딜 범위 · 관리자 COMPANY_ALL = 회사 범위). 06 §인덱스도 둘 다 나열한다.
+-- 관리자 범위 조회용 (COMPANY_ALL). 기존 ix_task_deal_done은 지우지 않는다 — 06 §인덱스가
+-- 둘 다 나열하고, 영업 범위 조회는 딜 목록으로 걸러 deal_id 축이 계속 쓰인다.
 CREATE INDEX ix_task_company_done ON task (company_id, done_at);
