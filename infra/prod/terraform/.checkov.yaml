@@ -1,0 +1,22 @@
+# checkov 설정 — .github/workflows/infra.yml 의 checkov 잡이 읽는다.
+#
+# skip-check 는 "검사를 껐다"가 아니라 "의식적으로 감수한다"는 기록이다.
+# 새 항목을 추가할 때는 반드시 이유를 같이 적는다.
+
+framework:
+  - terraform
+
+skip-check:
+  # ── 상태 버킷 4건 — 전부 예산(₩80,000 / 30일) 때문에 의식적으로 뺐다
+  # CKV_AWS_145  KMS 암호화 — KMS 키는 하나당 월 $1(예산의 1.4%).
+  #              SSE-S3(AES256)로 간다. bootstrap.md §3.1 결정 7
+  - CKV_AWS_145
+  # CKV_AWS_18   액세스 로깅 — 로그를 받을 버킷이 하나 더 필요하고 그 로그도 과금된다.
+  #              상태 접근 이력은 CloudTrail 로 확인 가능
+  - CKV_AWS_18
+  # CKV_AWS_144  교차 리전 복제 — 복제본 스토리지 + 요청 비용이 이중으로 든다.
+  #              4주 프로젝트에서 버저닝 + prevent_destroy 로 충분하다고 판단
+  - CKV_AWS_144
+  # CKV2_AWS_62  이벤트 알림 — 알림을 받을 SNS/Lambda 가 필요하다.
+  #              상태 변경은 CI 로그로 추적된다
+  - CKV2_AWS_62
