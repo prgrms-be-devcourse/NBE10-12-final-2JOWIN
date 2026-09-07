@@ -34,4 +34,10 @@ class DealCommandImpl implements DealCommand {
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
         deal.promoteToQuoteStage();   // 종결이면 여기서 막힌다 · 견적·협상이면 무동작
     }
+
+    /** 계약만 먼저 들어왔다(#130) — 구현은 C. {@code QuoteQueryImpl}의 스텁과 같은 방식 */
+    @Override
+    public void reassignAll(UUID companyId, UUID fromMemberId, UUID toMemberId) {
+        throw new UnsupportedOperationException("DealCommand.reassignAll — C 구현 예정 (#130)");
+    }
 }
