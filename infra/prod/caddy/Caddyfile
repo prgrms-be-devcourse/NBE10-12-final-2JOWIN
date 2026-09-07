@@ -1,0 +1,47 @@
+# TLS 종단 + 백엔드 리버스 프록시.
+#
+# Caddy 를 고른 이유는 인증서 자동 발급·갱신이다.
+# nginx + certbot 조합은 갱신 크론과 재기동을 직접 관리해야 한다.
+#
+# 설계 근거: containers.md §4
+
+{
+	# Let's Encrypt 만료 알림을 받을 주소. .env 에서 온다.
+	email {$ACME_EMAIL}
+
+	# 이 한 줄이면 :2019/metrics 가 열린다.
+	# 엣지 지표가 따로 필요한 이유: 앱이 죽으면 backend 의 http_server_requests
+	# 자체가 안 나온다. "요청이 0"으로 보여 장애를 놓치는데, Caddy 는 그때도
+	# 502 를 센다. 관리 포트는 도커 네트워크 안이라 밖에서 못 닿는다.
+	servers {
+		metrics
+	}
+}
+
+api.{$DOMAIN} {
+	# actuator 는 공개망에 열지 않는다 (docs/14 §2-11).
+	# Prometheus 는 도커 네트워크 안에서 backend:8080 을 직접 스크레이프하므로
+	# 여기서 막아도 모니터링에 지장이 없다.
+	handle /actuator/* {
+		respond 404
+	}
+
+	reverse_proxy backend:8080 {
+		# 배포로 컨테이너가 재기동되는 30초 동안 502 를 던지는 대신
+		# 요청을 붙들고 재시도한다. 사용자에게는 "느린 요청"으로 보인다.
+		lb_try_duration 45s
+		lb_try_interval 500ms
+	}
+
+	header {
+		Strict-Transport-Security "max-age=31536000; includeSubDomains"
+		# 서버 종류를 굳이 알려줄 이유가 없다
+		-Server
+	}
+
+	log {
+		output stdout
+		# Promtail 이 파싱할 수 있게 JSON 으로 남긴다
+		format json
+	}
+}

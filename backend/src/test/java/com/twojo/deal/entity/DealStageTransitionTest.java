@@ -100,6 +100,79 @@ class DealStageTransitionTest {
     }
 
     @Nested
+    @DisplayName("견적 발송에 따른 자동 승급 (Q-25) — 시스템 전이")
+    class PromoteToQuoteStage {
+
+        @ParameterizedTest(name = "{0} → QUOTE")
+        @EnumSource(value = Stage.class, names = {"LEAD", "CONSULT"})
+        @DisplayName("견적 미만이면 견적으로 올라간다 — 리드는 두 칸을 뛴다")
+        void 견적_미만은_승급(Stage from) {
+            Deal deal = dealAt(from);
+
+            deal.promoteToQuoteStage();
+
+            assertThat(deal.getStage()).isEqualTo(Stage.QUOTE);
+        }
+
+        @ParameterizedTest(name = "{0}은 그대로")
+        @EnumSource(value = Stage.class, names = {"QUOTE", "NEGOTIATION"})
+        @DisplayName("이미 견적 이상이면 아무 일도 없다 — 협상이 견적으로 내려가지 않는다")
+        void 견적_이상은_무동작(Stage from) {
+            Deal deal = dealAt(from);
+
+            deal.promoteToQuoteStage();
+
+            assertThat(deal.getStage()).isEqualTo(from);
+        }
+
+        @Test
+        @DisplayName("두 번 불러도 견적에 머문다 — 발송이 여러 건이어도 단계가 흔들리지 않는다")
+        void 멱등() {
+            Deal deal = dealAt(Stage.LEAD);
+
+            deal.promoteToQuoteStage();
+            deal.promoteToQuoteStage();
+
+            assertThat(deal.getStage()).isEqualTo(Stage.QUOTE);
+        }
+
+        @Test
+        @DisplayName("성사 Deal은 막힌다 — 종결에 견적이 발송됐다는 모순을 드러낸다")
+        void 성사는_차단() {
+            assertThatThrownBy(dealAt(Stage.WON)::promoteToQuoteStage)
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(DealStageTransitionTest::errorOf)
+                    .isEqualTo(ErrorCode.DEAL_ALREADY_WON);
+        }
+
+        @Test
+        @DisplayName("실패 Deal도 막힌다 — 문구가 성사 전용이라 DEAL_NOT_OPEN이다")
+        void 실패는_차단() {
+            assertThatThrownBy(dealAt(Stage.LOST)::promoteToQuoteStage)
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(DealStageTransitionTest::errorOf)
+                    .isEqualTo(ErrorCode.DEAL_NOT_OPEN);
+        }
+
+        /**
+         * {@code advance()}와 다른 전이라는 것을 고정한다 — 리드에서 한 번 불렀을 때
+         * 상담이 아니라 견적이어야 한다. 같은 메서드로 합치려는 시도가 여기서 걸린다.
+         */
+        @Test
+        @DisplayName("advance()와 다르다 — 리드에서 한 번 부르면 상담이 아니라 견적이다")
+        void advance와_다른_전이() {
+            Deal 자동 = dealAt(Stage.LEAD);
+            Deal 수동 = dealAt(Stage.LEAD);
+
+            자동.promoteToQuoteStage();
+            수동.advance();
+
+            assertThat(자동.getStage()).isEqualTo(Stage.QUOTE);
+            assertThat(수동.getStage()).isEqualTo(Stage.CONSULT);
+        }
+    }
+
+    @Nested
     @DisplayName("실패·재개 (DL-10~12)")
     class LoseAndReopen {
 
@@ -179,7 +252,8 @@ class DealStageTransitionTest {
     void 성사는_전이로_도달_불가(Stage from) {
         for (java.util.function.Consumer<Deal> transition :
                 java.util.List.<java.util.function.Consumer<Deal>>of(
-                        Deal::advance, Deal::revert, Deal::reopen, deal -> deal.lose("사유"))) {
+                        Deal::advance, Deal::revert, Deal::reopen,
+                        Deal::promoteToQuoteStage, deal -> deal.lose("사유"))) {
             Deal deal = dealAt(from);
             try {
                 transition.accept(deal);

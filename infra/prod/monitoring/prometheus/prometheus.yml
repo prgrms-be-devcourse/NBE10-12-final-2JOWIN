@@ -1,0 +1,36 @@
+# 스크레이프 대상은 전부 도커 네트워크 내부다. 호스트에 게시된 포트는 없다.
+#
+# 알람 규칙은 여기 두지 않는다. Grafana Unified Alerting 이 평가·발송을 모두
+# 하므로 rule_files 대신 grafana/provisioning/alerting/rules.yml 에 있다.
+# Alertmanager 를 안 쓰면 컨테이너가 하나 줄어든다 (monitoring.md §4.3).
+
+global:
+  scrape_interval: 30s
+  evaluation_interval: 30s
+  external_labels:
+    env: prod
+    project: 2jo
+
+scrape_configs:
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+
+  - job_name: node
+    static_configs:
+      - targets: ['node-exporter:9100']
+
+  # 엣지 지표가 따로 필요한 이유: 앱이 죽으면 http_server_requests 가 아예
+  # 안 나온다. "요청이 0"으로 보여 장애를 놓친다. Caddy 는 그때도 502 를 센다.
+  - job_name: caddy
+    static_configs:
+      - targets: ['caddy:2019']
+
+  - job_name: backend
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['backend:8080']
+
+  - job_name: postgres
+    static_configs:
+      - targets: ['postgres-exporter:9187']

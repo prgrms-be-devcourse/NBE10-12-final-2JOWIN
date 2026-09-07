@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.11
+# DTO 설계서 — v1.6.12
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.12 | **견적 단가·`vatMode` 주석 신설(2026-09-07)** — `UpdateQuoteRequest.Item.unitPrice`는 `vat_mode`와 무관하게 **항상 세전**이고, `vatMode`는 **표시 기준일 뿐 금액 계산에 영향이 없다**(Q-46). 이 두 줄이 없어서 프론트 견적 편집기가 INCLUDED를 세포함 역산(`합계×10/110`)으로 구현했고, 화면 금액과 저장 금액이 갈렸다. 결정은 `03 §3 Q-46`에 등재돼 있었지만 **구현자가 보는 문서는 08**이라 여기 없으면 닿지 않는다. 스키마·필드 변경은 없다 — 주석만 추가한다 | 프론트 대조(#84) · Q-46 |
 | v1.6.11 | **§A `applicantName` 신설(2026-09-07)** — `CreateApplicationRequest`에 신청자 이름이 없어 **승인 시 만들 기업 관리자 계정의 `member.name`(NOT NULL)에 넣을 값이 없었다**. `04-user-scenarios.md` §1이 승인 결과를 "김서연 계정 생성"으로 규정하므로 `companyName` 복사는 답이 아니다 — 사람 이름 자리에 상호가 들어가면 화면 표시와 감사 기록이 둘 다 거짓이 된다. `application.applicant_name VARCHAR(100) NOT NULL` 동반 신설(`V101`, 06 반영). `ApplicationResponse`에도 실어 관리자가 심사 화면에서 신청자를 식별한다. 아울러 §A 요청 record에 v1.6.8·v1.6.9와 같은 기준으로 `@Size(max)`를 붙였다(`companyName` 255 · `businessNo` 20 · `email` 255 — `V1__baseline.sql:18~20`). 발견 경로: ON 착수 전 소스 대조(#103) |
 | v1.6.9 | **§A `UpdateMeRequest` 길이 제한(2026-09-04)** — v1.6.8이 §B 요청 record에만 `@Size(max)`를 붙여 §A에 같은 구멍이 남아 있었다. `member.name` VARCHAR(100)·`member.phone` VARCHAR(30)을 넘는 값이 Bean Validation을 통과해 DB에서 거부되는데, §B와 달리 여기는 제약 위반을 변환할 자리조차 없어 **`INTERNAL_ERROR` 500**으로 나간다(§B는 엉뚱한 409였다). 400 `VALIDATION_FAILED`가 맞는 자리다. 값은 `V1__baseline.sql:58~59`를 그대로 옮겼다. 발견 경로: AU-07 착수 전 문서 대조(#76) |
 | v1.6.8 | **§B 문자열 길이 제한 신설(2026-09-03)** — B 요청 record 8종의 `VARCHAR` 대응 필드에 **`@Size(max)`**를 붙인다. 지금은 컬럼 길이를 넘는 값이 Bean Validation을 통과해 DB에서 거부되고, 서비스의 제약 위반 변환에 잡혀 **엉뚱한 409**로 나간다(상품은 "이미 등록된 상품명입니다"). 400 `VALIDATION_FAILED`가 맞는 자리다. 값은 `V1__baseline.sql`의 컬럼 정의를 그대로 옮겼다 — `customer.name`·`product.name`·`contact.email` 255 · `contact.name`·`title`·`customer.industry` 100 · `product.unit`·`customer.size` 50 · `contact.phone` 30 · `task.content` 500. **`TEXT` 컬럼(`customer.note`·`product.description`·`activity.content`)에는 붙이지 않는다.** `activity.channel`은 `CHECK` 제약이라 길이가 아닌 값 검증 문제로 별개다 |
@@ -321,6 +322,7 @@ public record CreateQuoteRequest(@NotNull UUID dealId) {}             // 종결 
 public record UpdateQuoteRequest(                                     // PUT — DRAFT만
         @NotNull @Future LocalDate validUntil,                        // QT-09 = 링크 만료 (Q-17)
         @NotNull String vatMode,                                      // EXCLUDED(기본) / INCLUDED (Q-16)
+                                                                      // 표시 기준일 뿐 — 금액 계산에 영향 없음 (Q-46)
         @Size(max = 2000) String terms,
         @NotEmpty List<Item> items,
         @NotNull Integer version) {
@@ -329,6 +331,7 @@ public record UpdateQuoteRequest(                                     // PUT —
             @NotBlank String name, @NotBlank String unit,
             @Positive int quantity,
             @PositiveOrZero Long unitPrice,                           // 0원 하한 — 음수는 400 (Q-02)
+                                                                      // vat_mode와 무관하게 항상 세전 (Q-46)
             int sortOrder) {}
 }
 

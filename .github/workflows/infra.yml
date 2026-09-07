@@ -48,6 +48,8 @@ jobs:
       pull-requests: read
     outputs:
       infra: ${{ steps.filter.outputs.infra }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+      config: ${{ steps.filter.outputs.config }}
       aws_ready: ${{ steps.gate.outputs.aws_ready }}
       infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
       stack_ready: ${{ steps.gate.outputs.stack_ready }}
@@ -60,6 +62,14 @@ jobs:
           filters: |
             infra:
               - 'infra/prod/terraform/**'
+              - '.github/workflows/infra.yml'
+            scripts:
+              - 'infra/**/*.sh'
+              - '.github/workflows/infra.yml'
+            config:
+              - 'infra/prod/compose/**'
+              - 'infra/prod/caddy/**'
+              - 'infra/prod/monitoring/**'
               - '.github/workflows/infra.yml'
 
       # 아직 없는 것들 때문에 CI 가 빨간불로 남지 않게 한다.
@@ -143,6 +153,101 @@ jobs:
             echo "::endgroup::"
           done
 
+  shellcheck:
+    name: shellcheck
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ubuntu-latest 러너에 shellcheck 가 미리 깔려 있다.
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find infra -name '*.sh' -not -path '*/.terraform/*' | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "검사할 스크립트가 없다"
+            exit 0
+          fi
+          for f in "${files[@]}"; do echo "검사 대상: $f"; done
+          # SC2154 만 끈다. terraform templatefile 자리표시자(${var})를
+          # 미할당 셸 변수로 오인하기 때문이다. 나머지 경고는 전부 실패로 본다.
+          shellcheck --exclude=SC2154 "${files[@]}"
+
+  config-check:
+    name: config-check
+    needs: changes
+    if: needs.changes.outputs.config == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # 서버에서 실제로 도는 설정들이다. 눈으로 봐서는 맞는지 알 수 없고,
+      # 틀리면 배포 시점에야 드러난다. 각 도구 자신에게 물어본다.
+      # 실제 서버 배치와 같은 위치에 둔다. compose.yml 의 env_file 이
+      # ../.env 를 가리키므로 /tmp 에 두면 파싱 자체가 실패한다.
+      - name: 더미 env 준비
+        run: |
+          set -euo pipefail
+          cat > infra/prod/.env <<'ENV'
+          DOMAIN=example.com
+          ACME_EMAIL=ops@example.com
+          DB_USERNAME=twojo
+          DB_PASSWORD=dummy
+          DB_NAME=twojo
+          JWT_SECRET=dummy
+          CORS_ALLOWED_ORIGINS=https://app.example.com
+          PASSWORD_RESET_BASE_URL=https://app.example.com/password-reset
+          VIEW_LINK_BASE_URL=https://app.example.com
+          DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/0/x
+          GRAFANA_ADMIN_PASSWORD=dummy
+          ENV
+          echo 'BACKEND_IMAGE=example/backend:test' > infra/prod/.env.image
+
+      - name: Caddyfile
+        run: |
+          docker run --rm -e ACME_EMAIL=ops@example.com -e DOMAIN=example.com             -v "$PWD/infra/prod/caddy/Caddyfile:/etc/caddy/Caddyfile:ro"             caddy:2-alpine caddy validate --config /etc/caddy/Caddyfile --adapter caddyfile
+
+      - name: prometheus.yml
+        run: |
+          docker run --rm --entrypoint promtool             -v "$PWD/infra/prod/monitoring/prometheus:/cfg:ro"             prom/prometheus:v3.2.1 check config /cfg/prometheus.yml
+
+      - name: promtail.yml
+        run: |
+          docker run --rm -v "$PWD/infra/prod/monitoring/promtail:/cfg:ro"             grafana/promtail:3.4.2 -config.file=/cfg/promtail.yml -check-syntax
+
+      - name: loki-config.yml
+        run: |
+          docker run --rm -v "$PWD/infra/prod/monitoring/loki:/cfg:ro"             grafana/loki:3.4.2 -config.file=/cfg/loki-config.yml -verify-config
+
+      - name: compose (2개 파일 병합)
+        run: |
+          docker compose --env-file infra/prod/.env --env-file infra/prod/.env.image             -f infra/prod/compose/compose.yml             -f infra/prod/compose/compose.monitoring.yml config --quiet
+
+      # 가장 잘 깨지는 곳이다. Grafana 알람 provisioning 은 형식이 조금만
+      # 어긋나도 오류 없이 그냥 등록되지 않는다 — 알람이 조용히 사라진다.
+      - name: Grafana provisioning (실제 기동)
+        run: |
+          set -euo pipefail
+          docker run -d --name gf-check             -e DISCORD_WEBHOOK_URL="https://discord.com/api/webhooks/0/x"             -e GF_SECURITY_ADMIN_PASSWORD=ci-only             -v "$PWD/infra/prod/monitoring/grafana/provisioning:/etc/grafana/provisioning:ro"             grafana/grafana:11.6.1
+
+          for _ in $(seq 1 60); do
+            if docker logs gf-check 2>&1 | grep -q "HTTP Server Listen"; then break; fi
+            sleep 2
+          done
+
+          rules="$(docker exec gf-check sh -c             'curl -sf -u admin:ci-only http://localhost:3000/api/v1/provisioning/alert-rules'             | grep -o '"uid":"2jo-[^"]*"' | wc -l)"
+          echo "등록된 2jo 알람 규칙: ${rules}개"
+
+          docker logs gf-check 2>&1 | grep "level=error" || true
+
+          docker rm -f gf-check > /dev/null
+          if [ "$rules" -ne 6 ]; then
+            echo "::error::알람 규칙이 6개가 아니다 (${rules}개). provisioning 형식을 확인할 것"
+            exit 1
+          fi
+
   checkov:
     name: checkov
     needs: changes
@@ -197,11 +302,18 @@ jobs:
       - name: 비용 산출
         run: infracost breakdown --path="${TF_ROOT}" --format=json --out-file=/tmp/infracost.json
 
+      # infracost/actions@v4 에는 comment 서브액션이 없다 (setup·diff·scan 뿐).
+      # CLI 를 직접 부른다.
       - name: PR 코멘트
-        uses: infracost/actions/comment@v4
-        with:
-          path: /tmp/infracost.json
-          behavior: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          infracost comment github \
+            --path=/tmp/infracost.json \
+            --repo="${GITHUB_REPOSITORY}" \
+            --pull-request="${{ github.event.pull_request.number }}" \
+            --github-token="${GITHUB_TOKEN}" \
+            --behavior=update
 
       # 증분(diff)이 아니라 총액으로 판정한다.
       # diff 게이트는 "최초 인프라 PR 은 당연히 한도를 넘는다"($0 → $37) 문제가 생겨
@@ -304,3 +416,25 @@ jobs:
           set -euo pipefail
           terraform init -input=false -no-color
           terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
+
+      # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면
+      # S3 만 바뀌고 서버는 옛 설정으로 계속 돈다 (cd.md §6.3).
+      #
+      # 이미지는 건드리지 않는 설정 전용 모드다. 서버가 아직 없으면
+      # 대상이 0개라 실패하는데, 그건 정상이므로 워크플로를 깨지 않는다.
+      - name: 서버에 설정 재동기화 (설정 전용 배포)
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          id="$(aws ssm send-command \
+            --document-name AWS-RunShellScript \
+            --targets "Key=tag:Project,Values=2jo" \
+            --comment "config sync after apply" \
+            --timeout-seconds 600 \
+            --parameters 'commands=["/opt/2jo/scripts/deploy.sh"],executionTimeout=["600"]' \
+            --region ap-northeast-2 \
+            --query 'Command.CommandId' --output text)" || {
+            echo "::notice::대상 인스턴스가 없거나 SSM 호출이 실패했다 — 서버가 아직 없으면 정상이다"
+            exit 0
+          }
+          echo "명령 ID: ${id}"

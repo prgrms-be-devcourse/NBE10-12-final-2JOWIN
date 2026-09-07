@@ -1,0 +1,238 @@
+# 알람 6개. 이 숫자를 넘기지 않는다 — 울려도 아무도 안 보게 되면 0개와 같다.
+#
+# ERROR 로그는 여기 없다. 개발 중에는 상시 발생해서 알람으로 걸면 첫날부터
+# 무시하게 된다. 대시보드 패널로만 둔다 (monitoring.md §4.2).
+#
+# 임계값은 초기값이다. 1주 운영하고 노이즈를 보며 재조정하는 것을 전제로 한다.
+#
+# 구조적 한계 하나: Grafana 가 죽으면 알람도 죽는다. Grafana 자신의 장애는
+# Grafana 가 못 알린다. 매일 오는 비용 리포트가 없으면 그것을 간접 신호로 쓴다.
+
+apiVersion: 1
+
+groups:
+  - orgId: 1
+    name: 2jo-common
+    folder: 2JO
+    interval: 1m
+    rules:
+      # ── 1. 타깃 다운 ─────────────────────────────────────────────────
+      - uid: 2jo-target-down
+        title: '타깃 다운'
+        condition: B
+        for: 2m
+        labels:
+          severity: critical
+        annotations:
+          summary: '스크레이프 대상이 응답하지 않는다'
+          description: 'SSM 으로 접속해 docker compose ps 를 확인할 것'
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'min by(job) (up)'
+              instant: true
+              range: false
+          - refId: B
+            relativeTimeRange: { from: 300, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [1] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+
+      # ── 2. 디스크 80% ────────────────────────────────────────────────
+      # 디스크가 차면 PostgreSQL 이 쓰기를 거부하고 서비스가 멈춘다.
+      - uid: 2jo-disk-usage
+        title: '디스크 사용률 80% 초과'
+        condition: B
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: '루트 파일시스템이 80% 를 넘었다'
+          description: '도커 로그·Prometheus TSDB·Loki 청크를 먼저 확인할 것'
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'max(1 - node_filesystem_avail_bytes{fstype!~"tmpfs|overlay|squashfs"} / node_filesystem_size_bytes{fstype!~"tmpfs|overlay|squashfs"})'
+              instant: true
+              range: false
+          - refId: B
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0.8] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+
+      # ── 3. 메모리 부족 ───────────────────────────────────────────────
+      # 4 GiB 에 컨테이너 9종이 올라간다. 여유가 크지 않다.
+      - uid: 2jo-memory-low
+        title: '메모리 여유 10% 미만'
+        condition: B
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: '가용 메모리가 10% 아래로 떨어졌다'
+          description: 'containers.md §11.1 대응 순서 — Loki 보존 단축부터'
+        noDataState: NoData
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'node_memory_MemAvailable_bytes / node_memory_MemTotal_bytes'
+              instant: true
+              range: false
+          - refId: B
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: lt, params: [0.1] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+
+      # ── 4. 5xx 급증 ──────────────────────────────────────────────────
+      # 앱이 죽으면 backend 지표는 아예 안 나온다. 엣지(Caddy)가 그때도 센다.
+      - uid: 2jo-http-5xx
+        title: '5xx 급증'
+        condition: B
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'Caddy 기준 5xx 가 초당 1건을 넘는다'
+          description: 'Loki 에서 backend 컨테이너 로그를 확인할 것'
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'sum(rate(caddy_http_requests_total{code=~"5.."}[5m]))'
+              instant: true
+              range: false
+          - refId: B
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [1] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+
+      # ── 5. 커넥션 풀 고갈 ────────────────────────────────────────────
+      # 대기가 생겼다는 것은 롱 트랜잭션이 풀을 붙들고 있다는 뜻이다.
+      - uid: 2jo-hikari-pending
+        title: '커넥션 풀 대기 발생'
+        condition: B
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: 'HikariCP 커넥션 대기가 3분 이상 이어진다'
+          description: 'pg_stat_activity_max_tx_duration 으로 롱 트랜잭션을 확인할 것'
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'max(hikaricp_connections_pending)'
+              instant: true
+              range: false
+          - refId: B
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [0] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+
+      # ── 6. 반복 재시작 ───────────────────────────────────────────────
+      # 10분 안에 up 이 여러 번 뒤집히면 OOM 루프를 의심한다.
+      - uid: 2jo-flapping
+        title: '반복 재시작 (플랩)'
+        condition: B
+        for: 0m
+        labels:
+          severity: critical
+        annotations:
+          summary: '10분 안에 타깃 상태가 3회 이상 바뀌었다'
+          description: 'OOM 루프 의심 — docker stats 와 컨테이너 종료 코드를 확인할 것'
+        noDataState: OK
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'max(changes(up[10m]))'
+              instant: true
+              range: false
+          - refId: B
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [3] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query

@@ -41,7 +41,7 @@ class DealQueryImplTest {
 
     /**
      * 생성은 팩토리로, 단계·id는 리플렉션으로 세운다.
-     * 단계 전이 메서드는 다음 이슈라 여기서 LEAD 밖으로 옮길 수단이 아직 없다.
+     * 전이 메서드로 옮길 수도 있지만(#61), 여기서 보는 것은 매핑이지 전이가 아니라 직접 세운다.
      */
     private static Deal deal(Deal.Stage stage, String title, UUID assigneeId) {
         Deal deal = Deal.create(COMPANY_ID, UUID.randomUUID(), assigneeId, title, 5_000_000L, null);
@@ -59,6 +59,28 @@ class DealQueryImplTest {
                 .willReturn(Optional.of(deal(Deal.Stage.QUOTE, "한빛 사무가구", assigneeId)));
 
         assertThat(dealQuery.assigneeIdOf(dealId)).isEqualTo(assigneeId);
+    }
+
+    @Test
+    @DisplayName("고객사 id를 돌려준다 — 견적 발송의 수신인 검증 기준값 (QT-13)")
+    void customerIdOf_returnsCustomer() {
+        UUID dealId = UUID.randomUUID();
+        Deal deal = deal(Deal.Stage.QUOTE, "한빛 사무가구", UUID.randomUUID());
+        given(dealRepository.findByIdAndDeletedAtIsNull(dealId)).willReturn(Optional.of(deal));
+
+        assertThat(dealQuery.customerIdOf(dealId)).isEqualTo(deal.getCustomerId());
+    }
+
+    @Test
+    @DisplayName("없는 Deal의 고객사를 물으면 RESOURCE_NOT_FOUND — 검증 기준값이 없으면 발송을 진행할 수 없다")
+    void customerIdOf_throwsWhenMissing() {
+        UUID dealId = UUID.randomUUID();
+        given(dealRepository.findByIdAndDeletedAtIsNull(dealId)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> dealQuery.customerIdOf(dealId))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
     }
 
     @Test

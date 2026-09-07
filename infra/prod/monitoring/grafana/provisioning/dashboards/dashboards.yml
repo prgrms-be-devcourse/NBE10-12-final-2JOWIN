@@ -1,0 +1,23 @@
+# 대시보드는 코드다. UI 에서 고친 것은 export 해서 json/ 에 커밋한다.
+#
+# 바닥부터 만들지 않는다 — 커뮤니티 대시보드를 import 한 뒤 필요 없는 패널을
+# 지우고 export 한다 (monitoring.md §5.2).
+#   node_exporter    1860
+#   postgres_exporter 9628
+#   JVM (Micrometer)  4701
+
+apiVersion: 1
+
+providers:
+  - name: 2jo
+    orgId: 1
+    folder: 2JO
+    type: file
+    disableDeletion: false
+    # UI 에서 편집한 내용이 다음 재기동에 덮어써지는 것을 막는다.
+    # 편집분은 export 해서 커밋하는 것이 정본 경로다.
+    allowUiUpdates: true
+    updateIntervalSeconds: 30
+    options:
+      path: /etc/grafana/provisioning/dashboards/json
+      foldersFromFilesStructure: false

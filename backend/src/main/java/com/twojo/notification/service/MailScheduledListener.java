@@ -19,7 +19,7 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * <p><b>{@code dispatch()}는 {@code @Async}라 이 호출 지점에서 나올 수 있는 예외는 "제출 실패"뿐이다.</b>
  * 큐 포화({@code TaskRejectedException})·셧다운 중 실행기 파괴({@code IllegalStateException}) 등 이유는
  * 달라도 결과는 같다 — 발송을 시도조차 못 했고 {@code body}는 이벤트에만 있어 재구성 불가. 전부 FAILED로
- * 닫는다({@link MailFailureRecorder}, docs/05 §11). SCHEDULED로 두면 FAILED 지표(docs/14 §1.5)가 무력화된다.
+ * 닫는다({@link MailOutcomeWriter}, docs/05 §11). SCHEDULED로 두면 FAILED 지표(docs/14 §1.5)가 무력화된다.
  *
  * <p><b>{@code catch (RuntimeException)}이 새는 예외를 HTTP로 올리지 않는다</b> — 커밋은 이미 끝났고
  * 사용자 요청은 성공이다. 로그는 예외 클래스명만 남긴다(AsyncUncaughtExceptionHandler와 같은 철학 —
@@ -37,7 +37,7 @@ class MailScheduledListener {
     private static final Logger log = LoggerFactory.getLogger(MailScheduledListener.class);
 
     private final MailDispatcher mailDispatcher;
-    private final MailFailureRecorder mailFailureRecorder;
+    private final MailOutcomeWriter mailOutcomeWriter;
 
     @Order(Ordered.HIGHEST_PRECEDENCE)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
@@ -54,7 +54,7 @@ class MailScheduledListener {
     /** AFTER_COMMIT에서 새는 예외는 커밋된 요청을 500으로 뒤집는다 — 기록 실패는 여기서 끝낸다. */
     private void recordFailedQuietly(UUID emailLogId) {
         try {
-            mailFailureRecorder.markFailed(emailLogId);
+            mailOutcomeWriter.markFailed(emailLogId);
         } catch (RuntimeException e) {
             log.error("FAILED 기록 실패 — emailLogId={}, {}", emailLogId, e.getClass().getName());
         }

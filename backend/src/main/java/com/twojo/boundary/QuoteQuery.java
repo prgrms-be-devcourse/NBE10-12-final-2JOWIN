@@ -58,8 +58,15 @@ public interface QuoteQuery {
                            List<Item> items,
                            UUID dealId, UUID companyId) {
 
-        /** 발송 시점 값 복사본 — product 조인이 아니다 (QT-24, PR-04 무영향) */
-        record Item(String name, String unit, int quantity,
+        /**
+         * 발송 시점 값 복사본 — product 조인이 아니다 (QT-24, PR-04 무영향).
+         *
+         * <p><b>{@code public}이 필요하다.</b> 인터페이스에 중첩된 {@code PublicQuoteView}는
+         * 암묵적으로 public이지만, <b>record 안에 중첩된 이 타입은 그렇지 않다</b> —
+         * 기본 접근이라 {@code com.twojo.boundary} 밖에서는 이름조차 쓸 수 없었다.
+         * 항목 없는 뷰만 만들어 보면(빈 리스트) 드러나지 않는다.
+         */
+        public record Item(String name, String unit, int quantity,
                     Long unitPrice, Long amount, int sortOrder) {}
     }
 }
