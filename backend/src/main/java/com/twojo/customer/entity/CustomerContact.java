@@ -82,8 +82,12 @@ public class CustomerContact extends BaseTimeEntity {
      *
      * <p><b>교체할 때 이 메서드와 {@code releasePrimary()}를 따로 호출하면 위험하다.</b>
      * 두 UPDATE 사이에 대표가 2명인 순간이 생기는데, JPA는 그 순서를 보장하지 않아
-     * {@code uk_customer_contact_primary}(부분 유니크) 위반이 날 수 있다. 서비스는 옛 대표를
-     * 먼저 확정해 순서를 고정하거나, 한 문장으로 끝내야 한다 (CU-11 구현 이슈에서 정한다).
+     * {@code uk_customer_contact_primary}(부분 유니크) 위반이 날 수 있다.
+     *
+     * <p><b>#107에서 옛 대표를 먼저 확정하는 쪽으로 정했다</b> — {@code CustomerService.setPrimaryContact}가
+     * 해제를 {@code saveAndFlush}로 먼저 반영한 뒤 새 대표를 지정한다. 한 문장(bulk UPDATE)으로 끝내는
+     * 방식은 쓰지 않는다: 부분 유니크는 인덱스라 {@code DEFERRABLE}이 불가능하고, 한 UPDATE 문 안에서도
+     * 검사가 행 단위로 걸려 새 대표 행이 먼저 갱신되면 같은 위반이 난다.
      */
     public void markPrimary() {
         this.isPrimary = true;
