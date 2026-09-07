@@ -60,3 +60,19 @@ skip-check:
   #              iam:AttachRolePolicy 는 대상 역할 + PolicyARN 조건
   - CKV_AWS_111
   - CKV_AWS_356
+
+  # ── network · storage 모듈 (#90) ──────────────────────────────
+  # CKV_AWS_260  0.0.0.0/0 -> 80 — 공개 웹 서버다. Let's Encrypt HTTP-01
+  #              챌린지와 HTTPS 리다이렉트에 필요하다. Caddy 가 443 으로 넘긴다
+  - CKV_AWS_260
+  # CKV_AWS_130  서브넷 기본 공인 IP — NAT 가 없어서 공인 IP 가 없으면
+  #              cloud-init 이 인터넷에 못 닿는다. NAT 는 월 $32
+  - CKV_AWS_130
+  # CKV_AWS_136  ECR KMS 암호화 — AES256 로 간다. KMS 는 키당 월 $1
+  - CKV_AWS_136
+  # CKV2_AWS_11  VPC 플로우 로그 — 인스턴스 1대에 로그 수집·보관 비용이 붙는다.
+  #              열린 포트가 80·443 뿐이고 SSH 도 없어서 얻는 정보가 적다
+  - CKV2_AWS_11
+  # CKV2_AWS_5   SG 가 아무 리소스에도 안 붙음 — #91 compute 가 EC2 에 붙인다.
+  #              TODO: #91 머지 후 이 줄을 지워서 검사를 되살릴 것
+  - CKV2_AWS_5

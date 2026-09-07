@@ -25,3 +25,26 @@ module "cost_guard" {
   max_volume_size_gb       = var.max_volume_size_gb
   discord_webhook_ssm_path = var.discord_webhook_ssm_path
 }
+
+module "network" {
+  source = "./modules/network"
+
+  project           = var.project
+  vpc_cidr          = var.vpc_cidr
+  public_subnets    = var.public_subnets
+  primary_az_suffix = var.primary_az_suffix
+}
+
+module "storage" {
+  source = "./modules/storage"
+
+  project               = var.project
+  ecr_repository_name   = var.ecr_repository_name
+  image_retention_count = var.image_retention_count
+  bucket_name_prefix    = var.bucket_name_prefix
+  backup_retention_days = var.backup_retention_days
+
+  # 루트가 infra/prod/terraform 이므로 한 단계 위가 infra/prod 다.
+  # compose · caddy · scripts · monitoring 이 그 아래에 있다.
+  config_source_root = "${path.root}/.."
+}
