@@ -44,7 +44,7 @@ systemctl enable --now docker || fail "docker 기동"
 # AL2023 에는 compose 플러그인이 패키지로 없다. 플러그인 경로에 직접 받는다.
 log "docker compose 플러그인 설치"
 install -d /usr/libexec/docker/cli-plugins
-COMPOSE_URL="https://github.com/docker/compose/releases/latest/download/docker-compose-linux-aarch64"
+COMPOSE_URL="https://github.com/docker/compose/releases/latest/download/docker-compose-linux-x86_64"
 curl -fsSL "$COMPOSE_URL" -o /usr/libexec/docker/cli-plugins/docker-compose ||
   fail "compose 플러그인 내려받기"
 chmod +x /usr/libexec/docker/cli-plugins/docker-compose

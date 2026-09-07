@@ -63,10 +63,9 @@ jobs:
     needs: preflight
     if: needs.preflight.outputs.ready == 'true'
 
-    # 이미지가 arm64(t4g Graviton)다. 이 레포는 퍼블릭이라 GitHub arm64
-    # 러너를 무료로 쓸 수 있다 — QEMU 에뮬레이션보다 훨씬 빠르다.
-    # 러너를 못 쓰게 되면 ubuntu-latest + docker/setup-qemu-action 으로 되돌린다.
-    runs-on: ubuntu-24.04-arm
+    # 인스턴스가 t3.medium(x86_64)이라 러너와 아키텍처가 같다.
+    # 에뮬레이션이 필요 없어 그냥 빌드하면 된다.
+    runs-on: ubuntu-latest
 
     # 승인 게이트. 승인 전에는 job 이 시작되지 않고 토큰도 발급되지 않는다.
     environment: prod
