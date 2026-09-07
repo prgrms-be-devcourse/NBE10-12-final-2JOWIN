@@ -10,12 +10,13 @@ import { createApplication } from '../api'
 /**
  * 회사 사용 신청 (ON-01·02 · 04 S-02 1단계 · 07 §A `POST /public/api/v1/applications`).
  *
- * 방문자(비로그인)가 회사명·사업자번호·이메일로 신청하면 검토 대기(PENDING)가 된다.
+ * 방문자(비로그인)가 회사명·사업자번호·신청자 이름·이메일로 신청하면 검토 대기(PENDING)가 된다.
  * 플랫폼 관리자가 승인하면 회사가 생기고, 이 이메일이 기업 관리자 계정이 되어
  * 비밀번호 설정 링크가 메일로 온다 (Q-33 · NT-13). 여기서는 접수만 하고 로그인할 수 없다 (ON-13).
+ * 신청자 이름은 승인 시 그 계정의 이름(member.name)이 된다 (08 v1.6.11 · ON-07) — 본인이 AU-07로 고칠 수 있다.
  */
 export function ApplyPage() {
-  const [form, setForm] = useState({ companyName: '', businessNo: '', email: '' })
+  const [form, setForm] = useState({ companyName: '', businessNo: '', applicantName: '', email: '' })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<ApiError | null>(null)
   const [done, setDone] = useState(false)
@@ -28,7 +29,12 @@ export function ApplyPage() {
     setError(null)
     setLoading(true)
     try {
-      await createApplication({ companyName: form.companyName.trim(), businessNo: form.businessNo.trim(), email: form.email.trim() })
+      await createApplication({
+        companyName: form.companyName.trim(),
+        businessNo: form.businessNo.trim(),
+        email: form.email.trim(),
+        applicantName: form.applicantName.trim(),
+      })
       setDone(true)
     } catch (e) {
       setError(e instanceof ApiError ? e : new ApiError('INTERNAL_ERROR', undefined))
@@ -56,7 +62,8 @@ export function ApplyPage() {
     )
   }
 
-  const canSubmit = form.companyName.trim() !== '' && form.businessNo.trim() !== '' && form.email.trim() !== ''
+  const canSubmit =
+    form.companyName.trim() !== '' && form.businessNo.trim() !== '' && form.applicantName.trim() !== '' && form.email.trim() !== ''
 
   return (
     <Box className="center-page">
@@ -97,6 +104,20 @@ export function ApplyPage() {
                   onChange={set('businessNo')}
                   disabled={loading}
                   color={error?.reasonOf('businessNo') ? 'red' : undefined}
+                />
+              </Field>
+
+              <Field label="신청자 이름" required error={error?.reasonOf('applicantName')} hint="승인되면 이 이름으로 기업 관리자 계정이 만들어집니다" htmlFor="apply-name">
+                <TextField.Root
+                  id="apply-name"
+                  size="3"
+                  autoComplete="name"
+                  placeholder="예: 김서연"
+                  maxLength={100}
+                  value={form.applicantName}
+                  onChange={set('applicantName')}
+                  disabled={loading}
+                  color={error?.reasonOf('applicantName') ? 'red' : undefined}
                 />
               </Field>
 

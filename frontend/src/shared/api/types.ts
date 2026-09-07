@@ -162,21 +162,24 @@ export interface AcceptInvitationRequest {
   password: string
 }
 
-// ── 온보딩 (08 §A · 백엔드 record 아직 없음)
+// ── 온보딩 (onboarding/dto — 08 §A v1.6.11, PR #108)
 
-/** 08 §A CreateApplicationRequest — POST /public/api/v1/applications */
+/** onboarding/dto/CreateApplicationRequest — POST /public/api/v1/applications */
 export interface CreateApplicationRequest {
   companyName: string
   businessNo: string
   email: string
+  /** 승인 시 기업 관리자 계정의 member.name이 된다 (08 v1.6.11 · ON-07) */
+  applicantName: string
 }
 
-/** 08 §A ApplicationResponse — applicationNo 없음 (v1.6, id로 식별) */
+/** onboarding/dto/ApplicationResponse — applicationNo 없음 (v1.6, id로 식별) */
 export interface ApplicationResponse {
   id: string
   companyName: string
   businessNo: string
   email: string
+  applicantName: string
   status: ApplicationStatus
   rejectReason: string | null
   decidedAt: string | null
