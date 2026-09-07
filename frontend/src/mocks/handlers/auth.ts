@@ -159,12 +159,16 @@ export const invitationHandlers = [
       ...(!body.companyName?.trim() ? [{ field: 'companyName', reason: '회사명을 입력해 주세요.' }] : []),
       ...(!body.businessNo?.trim() ? [{ field: 'businessNo', reason: '사업자등록번호를 입력해 주세요.' }] : []),
       ...(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(body.email ?? '') ? [{ field: 'email', reason: '올바른 이메일 형식이 아닙니다.' }] : []),
+      ...(!body.applicantName?.trim() ? [{ field: 'applicantName', reason: '신청자 이름을 입력해 주세요.' }] : []),
     ]
     if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
-    if (db.members.some((m) => m.email === body.email)) return error('EMAIL_ALREADY_MEMBER')
-    if (db.applications.some((a) => a.email === body.email && a.status === 'PENDING')) return error('APPLICATION_ALREADY_PENDING')
+    // 서버는 저장·조회 모두 소문자로 정규화한다 (ApplicationService.normalize) — 구성원 검사가 먼저다 (Q-14)
+    const email = body.email.trim().toLowerCase()
+    if (db.members.some((m) => m.email.toLowerCase() === email)) return error('EMAIL_ALREADY_MEMBER')
+    if (db.applications.some((a) => a.email === email && a.status === 'PENDING')) return error('APPLICATION_ALREADY_PENDING')
     const created: ApplicationResponse = {
-      id: crypto.randomUUID(), companyName: body.companyName.trim(), businessNo: body.businessNo.trim(), email: body.email.trim(),
+      id: crypto.randomUUID(), companyName: body.companyName.trim(), businessNo: body.businessNo.trim(), email,
+      applicantName: body.applicantName.trim(),
       status: 'PENDING', rejectReason: null, decidedAt: null, createdAt: new Date().toISOString(),
     }
     db.applications.unshift(created)

@@ -12,7 +12,9 @@ import { useApplicationList } from '../hooks'
  * 가입 신청 목록 (ON-03 · 07 §A `GET /admin/api/v1/applications?status=`).
  *
  * 기본 필터는 검토 대기(PENDING) — 관리자가 이 화면에 오는 이유는 심사다.
- * 열은 ApplicationResponse(08 §A)에 있는 것만: 회사명·사업자번호·이메일·상태·신청일·처리일.
+ * 열은 ApplicationResponse(08 §A)에 있는 것만: 회사명·사업자번호·신청자·이메일·상태·신청일·처리일.
+ * 신청자 이름(v1.6.11)은 승인 시 기업 관리자 계정의 이름이 되므로 심사 화면에서 식별할 수 있게 싣는다.
+ * 정렬은 서버 기본값(createdAt ASC — 대기열이라 먼저 온 신청이 위)을 그대로 보여준다.
  * 상태·페이지는 URL 쿼리 — 새로고침·뒤로가기에 그대로 동작한다 (10 §5.9).
  */
 
@@ -66,7 +68,7 @@ export function AdminApplicationListPage() {
       {error && <ErrorCallout code={codeOf(error)} onRetry={() => refetch()} />}
 
       {isPending ? (
-        <TableSkeleton columns={[2, 1.2, 2, 1, 1, 1]} />
+        <TableSkeleton columns={[2, 1.2, 1, 2, 1, 1, 1]} />
       ) : data && data.content.length === 0 ? (
         <EmptyState
           title={status === 'PENDING' ? '검토할 신청이 없습니다' : '조건에 맞는 신청이 없습니다'}
@@ -81,6 +83,7 @@ export function AdminApplicationListPage() {
                 <Table.Row>
                   <Table.ColumnHeaderCell>회사명</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell width="130px">사업자번호</Table.ColumnHeaderCell>
+                  <Table.ColumnHeaderCell width="100px">신청자</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell>이메일</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell width="110px">상태</Table.ColumnHeaderCell>
                   <Table.ColumnHeaderCell width="90px">신청일</Table.ColumnHeaderCell>
@@ -126,6 +129,9 @@ function ApplicationRow({ application, onOpen }: { application: ApplicationRespo
         <Text size="2" style={{ fontVariantNumeric: 'tabular-nums' }}>
           {application.businessNo}
         </Text>
+      </Table.Cell>
+      <Table.Cell>
+        <Text size="2">{application.applicantName}</Text>
       </Table.Cell>
       <Table.Cell>
         <Text size="2" color="gray">

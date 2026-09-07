@@ -289,8 +289,8 @@ export const documentSequences: { id: string; companyId: string; docType: 'QUOTE
 
 // ── 온보딩 — 시드 application(승인됨) + 회사. 시드에 없는 행은 두지 않는다 (12 §5.2 — 목 = 시드 한 세트).
 //    관리자 화면의 검토 대기 건은 `/apply`로 신청을 넣으면 그 자리에서 생긴다.
-export const applications: { id: string; companyName: string; businessNo: string; email: string; status: ApplicationStatus; rejectReason: string | null; decidedAt: string | null; createdAt: string }[] = [
-  { id: COMPANY.applicationId, companyName: '한빛오피스', businessNo: '123-45-67890', email: 'seoyeon@hanbit.co.kr', status: 'APPROVED', rejectReason: null, decidedAt: '2026-08-10T01:00:00Z', createdAt: '2026-08-09T00:00:00Z' },
+export const applications: { id: string; companyName: string; businessNo: string; email: string; applicantName: string; status: ApplicationStatus; rejectReason: string | null; decidedAt: string | null; createdAt: string }[] = [
+  { id: COMPANY.applicationId, companyName: '한빛오피스', businessNo: '123-45-67890', email: 'seoyeon@hanbit.co.kr', applicantName: '김서연', status: 'APPROVED', rejectReason: null, decidedAt: '2026-08-10T01:00:00Z', createdAt: '2026-08-09T00:00:00Z' },
 ]
 
 export const companies: { id: string; name: string; businessNo: string; status: 'ACTIVE' | 'SUSPENDED'; suspendReason: string | null; memberCount: number; createdAt: string }[] = [
