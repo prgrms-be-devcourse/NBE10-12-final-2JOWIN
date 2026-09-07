@@ -185,10 +185,12 @@ jobs:
 
       # 서버에서 실제로 도는 설정들이다. 눈으로 봐서는 맞는지 알 수 없고,
       # 틀리면 배포 시점에야 드러난다. 각 도구 자신에게 물어본다.
+      # 실제 서버 배치와 같은 위치에 둔다. compose.yml 의 env_file 이
+      # ../.env 를 가리키므로 /tmp 에 두면 파싱 자체가 실패한다.
       - name: 더미 env 준비
         run: |
           set -euo pipefail
-          cat > /tmp/2jo.env <<'ENV'
+          cat > infra/prod/.env <<'ENV'
           DOMAIN=example.com
           ACME_EMAIL=ops@example.com
           DB_USERNAME=twojo
@@ -201,7 +203,7 @@ jobs:
           DISCORD_WEBHOOK_URL=https://discord.com/api/webhooks/0/x
           GRAFANA_ADMIN_PASSWORD=dummy
           ENV
-          echo 'BACKEND_IMAGE=example/backend:test' > /tmp/2jo.image.env
+          echo 'BACKEND_IMAGE=example/backend:test' > infra/prod/.env.image
 
       - name: Caddyfile
         run: |
@@ -221,7 +223,7 @@ jobs:
 
       - name: compose (2개 파일 병합)
         run: |
-          docker compose --env-file /tmp/2jo.env --env-file /tmp/2jo.image.env             -f infra/prod/compose/compose.yml             -f infra/prod/compose/compose.monitoring.yml config --quiet
+          docker compose --env-file infra/prod/.env --env-file infra/prod/.env.image             -f infra/prod/compose/compose.yml             -f infra/prod/compose/compose.monitoring.yml config --quiet
 
       # 가장 잘 깨지는 곳이다. Grafana 알람 provisioning 은 형식이 조금만
       # 어긋나도 오류 없이 그냥 등록되지 않는다 — 알람이 조용히 사라진다.
