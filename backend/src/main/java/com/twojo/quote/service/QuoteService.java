@@ -45,16 +45,17 @@ import org.springframework.transaction.annotation.Transactional;
 public class QuoteService {
 
     /**
-     * 작성 시작 시점의 임시 유효기간 — 오늘로부터 30일 (KST).
+     * 작성 시작 시점의 임시 유효기간 — 오늘로부터 30일 (KST). <b>Q-47</b> (03 §3, v1.6.7).
      *
-     * <p><b>문서에 근거가 없어 여기서 정했다.</b> 07·08의 {@code CreateQuoteRequest}는 dealId
-     * 하나만 받는데 {@code quote.valid_until}은 {@code NOT NULL}이라, 작성 시작 단계에 값이
-     * 반드시 있어야 한다. 담당자가 PUT에서 실제 기간을 지정하므로(QT-09) 이 값은 그때까지의
-     * 자리표시자이고, 발송 전에는 항상 덮인다 — 08의 {@code UpdateQuoteRequest.validUntil}이
-     * {@code @NotNull @Future}다.
+     * <p>07·08의 {@code CreateQuoteRequest}는 dealId 하나만 받는데 {@code quote.valid_until}은
+     * {@code NOT NULL}이라, 작성 시작 단계에 값이 반드시 있어야 한다. 담당자가 PUT에서 실제
+     * 기간을 지정하므로(QT-09) 이 값은 그때까지의 자리표시자이고, 발송 전에는 항상 덮인다 —
+     * 08의 {@code UpdateQuoteRequest.validUntil}이 {@code @NotNull @Future}다.
      *
-     * <p>대안은 컬럼을 nullable로 바꾸는 것인데 스키마 변경(마이그레이션 + ERD 버전 업)이
-     * 딸려온다. PR 「리뷰어에게」에 올려 팀 판단을 받는다.
+     * <p>대안이던 "컬럼을 nullable로" 는 마이그레이션 + ERD 버전 업이 딸려와 접었다.
+     *
+     * <p><b>{@code @Future}는 서버 시간대를 쓰고 이 기본값은 KST라 자정 부근에 하루 어긋난다.</b>
+     * 자리표시자가 발송 전 항상 덮이는 성질로 흡수되는 차이다 (Q-47).
      */
     private static final int DEFAULT_VALIDITY_DAYS = 30;
 
