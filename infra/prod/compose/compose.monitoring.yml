@@ -4,7 +4,7 @@
 #   docker compose -f compose.yml -f compose.monitoring.yml up -d
 #
 # 전부 expose 만 쓴다. 호스트에 게시되는 포트는 여전히 Caddy 의 80·443 뿐이고,
-# Grafana 를 보려면 SSM 포트 포워딩으로 터널을 뚫는다.
+# Grafana 를 보려면 SSH 로컬 포워딩으로 터널을 뚫는다 (monitoring/README.md).
 #
 # 설계 근거: monitoring.md · containers.md §3.1
 name: twojo
