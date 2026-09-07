@@ -29,6 +29,15 @@ public class NotificationSetting extends BaseTimeEntity {
 
     private boolean enabled;
 
+    /** 설정 행 생성. 실제 저장은 {@code NotificationSettingCommand}가 네이티브 upsert로 한다 — 이 팩토리는 조회 매핑·테스트용. */
+    public static NotificationSetting of(UUID memberId, String type, boolean enabled) {
+        NotificationSetting setting = new NotificationSetting();
+        setting.memberId = memberId;
+        setting.type = type;
+        setting.enabled = enabled;
+        return setting;
+    }
+
     /** 메일 채널 수신 여부 변경 (NT-07). 설정 API는 A 소유, 이 메서드는 그 반영용. */
     public void changeEnabled(boolean enabled) {
         this.enabled = enabled;
