@@ -96,3 +96,54 @@ variable "discord_webhook_ssm_path" {
   type        = string
   default     = "/2jo/prod/discord-webhook-infra"
 }
+
+# ── 네트워크 ───────────────────────────────────────────────────────
+# 근거: network-compute.md §2
+
+variable "vpc_cidr" {
+  description = "VPC CIDR"
+  type        = string
+  default     = "10.0.0.0/16"
+}
+
+variable "public_subnets" {
+  description = "퍼블릭 서브넷 (AZ 접미사 -> CIDR). 프라이빗은 만들지 않는다 — NAT 가 없다"
+  type        = map(string)
+  default = {
+    a = "10.0.0.0/24"
+    c = "10.0.1.0/24"
+  }
+}
+
+variable "primary_az_suffix" {
+  description = "EC2 를 둘 AZ 접미사"
+  type        = string
+  default     = "a"
+}
+
+# ── 저장소 ─────────────────────────────────────────────────────────
+# 근거: storage.md §6
+
+variable "ecr_repository_name" {
+  description = "백엔드 이미지 저장소 이름"
+  type        = string
+  default     = "2jo/backend"
+}
+
+variable "image_retention_count" {
+  description = "유지할 이미지 개수 = 롤백 가능 깊이"
+  type        = number
+  default     = 10
+}
+
+variable "bucket_name_prefix" {
+  description = "설정·백업 버킷 이름 접두사. 뒤에 계정 ID 가 붙는다"
+  type        = string
+  default     = "2jo-prod"
+}
+
+variable "backup_retention_days" {
+  description = "backup/ 보관 일수"
+  type        = number
+  default     = 7
+}
