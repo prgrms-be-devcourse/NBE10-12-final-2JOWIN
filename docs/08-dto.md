@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.13
+# DTO 설계서 — v1.6.14
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.14 | **§A `NotificationSettingResponse.Entry.type` 값 목록 명시(2026-09-07)** — NT-07 설정 대상 4종의 enum 값이 문서에 없어 프론트가 맞출 기준이 없었다. 백엔드 계약(`boundary/NotificationSettingType`, #127)이 확정한 `QUOTE_VIEWED` · `QUOTE_RESPONDED` · `REMIND_NO_RESPONSE` · `INQUIRY_RECEIVED`를 응답 record 주석에 적는다. `QUOTE_RESPONDED`는 NT-04(승인·반려)를 한 토글로 묶은 것이라 `notification.type`의 `QUOTE_APPROVED`/`QUOTE_REJECTED`와 1:1이 아니다(03 §2.13). 스키마·필드 변경 없음, 주석만. 발견 경로: NT-07 계약 리뷰(#127) |
 | v1.6.13 | **§A 초대 record 길이 제한(2026-09-07)** — v1.6.11이 §A 요청 record에 `@Size(max)`를 붙일 때 초대 2종이 빠졌다. `CreateInvitationRequest.email`(`invitation.email` VARCHAR(255)) · `AcceptInvitationRequest.name`(수락 시 만들 `member.name` VARCHAR(100))이 그대로 남아, 컬럼 길이를 넘는 값이 Bean Validation을 통과해 DB에서 거부된다 — **v1.6.9와 같은 구멍이고 결과도 같은 `INTERNAL_ERROR` 500**이다(§A에는 제약 위반을 변환할 자리가 없다). 400 `VALIDATION_FAILED`가 맞는 자리다. 값은 `V1__baseline.sql`의 컬럼 정의를 그대로 옮겼다. 구현에는 이미 들어가 있어 문서만 맞춘다. 발견 경로: NT-01 착수 전 소스 대조(#125) |
 | v1.6.12 | **견적 단가·`vatMode` 주석 신설(2026-09-07)** — `UpdateQuoteRequest.Item.unitPrice`는 `vat_mode`와 무관하게 **항상 세전**이고, `vatMode`는 **표시 기준일 뿐 금액 계산에 영향이 없다**(Q-46). 이 두 줄이 없어서 프론트 견적 편집기가 INCLUDED를 세포함 역산(`합계×10/110`)으로 구현했고, 화면 금액과 저장 금액이 갈렸다. 결정은 `03 §3 Q-46`에 등재돼 있었지만 **구현자가 보는 문서는 08**이라 여기 없으면 닿지 않는다. 스키마·필드 변경은 없다 — 주석만 추가한다 | 프론트 대조(#84) · Q-46 |
 | v1.6.11 | **§A `applicantName` 신설(2026-09-07)** — `CreateApplicationRequest`에 신청자 이름이 없어 **승인 시 만들 기업 관리자 계정의 `member.name`(NOT NULL)에 넣을 값이 없었다**. `04-user-scenarios.md` §1이 승인 결과를 "김서연 계정 생성"으로 규정하므로 `companyName` 복사는 답이 아니다 — 사람 이름 자리에 상호가 들어가면 화면 표시와 감사 기록이 둘 다 거짓이 된다. `application.applicant_name VARCHAR(100) NOT NULL` 동반 신설(`V101`, 06 반영). `ApplicationResponse`에도 실어 관리자가 심사 화면에서 신청자를 식별한다. 아울러 §A 요청 record에 v1.6.8·v1.6.9와 같은 기준으로 `@Size(max)`를 붙였다(`companyName` 255 · `businessNo` 20 · `email` 255 — `V1__baseline.sql:18~20`). 발견 경로: ON 착수 전 소스 대조(#103) |
@@ -124,12 +125,13 @@ public record ChangePasswordRequest(
 // 성공 시 해당 구성원 refresh_token 전 행 폐기(전이표 §9) → 본인도 재로그인. 응답 204, 본문 없음
 
 public record NotificationSettingResponse(List<Entry> settings) {    // NT-07: 메일 채널만
+    // type: QUOTE_VIEWED / QUOTE_RESPONDED / REMIND_NO_RESPONSE / INQUIRY_RECEIVED (boundary NotificationSettingType, #127)
     public record Entry(String type, boolean emailEnabled) {}         // 행 없으면 기본 ON
 }
 
 public record UpdateNotificationSettingsRequest(                      // v1.6 보강 — PUT /me/notification-settings
         @NotEmpty List<Entry> settings) {                             // 전체 교체(PUT 의미) — 응답과 같은 구조
-    public record Entry(@NotBlank String type, boolean emailEnabled) {}
+    public record Entry(@NotBlank String type, boolean emailEnabled) {}   // type: 응답 Entry와 같은 4값
 }
 
 // ── 구성원 · 초대
