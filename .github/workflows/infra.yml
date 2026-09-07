@@ -275,7 +275,7 @@ jobs:
           sarif_file: checkov.sarif
           category: checkov
 
-  # ── 비용 게이트 — cost-guard 1계층 ───────────────────────────────
+  # ── 비용 게이트 — PR 단계에서 월 예상 비용을 막는다 ──────────────
   # 3계층 중 유일하게 "돈이 나가기 전에" 막는다.
   # IAM Deny 는 apply 시점, Budgets 는 이미 쓴 뒤다.
   infracost:
@@ -290,7 +290,7 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      # 하드 한도는 $50 (cost-guard.md). 여유를 두고 $45 에서 막는다.
+      # 자체 예산은 8만원(약 $57). 여유를 두고 $45 에서 막는다.
       COST_LIMIT: ${{ vars.INFRACOST_COST_LIMIT || '45' }}
     steps:
       - uses: actions/checkout@v4
@@ -324,7 +324,7 @@ jobs:
           total=$(jq -r '.totalMonthlyCost // "0"' /tmp/infracost.json)
           echo "월 예상 비용 ${total} / 한도 ${COST_LIMIT} (USD)"
           if awk -v t="$total" -v l="$COST_LIMIT" 'BEGIN { exit !(t > l) }'; then
-            echo "::error::월 예상 비용 ${total} USD 가 한도 ${COST_LIMIT} USD 를 넘었다. 하드 한도는 50 USD (cost-guard.md)"
+            echo "::error::월 예상 비용 ${total} USD 가 한도 ${COST_LIMIT} USD 를 넘었다"
             exit 1
           fi
           echo "한도 이내"

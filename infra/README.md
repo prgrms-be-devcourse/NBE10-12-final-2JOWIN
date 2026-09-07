@@ -50,16 +50,14 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(SSM) · cloud-init |
 | `storage/` | ECR(수명주기 10개) · S3 백업 버킷(수명주기 7일) |
 | `mail/` | SES 도메인 인증 · DKIM · 발송 IAM |
-| `cost-guard/` | IAM Deny 가드레일 · Budgets · Budget Action 2종 · SNS → Discord Lambda |
 
 ### 최초 실행 순서
 
 | # | 명령 | 비고 |
 | --- | --- | --- |
 | 1 | `cd prod/terraform/bootstrap && terraform apply` | 로컬 state → 생성된 S3로 이관 |
-| 2 | `cd prod/terraform && terraform apply -target=module.cost_guard` | **다른 리소스보다 먼저** |
-| 3 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
-| 4 | `cd prod/terraform && terraform apply` | 전체 |
+| 2 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
+| 3 | `cd prod/terraform && terraform apply` | 전체 |
 
 ### 이미지 빌드
 
