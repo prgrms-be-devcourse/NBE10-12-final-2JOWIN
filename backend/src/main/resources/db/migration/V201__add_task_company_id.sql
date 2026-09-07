@@ -27,7 +27,7 @@ ALTER TABLE task ALTER COLUMN company_id SET NOT NULL;
 -- deal에 uk_deal_company_id_id UNIQUE (company_id, id)가 이미 있어 복합 FK가 붙는다.
 --
 -- task_deal_id_fkey는 PostgreSQL이 지은 이름이다 — V1이 deal_id를 인라인으로
--- (REFERENCES deal (id)) 선언해 제약명을 남기지 않았다. 저장소에 이 문자열이 없다.
+-- (REFERENCES deal (id)) 선언해 제약명을 남기지 않았다 — 이 이름은 V1에 적혀 있지 않다.
 ALTER TABLE task DROP CONSTRAINT task_deal_id_fkey;
 ALTER TABLE task ADD CONSTRAINT fk_task_deal FOREIGN KEY (company_id, deal_id) REFERENCES deal (company_id, id);
 
