@@ -197,11 +197,18 @@ jobs:
       - name: 비용 산출
         run: infracost breakdown --path="${TF_ROOT}" --format=json --out-file=/tmp/infracost.json
 
+      # infracost/actions@v4 에는 comment 서브액션이 없다 (setup·diff·scan 뿐).
+      # CLI 를 직접 부른다.
       - name: PR 코멘트
-        uses: infracost/actions/comment@v4
-        with:
-          path: /tmp/infracost.json
-          behavior: update
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          infracost comment github \
+            --path=/tmp/infracost.json \
+            --repo="${GITHUB_REPOSITORY}" \
+            --pull-request="${{ github.event.pull_request.number }}" \
+            --github-token="${GITHUB_TOKEN}" \
+            --behavior=update
 
       # 증분(diff)이 아니라 총액으로 판정한다.
       # diff 게이트는 "최초 인프라 PR 은 당연히 한도를 넘는다"($0 → $37) 문제가 생겨
