@@ -73,6 +73,17 @@ skip-check:
   # CKV2_AWS_11  VPC 플로우 로그 — 인스턴스 1대에 로그 수집·보관 비용이 붙는다.
   #              열린 포트가 80·443 뿐이고 SSH 도 없어서 얻는 정보가 적다
   - CKV2_AWS_11
-  # CKV2_AWS_5   SG 가 아무 리소스에도 안 붙음 — #91 compute 가 EC2 에 붙인다.
-  #              TODO: #91 머지 후 이 줄을 지워서 검사를 되살릴 것
+  # CKV2_AWS_5   SG 가 아무 리소스에도 안 붙음 — 오탐이다.
+  #              실제로는 module.network 출력 -> module.compute 변수 ->
+  #              aws_instance.vpc_security_group_ids 로 붙어 있는데,
+  #              checkov 가 모듈 경계를 넘는 변수 참조를 따라가지 못한다.
+  #              #91 에서 EC2 를 붙인 뒤 skip 을 지워보고 그대로 남아 확인했다
   - CKV2_AWS_5
+
+  # ── compute 모듈 (#91) ────────────────────────────────────────
+  # CKV_AWS_126  상세 모니터링(1분 간격 CloudWatch) — 지표당 요금이 붙는다.
+  #              같은 지표를 node_exporter + Prometheus 로 이미 무료로 본다
+  - CKV_AWS_126
+  # CKV_AWS_135  EBS 최적화 — t4g 는 Nitro 라 항상 켜져 있고 끌 수도 없다.
+  #              속성을 명시해도 동작이 달라지지 않는 무의미한 선언이 된다
+  - CKV_AWS_135

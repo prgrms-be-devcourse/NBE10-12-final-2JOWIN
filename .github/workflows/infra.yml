@@ -48,6 +48,7 @@ jobs:
       pull-requests: read
     outputs:
       infra: ${{ steps.filter.outputs.infra }}
+      scripts: ${{ steps.filter.outputs.scripts }}
       aws_ready: ${{ steps.gate.outputs.aws_ready }}
       infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
       stack_ready: ${{ steps.gate.outputs.stack_ready }}
@@ -60,6 +61,9 @@ jobs:
           filters: |
             infra:
               - 'infra/prod/terraform/**'
+              - '.github/workflows/infra.yml'
+            scripts:
+              - 'infra/**/*.sh'
               - '.github/workflows/infra.yml'
 
       # 아직 없는 것들 때문에 CI 가 빨간불로 남지 않게 한다.
@@ -142,6 +146,28 @@ jobs:
             tflint --chdir="$dir" --config="$cfg" --format=compact
             echo "::endgroup::"
           done
+
+  shellcheck:
+    name: shellcheck
+    needs: changes
+    if: needs.changes.outputs.scripts == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # ubuntu-latest 러너에 shellcheck 가 미리 깔려 있다.
+      - name: shellcheck
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(find infra -name '*.sh' -not -path '*/.terraform/*' | sort)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "검사할 스크립트가 없다"
+            exit 0
+          fi
+          for f in "${files[@]}"; do echo "검사 대상: $f"; done
+          # SC2154 만 끈다. terraform templatefile 자리표시자(${var})를
+          # 미할당 셸 변수로 오인하기 때문이다. 나머지 경고는 전부 실패로 본다.
+          shellcheck --exclude=SC2154 "${files[@]}"
 
   checkov:
     name: checkov
