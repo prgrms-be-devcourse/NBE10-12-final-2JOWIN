@@ -144,6 +144,19 @@ jobs:
             echo "::endgroup::"
           done
 
+  # 보안그룹 설명은 tflint 가 보지 않는다(IAM 역할 설명 규칙은 있는데
+  # 보안그룹 규칙 설명 규칙은 aws 룰셋 0.48.0 에 없다). AWS 가 거부하는
+  # 문자가 들어가면 plan 은 통과하고 apply 가 400 으로 죽는다 —
+  # 그것도 절반쯤 만들어진 채로.
+  sg-description:
+    name: sg-description
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/check-sg-descriptions.py "${TF_ROOT}"
+
   tflint:
     name: tflint
     needs: changes
