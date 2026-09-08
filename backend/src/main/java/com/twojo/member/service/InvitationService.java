@@ -220,13 +220,17 @@ public class InvitationService {
      *
      * <p>기한이 지난 행은 여기서 넘겨 자리를 비운다. 만료를 돌려주는 배치가 없어 이 자리가
      * 곧 만료 시점이다. 넘기지 않으면 죽은 초대가 그 이메일을 영구히 막는다.
+     *
+     * <p>막을 때 쓰는 코드가 {@link #requireNotMember}와 다르다. 그쪽은 계정이 이미 있어
+     * 초대 자체가 불가능한 상태이고, 이쪽은 <b>취소 후 재발송으로 풀린다</b> — 관리자가 취할
+     * 행동이 갈리므로 응답도 갈려야 한다 (07 §A MB 에러 표).
      */
     private void requirePendingSlotFree(AccessContext ctx, String email, Instant now) {
         invitationRepository
                 .findByCompanyIdAndEmailAndStatus(ctx.companyId(), email, Invitation.Status.PENDING)
                 .ifPresent(pending -> {
                     if (!pending.isExpired(now)) {
-                        throw new BusinessException(ErrorCode.EMAIL_ALREADY_MEMBER);
+                        throw new BusinessException(ErrorCode.INVITATION_ALREADY_PENDING);
                     }
                     pending.expire(Invitation.ExpiredReason.TIME, now);
                     invitationRepository.flush();
