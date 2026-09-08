@@ -78,6 +78,6 @@ aws iam list-attached-user-policies --user-name <사용자명>
 
 | 규칙 | 이유 |
 | --- | --- |
-| **시크릿을 terraform 으로 만들지 않는다** | tfstate 는 평문이고 `tf-plan` 역할이 읽을 수 있다. DB 비밀번호·JWT 키는 `aws ssm put-parameter` 로 수동 주입 |
+| **시크릿을 terraform 으로 만들지 않는다** | tfstate 는 평문이고 `tf-plan` 역할이 읽을 수 있다. DB 비밀번호·JWT 키는 GitHub Secrets 에 두고 배포 워크플로가 `.env` 로 넣는다 |
 | 계정 ID 를 변수로 받지 않는다 | 자격증명에서 읽는다 — 잘못된 계정에 apply 하는 사고를 막는다 |
 | `.terraform.lock.hcl` 은 커밋한다 | 프로바이더 버전을 팀이 공유해야 한다 |
