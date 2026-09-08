@@ -30,11 +30,37 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class QuoteQueryImpl implements QuoteQuery {
 
+    /** 응답 대기 = 발송됨·열람됨 (전이표 §6) — 반려·회수·만료는 이미 끝난 건이다 */
+    private static final List<Quote.Status> AWAITING_RESPONSE =
+            List.of(Quote.Status.SENT, Quote.Status.VIEWED);
+
     private final QuoteRepository quoteRepository;
 
+    /**
+     * 응답 대기 견적 (NT-05 리마인드 · DB-03 카드) — 발송됨·열람됨.
+     *
+     * <p><b>회사 전체를 돌려주고 담당 축은 거르지 않는다.</b> 배치에는 {@code AccessContext}가 없어
+     * 여기서 SC-02를 판정할 수 없고, 그래서 계약이 {@code dealId}를 함께 준다 —
+     * 대시보드가 그 축으로 직접 거른다 (계약 javadoc, 2026-09-08 C·D 합의).
+     *
+     * <p><b>{@code customerName}은 아직 null이다.</b> 고객사는 B 소유 테이블이라 이 모듈이 직접 읽을 수 없고
+     * ({@code ModularityTests}), {@code CustomerQuery.get}은 {@code AccessContext}를 요구하는데
+     * 배치 경로에는 그것이 없다. <b>회사 스코프만으로 이름을 얻는 창구가 B 계약에 없다</b> —
+     * 그 한 칸이 열리면 여기서 채운다. 그때까지 이름이 필요한 화면은 호출자가 자기 ctx로 조회한다.
+     */
     @Override
     public List<QuoteSummary> findAwaitingResponse(UUID companyId) {
-        throw new UnsupportedOperationException("QuoteQuery.findAwaitingResponse — C 3주차 구현 예정");
+        return quoteRepository
+                .findByCompanyIdAndStatusInOrderBySentAtAsc(companyId, AWAITING_RESPONSE)
+                .stream()
+                .map(QuoteQueryImpl::toSummary)
+                .toList();
+    }
+
+    /** 엔티티 → 요약. {@code customerName}은 위 javadoc의 이유로 아직 채우지 못한다 */
+    private static QuoteSummary toSummary(Quote quote) {
+        return new QuoteSummary(quote.getId(), quote.getQuoteNo(), quote.getDealId(), quote.getCompanyId(),
+                null, quote.getSentAt(), quote.getFirstViewedAt(), quote.getValidUntil());
     }
 
     @Override

@@ -137,9 +137,9 @@ const quoteSeeds: QuoteSeed[] = [
   [8, 13, 'VIEWED', 18000000, '2026-09-12', '2026-08-21T05:00:00Z', '2026-08-24T01:00:00Z', null, null, null, null, null, null],
   [9, 8, 'WITHDRAWN', 2900000, '2026-09-09', '2026-08-20T01:00:00Z', null, null, null, null, null, null, null],
   [10, 11, 'SENT', 1400000, '2026-09-12', '2026-08-25T06:00:00Z', null, null, null, null, null, null, null],
-  [11, 9, 'SENT', 4180000, '2026-09-15', '2026-08-23T00:00:00Z', null, null, null, null, null, null, null],
+  [11, 9, 'SENT', 4180000, '2026-09-30', '2026-08-23T00:00:00Z', null, null, null, null, null, null, null],
   [13, 10, 'DRAFT', 4800000, '2026-09-20', null, null, null, null, null, null, null, null],
-  [14, 8, 'VIEWED', 3050000, '2026-09-09', '2026-08-24T01:00:00Z', '2026-08-25T05:20:00Z', null, '설치는 납품일로부터 3일 이내 진행됩니다.', 9, null, null, null],
+  [14, 8, 'VIEWED', 3050000, '2026-09-30', '2026-08-24T01:00:00Z', '2026-08-25T05:20:00Z', null, '설치는 납품일로부터 3일 이내 진행됩니다.', 9, null, null, null],
   [16, 12, 'SENT', 23800000, '2026-09-09', '2026-08-26T02:00:00Z', null, null, '단가 재조정안입니다. 검토 부탁드립니다.', 7, null, null, null],
 ]
 /** 대체 관계(QT-28) — 반려·회수된 견적 → 그것을 대체한 복제본 (clonedFrom의 역방향) */
@@ -214,8 +214,8 @@ export const viewTokens: ViewTokenSeed[] = [
   vt(8, 1, 'ACTIVE', null, '2026-09-12', 'demo-dodam-08'),
   vt(9, 1, 'EXPIRED', 'WITHDRAWN', '2026-09-09', 'demo-dodam-09'),
   vt(10, 6, 'ACTIVE', null, '2026-09-12', 'demo-taesung-10'),
-  vt(11, 3, 'ACTIVE', null, '2026-09-15', 'demo-sungwon-11'),
-  vt(14, 1, 'ACTIVE', null, '2026-09-09', 'demo-dodam-14'), // 메인 시나리오 — 이수정이 여는 링크
+  vt(11, 3, 'ACTIVE', null, '2026-09-30', 'demo-sungwon-11'),
+  vt(14, 1, 'ACTIVE', null, '2026-09-30', 'demo-dodam-14'), // 메인 시나리오 — 이수정이 여는 링크
   vt(16, 7, 'ACTIVE', null, '2026-09-09', 'demo-hanul-16'),
 ]
 
