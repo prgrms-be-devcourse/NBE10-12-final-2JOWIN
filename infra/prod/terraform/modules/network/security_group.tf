@@ -24,10 +24,15 @@ resource "aws_security_group" "web" {
 
 # 80 을 여는 이유는 두 가지다.
 #   1. Let's Encrypt HTTP-01 챌린지 — Caddy 가 인증서를 받으려면 필요하다
+#
+# description 에 아포스트로피를 쓰지 않는다. AWS 가 보안그룹 규칙 설명에
+# 받는 문자를 제한하는데 ' 가 거기 없다 — plan 은 통과하고 apply 가
+# InvalidParameterValue 로 죽는다. .github/scripts/check-sg-descriptions.py
+# 가 이걸 검사한다.
 #   2. HTTPS 리다이렉트 — http:// 로 들어온 사람을 https:// 로 보낸다
 resource "aws_vpc_security_group_ingress_rule" "http" {
   security_group_id = aws_security_group.web.id
-  description       = "HTTP: Let's Encrypt HTTP-01 challenge and redirect to HTTPS"
+  description       = "HTTP: ACME HTTP-01 challenge and redirect to HTTPS"
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "tcp"
   from_port         = 80
@@ -61,7 +66,7 @@ resource "aws_vpc_security_group_ingress_rule" "http3_quic" {
 # 그게 이 프로젝트가 예산 때문에 포기한 바로 그것이다.
 resource "aws_vpc_security_group_egress_rule" "all" {
   security_group_id = aws_security_group.web.id
-  description       = "All outbound: ECR, S3 and Let's Encrypt all egress via IGW"
+  description       = "All outbound: ECR, S3 and ACME egress via IGW"
   cidr_ipv4         = "0.0.0.0/0"
   ip_protocol       = "-1"
 }
