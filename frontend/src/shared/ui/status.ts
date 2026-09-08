@@ -84,8 +84,16 @@ export const NOTIFICATION_TYPE_LABEL: Record<NotificationType, string> = {
   QUOTE_VIEWED: '열람', QUOTE_APPROVED: '승인', QUOTE_REJECTED: '반려',
   REMIND_NO_RESPONSE: '무응답', INQUIRY_RECEIVED: '문의', EMAIL_FAILED: '메일 실패',
 }
-/** 메일 수신 설정 대상 — EMAIL_FAILED는 인앱 전용이라 끌 수 없다 (Q-35, NT-07) */
-export const MAIL_SETTING_TYPES = NOTIFICATION_TYPES.filter((t) => t !== 'EMAIL_FAILED')
+/**
+ * boundary/NotificationSettingType — 메일 수신 설정 대상 4종 (NT-07, 08 v1.6.14 §A `Entry.type`).
+ * NotificationType과 1:1이 아니다 — QUOTE_APPROVED·QUOTE_REJECTED는 NT-04 한 토글(QUOTE_RESPONDED)로 묶이고,
+ * EMAIL_FAILED는 인앱 전용이라 끌 수 없다 (Q-35). 순서는 enum 선언 순서 = 서버 응답 순서 (#139).
+ */
+export const MAIL_SETTING_TYPES = ['QUOTE_VIEWED', 'QUOTE_RESPONDED', 'REMIND_NO_RESPONSE', 'INQUIRY_RECEIVED'] as const
+export type NotificationSettingType = (typeof MAIL_SETTING_TYPES)[number]
+export const NOTIFICATION_SETTING_TYPE_LABEL: Record<NotificationSettingType, string> = {
+  QUOTE_VIEWED: '열람', QUOTE_RESPONDED: '승인·반려', REMIND_NO_RESPONSE: '무응답', INQUIRY_RECEIVED: '문의',
+}
 
 /** boundary/AuditActorType — 감사 행위자 */
 export const AUDIT_ACTOR_TYPES = ['MEMBER', 'PLATFORM_ADMIN', 'CUSTOMER_LINK', 'SYSTEM'] as const

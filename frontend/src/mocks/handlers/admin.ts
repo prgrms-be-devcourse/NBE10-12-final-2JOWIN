@@ -35,8 +35,9 @@ export const adminHandlers = [
     }
     failures = 0
     session.adminLogin()
-    // role은 08 §A LoginResponse 형태를 맞추기 위한 값일 뿐 — 플랫폼 관리자는 Role enum 밖이다 (09 v1.6.3 각주)
-    const body: LoginResponse = { accessToken: demoPlatformAdmin.accessToken, memberId: demoPlatformAdmin.id, name: demoPlatformAdmin.name, role: 'COMPANY_ADMIN', companyName: null }
+    // 서버(AdminAuthService)와 같게 — role은 ActorType `PLATFORM_ADMIN`(Role enum 밖, 09 v1.6.3 각주),
+    // name은 이메일(platform_admin 테이블에 이름 컬럼이 없다). 화면 표시명은 AdminLayout이 "운영자"로 고정한다
+    const body: LoginResponse = { accessToken: demoPlatformAdmin.accessToken, memberId: demoPlatformAdmin.id, name: demoPlatformAdmin.email, role: 'PLATFORM_ADMIN', companyName: null }
     return HttpResponse.json(body)
   }),
 

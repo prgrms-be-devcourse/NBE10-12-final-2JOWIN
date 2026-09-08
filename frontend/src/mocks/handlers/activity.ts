@@ -117,4 +117,25 @@ export const activityHandlers = [
     if (body.done !== undefined) task.doneAt = body.done ? new Date().toISOString() : null
     return HttpResponse.json(toTask(task))
   }),
+
+  // ── 고객사 단위 이력 (AC-10) — 경로는 /customers지만 activity 조회라 여기 둔다. 백엔드는 활동이력 이슈에서 (#107 「제외」).
+  //    07에 응답 형태 미명시 — 목록 공통 규칙(Q-39)대로 PageResponse<ActivityResponse>. customer를 실 API로 돌려도 이건 목이다.
+  http.get('/api/v1/customers/:id/activities', async ({ params, request }) => {
+    await delay(200)
+    const customer = db.customers.find((c) => c.id === params.id && !c.deleted)
+    if (!customer) return notFound()
+    return HttpResponse.json(paged(customerActivities(customer.id), new URL(request.url)))
+  }),
 ]
+
+/** 고객사의 모든 Deal 타임라인(수동 + 자동)을 합친다 — 삭제된 Deal은 제외 */
+function customerActivities(customerId: string): ActivityResponse[] {
+  const dealIds = new Set(db.deals.filter((d) => d.customerId === customerId && !d.deleted).map((d) => d.id))
+  const manual: ActivityResponse[] = db.activities
+    .filter((a) => dealIds.has(a.dealId) && !a.deleted)
+    .map((a) => ({ id: a.id, type: 'MANUAL', channel: a.channel, content: a.content, authorMemberId: a.authorMemberId, authorMemberName: memberName(a.authorMemberId), authorActive: memberActive(a.authorMemberId), occurredAt: a.occurredAt }))
+  const auto: ActivityResponse[] = db.autoActivities
+    .filter((a) => dealIds.has(a.dealId))
+    .map((a) => ({ id: a.id, type: 'AUTO', channel: null, content: a.content, authorMemberId: a.authorMemberId ?? '', authorMemberName: memberName(a.authorMemberId), authorActive: a.authorMemberId ? memberActive(a.authorMemberId) : true, occurredAt: a.occurredAt }))
+  return [...manual, ...auto].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+}

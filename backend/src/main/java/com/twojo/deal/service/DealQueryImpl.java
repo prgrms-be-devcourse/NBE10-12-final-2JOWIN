@@ -93,6 +93,13 @@ class DealQueryImpl implements DealQuery {
         return dealRepository.findIdsByAssignee(companyId, memberId);
     }
 
+    /** MB-14 — 진행 중 담당 Deal 건수. 종결·소프트 삭제 제외. 이관(reassignOpenDeals)이 옮기는 집합과 같다 */
+    @Override
+    public long countOpenAssigned(UUID companyId, UUID memberId) {
+        return dealRepository.countByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
+                companyId, memberId, Deal.OPEN_STAGES);
+    }
+
     /**
      * {@code wonAmount}는 주문 합계(DL-18)라 orders 조회가 필요하다.
      * <b>주문 전환 이슈까지 null이다</b> — 소비자(B·D)는 성사 금액을 이 창구로 받지 않는다.

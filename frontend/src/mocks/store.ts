@@ -1,7 +1,7 @@
 import { HttpResponse } from 'msw'
 import { ERROR_MESSAGES, type ErrorCode } from '../shared/api/errors'
 import type { ErrorResponse, PageResponse } from '../shared/api/types'
-import type { DealStage, NotificationType, Role } from '../shared/ui/status'
+import type { DealStage, NotificationSettingType, NotificationType, Role } from '../shared/ui/status'
 import { date } from '../shared/lib/format'
 import * as fx from './fixtures'
 
@@ -40,7 +40,7 @@ export const db = {
   /** 채번 카운터 — global/sequence/DocumentSequence (PR #80). 발급은 이 행을 +1 하는 것뿐 */
   documentSequences: clone(fx.documentSequences),
   /** 메일 수신 설정 — 행 없으면 기본 ON (08 §A NotificationSettingResponse) */
-  notificationSettings: new Map<string, { type: NotificationType; emailEnabled: boolean }[]>(),
+  notificationSettings: new Map<string, { type: NotificationSettingType; emailEnabled: boolean }[]>(),
   /**
    * 자동 기록(AC-07) — 도메인 이벤트에서 파생되는 타임라인 항목. 시드에는 테이블이 없고
    * 실제로는 audit_log에서 만들어지므로, 목에서는 발송·열람·단계 이동 시점에 여기에 쌓는다.
@@ -109,7 +109,7 @@ const STATUS: Record<ErrorCode, number> = {
   VALIDATION_FAILED: 400, RESOURCE_NOT_FOUND: 404, FORBIDDEN: 403, INTERNAL_ERROR: 500,
   LOGIN_FAILED: 401, LOGIN_LOCKED: 429, REFRESH_TOKEN_NOT_ACTIVE: 401, RESET_TOKEN_NOT_ACTIVE: 409, CURRENT_PASSWORD_MISMATCH: 422,
   EMAIL_ALREADY_MEMBER: 422, APPLICATION_ALREADY_PENDING: 409, APPLICATION_ALREADY_DECIDED: 409, COMPANY_BUSINESS_NO_DUPLICATED: 409,
-  INVITATION_NOT_PENDING: 409, LAST_ADMIN_PROTECTED: 422, MEMBER_INACTIVE_TRANSFER_REQUIRED: 422,
+  INVITATION_ALREADY_PENDING: 409, INVITATION_NOT_PENDING: 409, LAST_ADMIN_PROTECTED: 422, MEMBER_INACTIVE_TRANSFER_REQUIRED: 422,
   CUSTOMER_HAS_ACTIVE_DEALS: 409, PRIMARY_CONTACT_REQUIRED: 422, CONTACT_HAS_QUOTES: 409,
   PRODUCT_NAME_DUPLICATED: 409, PRODUCT_DISCONTINUED: 409, ACTIVITY_NOT_AUTHOR: 404,
   DEAL_WON_REQUIRES_ORDER: 409, DEAL_ALREADY_WON: 409, DEAL_HAS_QUOTES: 409, DEAL_NOT_OPEN: 409, DEAL_NOT_LOST: 409, DEAL_NO_PREVIOUS_STAGE: 409,

@@ -3,7 +3,7 @@
 > 🧭 [문서 지도](README.md) · ← [10 화면 설계](10-screen-design.md) · [12 프론트엔드 계획](12-frontend-plan.md) →
 
 **문서명:** Work Breakdown by Table & Endpoint
-**버전:** v2.0 (2026-08-26) · **v2.0.9** (2026-09-08 — §7.2 인터페이스 표에 `DealCommand`(promoteToQuoteStage·markWon) 행 추가(#109·#160, 표에 빠져 있었다) · `QuoteCommand`에 `lockApprovedForConversion` · `QuoteQuery`에 `originsByIds`·`quoteIdsByDeals` 반영(#160)) · **v2.0.7** (2026-09-08 — §7.2 인터페이스 표에 `PublicQuoteAssembler`(assembleForPreview·assembleForView — 고객 화면 조립 통로; QT-12·AP-02) 행 추가(#163)) · **v2.0.6** (2026-09-07 — §7.2 인터페이스 표에 `NotificationSettingQuery`·`NotificationSettingCommand`(settingsOf·replaceSettings) 행 추가(#127)) · **v2.0.5** (2026-09-04 — §7.2 인터페이스 표에 `NotificationCommand`(notify·notifyForDeal) 행 추가(#75)) · **v2.0.4** (2026-09-03 — §7.2 인터페이스 표에 `MailCommand`(schedule) 행 추가(#47) · §2 `MemberQuery`에 A 내부 인터페이스 3건 추가(#40)) · **v2.0.3** (2026-08-27 — 프론트엔드 소유 확정: E가 오너, 플랫폼 + 로그인·고객 열람 담당 / 도메인 화면은 각 백엔드 담당자 · 게이트에 프론트 조건 추가 · Seed=목 픽스처. 상세는 `12-frontend-plan.md`) · **v2.0.2** (화면 설계 공백 반영 — `QuoteCommand.approve/reject`에 응답자 정보(AP-19) · `QuoteQuery` 반환에 첫 열람 시각(GAP-08)) · **검수 보정 v2.0.1** (2026-08-26 — 인터페이스 보강(§4·§5·§7.2: CU-08·12·14와 D 대시보드·배치의 데이터 통로 신설) · NT-12 수신자 규칙 참조 · WON 전이 단계 무관 정합 · AU-09 잠금 판정 문구 정정)
+**버전:** v2.0 (2026-08-26) · **v2.0.9** (2026-09-08 — §7.2 인터페이스 표에 `DealCommand`(promoteToQuoteStage·markWon) 행 추가(#109·#160, 표에 빠져 있었다) · `QuoteCommand`에 `lockApprovedForConversion` · `QuoteQuery`에 `originsByIds`·`quoteIdsByDeals` 반영(#160)) · **v2.0.8** (2026-09-08 — §7.2 인터페이스 표에 `DealCommand`(promoteToQuoteStage·reassignOpenDeals) 행 추가(#109·#130) · `DealQuery` 행에 customerIdOf·summariesByIds·assignedDealIds·countOpenAssigned 반영(#32·#46·#109·#130)) · **v2.0.7** (2026-09-08 — §7.2 인터페이스 표에 `PublicQuoteAssembler`(assembleForPreview·assembleForView — 고객 화면 조립 통로; QT-12·AP-02) 행 추가(#163)) · **v2.0.6** (2026-09-07 — §7.2 인터페이스 표에 `NotificationSettingQuery`·`NotificationSettingCommand`(settingsOf·replaceSettings) 행 추가(#127)) · **v2.0.5** (2026-09-04 — §7.2 인터페이스 표에 `NotificationCommand`(notify·notifyForDeal) 행 추가(#75)) · **v2.0.4** (2026-09-03 — §7.2 인터페이스 표에 `MailCommand`(schedule) 행 추가(#47) · §2 `MemberQuery`에 A 내부 인터페이스 3건 추가(#40)) · **v2.0.3** (2026-08-27 — 프론트엔드 소유 확정: E가 오너, 플랫폼 + 로그인·고객 열람 담당 / 도메인 화면은 각 백엔드 담당자 · 게이트에 프론트 조건 추가 · Seed=목 픽스처. 상세는 `12-frontend-plan.md`) · **v2.0.2** (화면 설계 공백 반영 — `QuoteCommand.approve/reject`에 응답자 정보(AP-19) · `QuoteQuery` 반환에 첫 열람 시각(GAP-08)) · **검수 보정 v2.0.1** (2026-08-26 — 인터페이스 보강(§4·§5·§7.2: CU-08·12·14와 D 대시보드·배치의 데이터 통로 신설) · NT-12 수신자 규칙 참조 · WON 전이 단계 무관 정합 · AU-09 잠금 판정 문구 정정)
 **상태:** 확정 — **요구사항 · 전이표 · ERD · API · DTO · 권한 매트릭스의 v1.6 계열 최신본 기준** (각 문서 변경 이력 참조)
 
 > ⚠️ v1.0(8/21 Draft)은 구버전 스키마(tenant/app_user/quotation/quote_share 등)와 폐기된 결정(customer.owner_id 신설, Deal 단계 QUALIFIED/PROPOSAL, `/api/platform` 경로 등)을 기준으로 작성되어 있었다. 이 v2.0이 그것을 **전면 대체**한다. v1.0의 "착수 전 확정 사항" 8건은 전부 결정 완료되어 요구사항 정의서 3절(Q-15~35)에 반영됐다 — 정리 내역은 `15-cleanup-report.md` 참조.
@@ -248,6 +248,13 @@ public interface DealQuery {
     boolean isOpen(UUID dealId);                 // 진행 중(리드~협상) 여부
     boolean hasOpenDeals(UUID customerId);       // B의 CU-08 판정 — 고객사 삭제 차단 (v2.0.1 보강)
     List<DealSummary> summariesByCustomer(UUID customerId);  // B의 CU-12 — 고객사 상세 Deal 이력 (v2.0.1 보강)
+    long countOpenAssigned(UUID companyId, UUID memberId);   // A의 MB-14 판정 — 진행 중만 센다(종결 제외). 0이면 이관 대상 생략 (v2.0.8)
+}
+
+public interface DealCommand {                   // C 구현 — 다른 도메인의 사건으로 Deal이 움직이는 시스템 전이만 (v2.0.8)
+    void promoteToQuoteStage(UUID dealId);                                            // 발송 시 자동 승급 (Q-25, quote → deal)
+    List<UUID> reassignOpenDeals(UUID companyId, UUID fromMemberId, UUID toMemberId); // 비활성화 시 진행 중 담당 Deal 이관 (MB-14, A → deal)
+                                                                                      // 종결 Deal은 남긴다(담당자 이력) · 옮긴 id 반환 → MEMBER_DEACTIVATED 감사 payload
 }
 
 public interface QuoteQuery {                    // D 소비 — 배치·대시보드의 견적 후보 조회 (v2.0.1 보강)
@@ -402,8 +409,8 @@ C → D: Deal 실패(lose) 시 ViewTokenCommand.expire(DEAL_LOST)   ← 역방�
 | B | `CustomerQuery` (contact 검증 포함) | C, D |
 | B | `ProductQuery` | C |
 | C | `QuoteCommand` (markViewed·approve·reject · **lockApprovedForConversion** — 주문 전환용 행 잠금 + 스냅샷, OD-01·02·04) (v2.0.9) | D, C(order) |
-| C | `DealCommand` (promoteToQuoteStage·markWon — **시스템 전이** 전용, Q-25·OD-06) (v2.0.9) | C(quote·order) |
-| C | `DealQuery` (assigneeIdOf·isOpen·hasOpenDeals·summariesByCustomer) | B, D |
+| C | `DealQuery` (assigneeIdOf·isOpen·hasOpenDeals·summariesByCustomer·summariesByIds·assignedDealIds·customerIdOf·countOpenAssigned) | B, D, A |
+| C | `DealCommand` (promoteToQuoteStage — 발송 시 자동 승급 Q-25 · **markWon** — 주문 전환 시 자동 성사 OD-06 (v2.0.9) · reassignOpenDeals — 비활성화 시 진행 중 담당 Deal 이관, 옮긴 id 반환 MB-14 (v2.0.8)) | C(quote·order), A |
 | C | `QuoteQuery` (응답 대기·임박 후보 — NT-05·06, DB-03) (v2.0.1) · **originsByIds·quoteIdsByDeals** (주문의 견적 경유 조회·SC-04 범위, OD-08·09) (v2.0.9) | D, C(order) |
 | C | `SalesStatsQuery` (대시보드 집계 — DB-01~08) (v2.0.1) | D |
 | D | `ViewTokenCommand` (issue·expire) | C |

@@ -10,7 +10,7 @@
 
 import type {
   ActivityChannel, ActivityType, ApplicationStatus, AuditActorType, CompanyStatus, DealStage, InvitationStatus,
-  MemberStatus, NotificationType, ProductStatus, QuoteStatus, Role, VatMode,
+  MemberStatus, NotificationSettingType, NotificationType, ProductStatus, QuoteStatus, Role, VatMode,
 } from '../ui/status'
 
 // ── 공통 (08-dto.md §0 · global/response · global/error)
@@ -45,12 +45,16 @@ export interface LoginRequest {
   rememberMe: boolean
 }
 
-/** auth/dto/LoginResponse — refresh는 Set-Cookie로만 온다 (v1.6.4). 관리자 로그인은 companyName이 null */
+/**
+ * auth/dto/LoginResponse — refresh는 Set-Cookie로만 온다 (v1.6.4).
+ * 플랫폼 관리자 로그인(/admin/api/v1/auth/login)은 role이 `PLATFORM_ADMIN`(ActorType, Role enum 밖 — 09 v1.6.3 각주),
+ * name은 이메일(platform_admin에 이름 컬럼이 없다), companyName은 null이다.
+ */
 export interface LoginResponse {
   accessToken: string
   memberId: string
   name: string
-  role: Role
+  role: Role | 'PLATFORM_ADMIN'
   companyName: string | null
 }
 
@@ -98,7 +102,7 @@ export interface NotificationSettingResponse {
   settings: NotificationSettingEntry[]
 }
 export interface NotificationSettingEntry {
-  type: NotificationType
+  type: NotificationSettingType   // 4값 — 08 v1.6.14, boundary NotificationSettingType
   emailEnabled: boolean
 }
 /** 08 §A UpdateNotificationSettingsRequest — PUT 전체 교체 */

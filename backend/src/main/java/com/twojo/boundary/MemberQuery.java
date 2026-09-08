@@ -47,7 +47,9 @@ public interface MemberQuery {
      * AuthCredential을 auth 전용으로 둔 것과 같은 패턴이다.
      *
      * <p>없으면 RESOURCE_NOT_FOUND. 비활성 구성원도 그대로 반환한다 — 던지면 고객 열람
-     * 페이지 전체가 죽는다. 담당자는 MB-14의 이관 강제로 정상적으론 활성이다.
+     * 페이지 전체가 죽는다. 진행 중 Deal의 담당자는 MB-14의 이관 강제로 정상적으론 활성이다.
+     * <b>종결(WON·LOST) Deal은 예외다</b> — 이관 대상이 아니라(Q-48) 담당자가 비활성으로 남을 수 있고,
+     * 성사 Deal은 응답 완료 뒤에도 열람이 허용되므로 고객이 퇴사자 연락처를 보게 된다. v1은 받아들인다.
      */
     MemberContact getContact(UUID memberId);
 

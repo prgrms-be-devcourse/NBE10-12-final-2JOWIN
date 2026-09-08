@@ -81,6 +81,21 @@ public interface DealQuery {
      */
     List<UUID> assignedDealIds(UUID companyId, UUID memberId);
 
+    /**
+     * 진행 중(리드~협상) 담당 Deal 건수 — A의 비활성화(MB-14)가 이관 대상이 필요한지 판정하는 데 쓴다.
+     *
+     * <p>0이면 {@code transferToMemberId}를 생략할 수 있고(07 §A), 1 이상인데 대상이 없으면
+     * 422 {@code MEMBER_INACTIVE_TRANSFER_REQUIRED}다. 화면은 이 수를 그대로 보여준다
+     * (10 §5.8 "담당 중인 Deal이 5건 있습니다") — boolean이 아니라 건수인 이유다.
+     *
+     * <p>{@link #assignedDealIds}와 세는 집합이 <b>다르다</b>: 그쪽은 종결(WON·LOST)을 포함하고
+     * 여기는 제외한다. {@link DealCommand#reassignOpenDeals}가 옮기는 집합과 같아야
+     * "이관 대상 필수"라는 판정과 실제 이관 건수가 어긋나지 않는다. 소프트 삭제는 둘 다 제외한다.
+     *
+     * <p>{@code companyId}를 명시적으로 받는 이유는 {@link #assignedDealIds}와 같다 (SC-01).
+     */
+    long countOpenAssigned(UUID companyId, UUID memberId);
+
     record DealSummary(UUID id, String title, String stage,
                        Long expectedAmount, Long wonAmount, Instant createdAt) {}
 }

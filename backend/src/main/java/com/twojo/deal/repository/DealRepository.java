@@ -68,4 +68,19 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
               and d.deletedAt is null
             """)
     List<UUID> findIdsByAssignee(@Param("companyId") UUID companyId, @Param("memberId") UUID memberId);
+
+    /**
+     * A의 MB-14 — 진행 중 담당 Deal 건수. 위 {@code findIdsByAssignee}와 달리 종결(WON·LOST)을 <b>제외</b>한다 —
+     * 비활성화의 "이관 대상 필수" 판정은 실제로 옮길 Deal만 세야 한다. {@code ix_deal_company_assignee_stage}를 탄다.
+     */
+    long countByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
+            UUID companyId, UUID assigneeMemberId, Collection<Deal.Stage> stages);
+
+    /**
+     * A의 MB-14 — 이관할 진행 중 담당 Deal 엔티티. 위 count와 <b>같은 조건</b>이라 사전 판정 건수와 옮긴 건수가 일치한다.
+     * 엔티티로 읽는 이유는 {@code DealCommand.reassignOpenDeals}의 규약이다 — JPQL 일괄 update는
+     * {@code @Version}·{@code updated_at}을 건드리지 않아 열어 둔 딜 상세의 낙관적 락(DL-05)이 이관을 알아채지 못한다.
+     */
+    List<Deal> findByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
+            UUID companyId, UUID assigneeMemberId, Collection<Deal.Stage> stages);
 }

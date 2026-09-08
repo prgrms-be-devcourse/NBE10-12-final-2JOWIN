@@ -137,6 +137,16 @@ class DealQueryImplTest {
     }
 
     @Test
+    @DisplayName("진행 중 담당 Deal 건수 — 종결을 빼고 센다 (MB-14, 이관이 옮기는 집합과 동일)")
+    void countOpenAssigned_countsOpenStagesOnly() {
+        UUID memberId = UUID.randomUUID();
+        given(dealRepository.countByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
+                COMPANY_ID, memberId, Deal.OPEN_STAGES)).willReturn(3L);
+
+        assertThat(dealQuery.countOpenAssigned(COMPANY_ID, memberId)).isEqualTo(3L);
+    }
+
+    @Test
     @DisplayName("고객사 Deal 이력을 요약으로 돌려준다 — 종결 포함 (CU-12)")
     void summariesByCustomer_mapsAllStages() {
         UUID customerId = UUID.randomUUID();

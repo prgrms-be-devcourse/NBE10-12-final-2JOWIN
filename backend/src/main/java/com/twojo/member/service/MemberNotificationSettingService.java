@@ -5,7 +5,6 @@ import com.twojo.boundary.NotificationSettingCommand;
 import com.twojo.boundary.NotificationSettingQuery;
 import com.twojo.boundary.NotificationSettingType;
 import com.twojo.global.error.BusinessException;
-import com.twojo.global.error.ErrorCode;
 import com.twojo.member.dto.NotificationSettingResponse;
 import com.twojo.member.dto.UpdateNotificationSettingsRequest;
 import java.util.Arrays;
@@ -28,6 +27,13 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class MemberNotificationSettingService {
+
+    /**
+     * 세 검증이 가리키는 요청 필드 — 08 §A의 {@code settings} 하나다.
+     * 개별 Entry의 인덱스를 짚지 않는다. 전체 교체라 목록 전부가 한 덩어리이고,
+     * 어느 칸이 틀렸는지보다 "이 목록이 규칙에 안 맞는다"가 화면이 취할 행동이다.
+     */
+    private static final String FIELD = "settings";
 
     private final NotificationSettingQuery notificationSettingQuery;
     private final NotificationSettingCommand notificationSettingCommand;
@@ -85,11 +91,12 @@ public class MemberNotificationSettingService {
         for (UpdateNotificationSettingsRequest.Entry entry : entries) {
             NotificationSettingType type = parseType(entry.type());
             if (settings.put(type, entry.emailEnabled()) != null) {
-                throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+                throw BusinessException.invalidField(FIELD, "같은 항목이 두 번 왔습니다");
             }
         }
         if (settings.size() != NotificationSettingType.values().length) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            throw BusinessException.invalidField(FIELD,
+                    "설정 대상 " + NotificationSettingType.values().length + "종을 모두 보내야 합니다");
         }
         return settings;
     }
@@ -104,7 +111,7 @@ public class MemberNotificationSettingService {
         try {
             return NotificationSettingType.valueOf(type);
         } catch (IllegalArgumentException notASettingType) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            throw BusinessException.invalidEnumField(FIELD, NotificationSettingType.class);
         }
     }
 }

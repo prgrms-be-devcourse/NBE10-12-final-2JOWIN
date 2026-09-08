@@ -144,6 +144,19 @@ jobs:
             echo "::endgroup::"
           done
 
+  # 보안그룹 설명은 tflint 가 보지 않는다(IAM 역할 설명 규칙은 있는데
+  # 보안그룹 규칙 설명 규칙은 aws 룰셋 0.48.0 에 없다). AWS 가 거부하는
+  # 문자가 들어가면 plan 은 통과하고 apply 가 400 으로 죽는다 —
+  # 그것도 절반쯤 만들어진 채로.
+  sg-description:
+    name: sg-description
+    needs: changes
+    if: needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/check-sg-descriptions.py "${TF_ROOT}"
+
   tflint:
     name: tflint
     needs: changes
@@ -370,8 +383,15 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      # 자체 예산은 8만원(약 $57). 여유를 두고 $45 에서 막는다.
-      COST_LIMIT: ${{ vars.INFRACOST_COST_LIMIT || '45' }}
+      # 자체 예산은 8만원(약 $57). 그 아래에 머물도록 $55 에서 막는다.
+      #
+      # 예산 위로 올리지 않는 것이 핵심이다. 비용 가드(Budgets·IAM Deny)를
+      # 협의로 제거해서 AWS 쪽 지출 차단이 없다 — 이 게이트를 통과하면
+      # 그 뒤에는 아무것도 막지 않는다.
+      #
+      # 현재 예상 $49. 여유 $6 은 리소스 한둘을 더할 만큼이고, 그보다 큰
+      # 변경은 예산 자체를 다시 보라는 뜻이다.
+      COST_LIMIT: ${{ vars.INFRACOST_COST_LIMIT || '55' }}
     steps:
       - uses: actions/checkout@v4
       - uses: infracost/actions/setup@v4

@@ -36,11 +36,24 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | # | 명령 | 상태 위치 |
 | --- | --- | --- |
 | 0 | `aws configure --profile 2jo` → `export AWS_PROFILE=2jo` | — |
-| 1 | `terraform init` | 로컬 (`backend.tf` 없는 상태) |
+| 1 | `terraform init -backend=false` | 로컬. **`-backend=false` 가 필수다** — 아래 |
 | 2 | `terraform plan` → 검토 → `terraform apply` | 로컬 |
-| 3 | `backend.tf` 는 이미 레포에 있다 — `bucket` 만 다음 단계에서 주입 | — |
+| 3 | (`backend.tf` 는 이미 레포에 있다) | — |
 | 4 | `terraform init -migrate-state -backend-config="bucket=2jo-tfstate-<계정ID>"` → `yes` | **로컬 → S3** |
 | 5 | `rm terraform.tfstate*` | 이관 확인 후 |
+
+### 1 단계에 `-backend=false` 가 필요한 이유
+
+`backend.tf` 가 레포에 있는데 버킷은 아직 없다. 그냥 `terraform init` 을 하면 S3 백엔드를 초기화하려다 죽는다.
+
+```
+Error: Missing Required Value
+The attribute "bucket" is required by the backend.
+```
+
+`-backend=false` 는 백엔드 초기화를 건너뛰고 로컬 상태로 시작하게 한다. 버킷을 만든 뒤 4 단계에서 그 상태를 옮긴다.
+
+> 닭이 먼저인 구조다. 상태를 둘 곳을 만드는 스택이라, 자기 상태는 잠시 로컬에 있을 수밖에 없다.
 
 ### 버킷 이름을 코드에 박지 않는 이유
 
@@ -56,7 +69,7 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | --- | --- | --- | --- |
 | 1 | 상태 이관됨 | `aws s3 ls s3://2jo-tfstate-<계정ID>/bootstrap/` | `terraform.tfstate` 존재 |
 | 2 | 로컬 상태 없음 | `ls terraform.tfstate` | 없음 |
-| 3 | 재init 정상 | `terraform init && terraform plan` | `No changes` |
+| 3 | 재init 정상 | `terraform init -backend-config="bucket=..." && terraform plan` | `No changes` |
 | 4 | 퍼블릭 차단 | `aws s3api get-public-access-block --bucket 2jo-tfstate-<계정ID>` | 4종 전부 `true` |
 | 5 | 삭제 방어 | `terraform plan -destroy` (**apply 금지**) | `prevent_destroy` 오류 |
 | 6 | OIDC 참조됨 | `terraform state list \| grep -v ^data\.` | **OIDC 가 목록에 없어야 한다** |
@@ -70,7 +83,7 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | 서비스 | 액션 |
 | --- | --- |
 | S3 | `CreateBucket` · `PutBucketVersioning` · `PutBucketEncryption` · `PutPublicAccessBlock` · `PutBucketPolicy` · `PutLifecycleConfiguration` |
-| IAM | `CreateOpenIDConnectProvider` · `CreateRole` · `CreatePolicy` · `PutRolePolicy` · `AttachRolePolicy` · `TagRole` |
+| IAM | `CreateRole` · `CreatePolicy` · `PutRolePolicy` · `AttachRolePolicy` · `TagRole` · `GetOpenIDConnectProvider`(읽기) |
 | STS | `GetCallerIdentity` |
 
 ```bash

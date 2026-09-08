@@ -1,4 +1,4 @@
-# API 명세서 — v1.6.13
+# API 명세서 — v1.6.14
 
 > 🧭 [문서 지도](README.md) · ← [06 ERD](06-erd.md) · [08 DTO 설계서](08-dto.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.14 | **`POST .../members/{id}/deactivate` 판정 기준 명시(2026-09-08)** — "담당 Deal 1건 이상이면 필수"가 종결(WON·LOST)을 포함하는 것으로 읽혀, 종결 Deal만 남은 구성원이 이관 대상 없이는 비활성화되지 못했다. **진행 중(리드~협상) 담당 Deal** 기준으로 고친다 — 이관이 옮기는 집합과 같다 (03 Q-48, MB-14) |
 | v1.6.13 | **정지 회사 고객 링크 = 열람만 명시(2026-09-07)** — §D 에러 표의 `COMPANY_SUSPENDED` 행이 "승인·반려"만 적어 문의(`POST .../inquiries`)가 정지 회사에서도 열려 있었다. 회사 정지 효과는 "고객 링크는 **열람만**"(`/admin/api/v1/companies/{id}/suspend`)이라 문의도 막아야 정지 회사 구성원에게 NT-10 알림이 쌓이지 않는다. 행 문구를 "승인·반려·문의"로 넓힌다 — GET 열람만 허용. 코드·엔드포인트 변경 없음 | 고객 응답 구현 (#105) |
 | v1.6.12 | **NT-07 설정 대상·교체 방식 명시(2026-09-07)** — §A 표에 경로와 "메일 채널만"밖에 없어 **무엇을 끄고 켤 수 있는지, 일부만 보내도 되는지, 어떤 순서로 나오는지**가 전부 구현 결정으로 남아 있었다. 설정 대상 4종은 03 §2.13 채널 확정표에서 "인앱 + 메일(설정 가능)"인 NT-03·04·05·10이고, `EMAIL_FAILED`(NT-12)와 NT-14는 끌 수 없다(Q-35 · 계정 복구 경로). NT-04는 승인·반려가 한 토글이라 상수가 넷이다. 각주 4로 못박는다. 엔드포인트·필드 변경은 없다 — 각주만 추가한다. 발견 경로: NT-07 착수 전 D와 계약 협의(#127·#139) |
 | v1.6.11 | **`QUOTE_NOT_RESPONDABLE` 신설(2026-09-07)** — 고객 승인·반려는 전이표 §6상 **열람됨(VIEWED)에서만** 열리는데, 그 밖의 상태(발송됨·회수됨·기간 만료·이미 응답)에서 들어온 응답을 가리킬 코드가 없었다. 링크 상태 코드(`LINK_EXPIRED`·`LINK_ALREADY_RESPONDED`)는 **판정 축이 다르다** — D가 토큰으로 먼저 거르므로 여기 닿는 것은 링크는 멀쩡한데 견적 상태가 어긋난 경우다. `QUOTE_NOT_DRAFT` 재사용은 문구가 정반대라 불가 | 고객 응답 구현 (#126) |
@@ -124,7 +125,7 @@
 | GET | /api/v1/members | 구성원 목록 | 기업 관리자 | MB-07 |
 | GET | /api/v1/members/options | 담당자 선택지 (이름·id만, **활성 구성원만**) | 전 구성원 | DL-04 배정용 |
 | PATCH | /api/v1/members/{id}/role | 역할 변경 | 기업 관리자 | MB-08 |
-| POST | /api/v1/members/{id}/deactivate | 비활성화 — **body `transferToMemberId`: 담당 Deal 1건 이상이면 필수, 0건이면 생략. 대상은 같은 회사의 활성 구성원. 효과: refresh_token 전 행 폐기 + 할 일은 Deal을 따라 자동 이동(Q-29)** | 기업 관리자 | MB-09·10·12·**14** |
+| POST | /api/v1/members/{id}/deactivate | 비활성화 — **body `transferToMemberId`: 진행 중(리드~협상) 담당 Deal 1건 이상이면 필수, 0건이면 생략(종결 Deal은 옮기지 않는다 — Q-48). 대상은 같은 회사의 활성 구성원. 효과: refresh_token 전 행 폐기 + 진행 중 담당 Deal 이관 + 할 일은 Deal을 따라 자동 이동(Q-29)** | 기업 관리자 | MB-09·10·12·**14** |
 | POST | /api/v1/members/{id}/reactivate | 재활성화 | 기업 관리자 |  |
 | POST | /api/v1/invitations | 초대 발송 (email · role) | 기업 관리자 | MB-01·02, NT-01 |
 | GET | /api/v1/invitations?status= | 초대 목록 | 기업 관리자 |  |
@@ -135,7 +136,8 @@
 
 | 에러 | HTTP | 조건 |
 | --- | --- | --- |
-| EMAIL_ALREADY_MEMBER | 422 | 타사 소속 이메일 초대 (MB-13) |
+| EMAIL_ALREADY_MEMBER | 422 | 타사 소속 이메일 초대 (MB-13) — **계정이 이미 있어 초대 자체가 불가능** |
+| **INVITATION_ALREADY_PENDING** | **409** | **같은 회사·이메일의 대기 초대가 살아 있음 — 취소 후 재발송으로 푼다.** 계정 존재(422)와 관리자가 취할 행동이 갈려 코드를 나눈다. 기한이 지난 대기 초대는 그 자리에서 만료되고 발송이 통과한다 |
 | INVITATION_NOT_PENDING | 409 | 만료·취소·수락된 초대 링크 사용 (MB-04) |
 | LAST_ADMIN_PROTECTED | 422 | 마지막 기업 관리자 비활성화·강등 (MB-11) |
 | **MEMBER_INACTIVE_TRANSFER_REQUIRED** | 422 | **담당 Deal이 있는데 이관 대상 없이 비활성화 (MB-14, Q-29). 타사·비활성 대상 지정은 SC-09에 따라 404** (v1.6.1: 400→422 — 규칙 위반 계열, LAST_ADMIN_PROTECTED와 동일 층) |
@@ -358,6 +360,7 @@
 | APPLICATION_ALREADY_DECIDED | 409 | 이미 처리된 신청입니다. |
 | COMPANY_BUSINESS_NO_DUPLICATED | 409 | 이미 가입된 회사입니다. |
 | INVITATION_NOT_PENDING | 409 | 이 초대는 더 이상 유효하지 않습니다. 관리자에게 재발송을 요청해 주세요. |
+| **INVITATION_ALREADY_PENDING** | **409** | **이미 발송된 초대가 있습니다. 취소 후 다시 발송해 주세요.** |
 | LAST_ADMIN_PROTECTED | 422 | 회사에는 최소 한 명의 관리자가 필요합니다. |
 | MEMBER_INACTIVE_TRANSFER_REQUIRED | 422 | 담당 중인 Deal이 있습니다. 이관받을 구성원을 지정해 주세요. |
 | CUSTOMER_HAS_ACTIVE_DEALS | 409 | 진행 중인 Deal이 있어 삭제할 수 없습니다. |

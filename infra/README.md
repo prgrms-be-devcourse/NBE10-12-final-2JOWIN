@@ -54,11 +54,31 @@ docker compose -f infra/dev/docker-compose.yml up -d
 
 ### 최초 실행 순서
 
-| # | 명령 | 비고 |
+순서가 강제된다. bootstrap 이 만드는 역할이 있어야 CI 가 apply 를 할 수 있고, EIP 가 생겨야 등록할 A 레코드가 생긴다.
+
+| # | 무엇 | 누가 | 비고 |
+| --- | --- | --- | --- |
+| 1 | `cd prod/terraform/bootstrap && terraform apply` | 사람 · 로컬 | 이 시점에는 backend 없이 로컬 state |
+| 2 | `terraform init -migrate-state -backend-config="bucket=..."` | 사람 · 로컬 | 로컬 → S3. 확인 후 로컬 state 삭제 |
+| 3 | Secrets · Variables 등록 | 사람 | 아래 표 |
+| 4 | **메인 스택 apply** | **CI** | develop 에 머지 → `infra.yml` 이 승인 게이트를 거쳐 apply |
+| 5 | dnszi 에 A 레코드 등록 (`api` → EIP) | 사람 | **4 에서 EIP 가 생긴 뒤에** 가능하다 |
+| 6 | 첫 배포 | CI | Let's Encrypt 발급은 5 가 전파된 뒤에 성공한다 |
+
+메인 스택을 손으로 `apply` 하지 않는다. 그 역할(`2jo-tf-apply`)의 신뢰 조건이 `environment:prod` 라서 **사람의 자격증명으로는 맡을 수 없다** — CI 가 승인을 받아야만 토큰이 나온다.
+
+#### 4 단계 전에 있어야 하는 값
+
+| 이름 | 종류 | 값 |
 | --- | --- | --- |
-| 1 | `cd prod/terraform/bootstrap && terraform apply` | 로컬 state → 생성된 S3로 이관 |
-| 2 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
-| 3 | `cd prod/terraform && terraform apply` | 전체 |
+| `TF_STATE_BUCKET` | secret | 2 단계에서 쓴 버킷 이름 |
+| `AWS_TF_PLAN_ROLE_ARN` · `AWS_TF_APPLY_ROLE_ARN` | secret | bootstrap 출력 |
+| `SSH_KEY_NAME` | **variable** | 사람 접속용 AWS 키페어 이름 |
+| `DEPLOY_PUBLIC_KEY` | **variable** | 배포용 SSH 공개키 |
+
+앞의 둘이 없으면 `terraform init` 이 `The attribute "bucket" is required` 로, 뒤의 둘이 없으면 `plan` 이 `No value for required variable` 로 죽는다. 그래서 `infra.yml` 의 게이트가 값이 없으면 잡을 아예 건너뛴다 — 첫 apply 전까지 모든 인프라 PR 이 빨간불이 되는 것을 막는다.
+
+공개키와 키페어 이름을 secret 이 아니라 variable 로 두는 이유: 감출 값이 아니고, secret 이면 마스킹돼서 `terraform plan` diff 가 `***` 로 나와 읽을 수 없다.
 
 ### 이미지 빌드
 
