@@ -13,6 +13,19 @@
 
 ---
 
+## 🔗 시연용 고객 열람 링크 (로컬 · E2E 게이트)
+
+DB·시드를 열 필요 없이 브라우저에 그대로 붙여넣으면 고객 열람 페이지가 열린다. **발송 → 열람 → 승인 → 주문 전환** 관통 시연에 쓴다.
+
+| 견적 | 상태 | 링크 |
+| --- | --- | --- |
+| Q-2608-011 | SENT · 성원산업 · 박지훈 담당 | `http://localhost:5173/q/demo-sungwon-11` |
+| Q-2608-014 | VIEWED · S-01 이수정 대리 | `http://localhost:5173/q/demo-dodam-14` |
+
+만료일은 `2026-09-30`으로 게이트·제출 이후까지 살아 있다. 원문 토큰은 DB에 저장하지 않으며(`token_hash` = SHA-256(원문)) 위 값은 **로컬/데모 전용 고정 토큰**이다. 정본은 `backend/src/main/resources/db/seed/R__demo_seed.sql` 헤더와 `frontend/src/mocks/fixtures.ts`의 `viewTokens[].rawToken` — 셋을 같은 값으로 유지한다 (#199).
+
+---
+
 ## 1. 결정 사항
 
 | 항목 | 결정 |
