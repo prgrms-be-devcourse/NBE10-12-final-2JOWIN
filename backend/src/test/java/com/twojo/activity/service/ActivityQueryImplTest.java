@@ -59,7 +59,7 @@ class ActivityQueryImplTest {
     void recent_admin_seesWholeCompany() {
         given(activityRepository.findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
                 eq(COMPANY_ID), any()))
-                .willReturn(List.of(활동("리모델링 일정 확인"), 활동("정기납품 물량 협의")));
+                .willReturn(List.of(활동("리모델링 일정 확인")));
 
         List<RecentActivitySummary> result = activityQuery.recent(ADMIN, 10);
 
@@ -79,9 +79,8 @@ class ActivityQueryImplTest {
                 eq(COMPANY_ID), eq(담당딜), any()))
                 .willReturn(List.of(활동("리모델링 일정 확인")));
 
-        List<RecentActivitySummary> result = activityQuery.recent(SALES, 10);
+        activityQuery.recent(SALES, 10);
 
-        assertThat(result).hasSize(1);
         then(activityRepository).should(never())
                 .findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(any(), any());
     }
@@ -126,6 +125,18 @@ class ActivityQueryImplTest {
     }
 
     @Test
+    @DisplayName("줄바꿈과 연속 공백은 공백 하나로 줄인다 — 카드가 한 줄 구조다 (설계 결정 2)")
+    void recent_multilineContent_flattened() {
+        given(activityRepository.findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
+                eq(COMPANY_ID), any()))
+                .willReturn(List.of(활동("방문 미팅 진행\n\n예산  1,300만")));
+
+        String summary = activityQuery.recent(ADMIN, 10).get(0).summary();
+
+        assertThat(summary).isEqualTo("방문 미팅 진행 예산 1,300만");
+    }
+
+    @Test
     @DisplayName("이모지가 80번째 자리에 걸치면 한 칸 물려 자른다 — 반쪽만 남으면 깨진 글자가 나간다")
     void recent_emojiOnBoundary_notSplit() {
         // 79자 + 이모지(저장 단위 2칸) = 80번째 자리가 이모지의 앞쪽이다
@@ -137,6 +148,5 @@ class ActivityQueryImplTest {
         String summary = activityQuery.recent(ADMIN, 10).get(0).summary();
 
         assertThat(summary).isEqualTo("가".repeat(79) + "…");
-        assertThat(summary).doesNotContain("\uD83D");
     }
 }

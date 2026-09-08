@@ -55,7 +55,7 @@ class TaskQueryImplTest {
     }
 
     /**
-     * id는 저장될 때 생기므로 목 테스트에서는 비어 있다. {@code taskId}·{@code dealId}가 뒤바뀌어도
+     * id는 저장될 때 생기므로 목이 만든 엔티티에는 없다. {@code taskId}·{@code dealId}가 뒤바뀌어도
      * 둘 다 UUID라 컴파일이 되므로, 그 실수를 잡으려면 서로 다른 값을 심어야 한다.
      */
     private static Task 할일(String content, UUID id) {
@@ -68,13 +68,14 @@ class TaskQueryImplTest {
     @DisplayName("기업 관리자는 회사 전체 할 일을 받는다 — 담당 딜을 묻지 않는다 (SC-05)")
     void followUps_admin_seesWholeCompany() {
         given(taskRepository.findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(eq(COMPANY_ID), any()))
-                .willReturn(List.of(할일("성원산업 재방문 일정 조율", TASK_ID), 할일("대한물산 재검토 회신 확인")));
+                .willReturn(List.of(할일("성원산업 재방문 일정 조율", TASK_ID)));
 
         List<FollowUpSummary> result = taskQuery.followUps(ADMIN, 10);
 
         assertThat(result.get(0).content()).isEqualTo("성원산업 재방문 일정 조율");
         assertThat(result.get(0).taskId()).isEqualTo(TASK_ID);
         assertThat(result.get(0).dealId()).isEqualTo(DEAL_ID);
+        assertThat(result.get(0).dueDate()).isEqualTo(LocalDate.of(2026, 8, 26));
         then(dealQuery).should(never()).assignedDealIds(any(), any());
     }
 
@@ -87,9 +88,8 @@ class TaskQueryImplTest {
                 eq(COMPANY_ID), eq(담당딜), any()))
                 .willReturn(List.of(할일("성원산업 재방문 일정 조율")));
 
-        List<FollowUpSummary> result = taskQuery.followUps(SALES, 10);
+        taskQuery.followUps(SALES, 10);
 
-        assertThat(result).hasSize(1);
         then(taskRepository).should(never())
                 .findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(any(), any());
     }
@@ -107,7 +107,7 @@ class TaskQueryImplTest {
     }
 
     @Test
-    @DisplayName("limit이 1~MAX_LIMIT 밖이면 IllegalArgumentException")
+    @DisplayName("limit이 1~MAX_LIMIT 밖이면 IllegalArgumentException — 호출부가 정하는 상수라 잘라내지 않는다")
     void followUps_limitOutOfRange_throws() {
         assertThatThrownBy(() -> taskQuery.followUps(ADMIN, 0))
                 .isInstanceOf(IllegalArgumentException.class);
