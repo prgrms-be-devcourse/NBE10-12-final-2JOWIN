@@ -6,7 +6,7 @@
 | --- | --- |
 | 프로젝트 | 2JO · Deal-to-Order SaaS |
 | 문서 | 프론트엔드 작업 계획 — **누가 · 무엇을 · 어떤 순서로** |
-| 버전 | v1.0 (2026-08-27) |
+| 버전 | **v1.0.1 (2026-09-08)** — 시연용 고객 열람 링크 콜아웃 추가(#199·#200) · **v1.0 (2026-08-27)** — 최초 |
 | 근거 | `10-screen-design.md` 화면 설계 v2.0 · `08-dto.md` DTO · `11-work-breakdown.md` 업무 분담 v2.0.2 · `14-tech-stack.md` 기술 스택 |
 
 > `11-work-breakdown.md`은 백엔드 A~E만 나눠 놓았고 **프론트엔드에는 소유자도 일정도 없었다.** 이 문서가 그 자리를 채운다.
@@ -23,6 +23,8 @@ DB·시드를 열 필요 없이 브라우저에 그대로 붙여넣으면 고객
 | Q-2608-014 | VIEWED · S-01 이수정 대리 | `http://localhost:5173/q/demo-dodam-14` |
 
 만료일은 `2026-09-30`으로 게이트·제출 이후까지 살아 있다. 원문 토큰은 DB에 저장하지 않으며(`token_hash` = SHA-256(원문)) 위 값은 **로컬/데모 전용 고정 토큰**이다. 정본은 `backend/src/main/resources/db/seed/R__demo_seed.sql` 헤더와 `frontend/src/mocks/fixtures.ts`의 `viewTokens[].rawToken` — 셋을 같은 값으로 유지한다 (#199).
+
+> ⚠️ **링크가 열리는 것 ≠ 실 DB 관통 검증.** 기본 `VITE_MOCK_DOMAINS`에 `quote`가 있고 `publicQuoteHandlers`가 거기 포함돼 `/q/:token`을 MSW(목)가 가로챈다. **실 DB 시드로 관통을 확인하려면 `quote`·`order`를 목에서 빼고 실 API에 연결한 뒤** 위 링크를 연다 (E 리뷰, #200).
 
 ---
 
