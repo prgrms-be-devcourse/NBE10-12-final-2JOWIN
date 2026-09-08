@@ -387,6 +387,10 @@ class MemberAdminServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+
+            // and — 회사 조건이 where에 실려 나갔다. 회사 없이 조회해도 없는 id는 똑같이 404가 나서,
+            // 이 단정이 없으면 스코프가 빠진 것을 잡지 못한다
+            then(memberRepository).should().findByIdAndCompanyId(남의회사_구성원, 한빛오피스);
         }
 
         /** Q-48 — 돌아오면 이관받은 사람 것을 뺏는다. Deal 통로에 닿지 않는 것이 규칙이다. */
