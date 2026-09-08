@@ -8,7 +8,7 @@ import { ROLES, isOpenStage } from '../../shared/ui/status'
 /**
  * 구성원·초대 목 — 07 §A (MB) · 08 §A.
  * 실패 경로: 403 FORBIDDEN(영업 담당자의 관리 행위) · 422 LAST_ADMIN_PROTECTED · 422 MEMBER_INACTIVE_TRANSFER_REQUIRED ·
- * 422 EMAIL_ALREADY_MEMBER · 409 INVITATION_NOT_PENDING · 404.
+ * 422 EMAIL_ALREADY_MEMBER · 409 INVITATION_ALREADY_PENDING · 409 INVITATION_NOT_PENDING · 404.
  */
 
 const adminOnly = (request: Request) => (currentMember(request).role === 'COMPANY_ADMIN' ? null : error('FORBIDDEN'))
@@ -95,6 +95,14 @@ export const memberHandlers = [
     if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
     if (db.members.some((m) => m.email === body.email)) return error('EMAIL_ALREADY_MEMBER')
     const now = Date.now()
+    // 회사·이메일당 대기 초대는 하나다 (uk_invitation_pending). 계정이 있는 것과 다른 코드로 답한다 —
+    // 이쪽은 취소 후 재발송으로 풀린다. 기한이 지난 행은 서버가 그 자리에서 만료시키고 자리를 비우므로
+    // 목도 같게 둔다 (InvitationService.requirePendingSlotFree) — 안 그러면 목에서만 통과하는 경로가 생긴다
+    const pending = db.invitations.find((i) => i.email === body.email && i.status === 'PENDING')
+    if (pending) {
+      if (Date.parse(pending.expiresAt) > now) return error('INVITATION_ALREADY_PENDING')
+      pending.status = 'EXPIRED'
+    }
     const created = { id: crypto.randomUUID(), email: body.email.trim(), role: body.role, status: 'PENDING' as const, expiresAt: new Date(now + 7 * DAY).toISOString(), createdAt: new Date(now).toISOString(), rawToken: `invite-${now}` }
     db.invitations.unshift(created)
     return HttpResponse.json(toInvitation(created), { status: 201 })

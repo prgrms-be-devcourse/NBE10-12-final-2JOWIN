@@ -135,7 +135,8 @@
 
 | 에러 | HTTP | 조건 |
 | --- | --- | --- |
-| EMAIL_ALREADY_MEMBER | 422 | 타사 소속 이메일 초대 (MB-13) |
+| EMAIL_ALREADY_MEMBER | 422 | 타사 소속 이메일 초대 (MB-13) — **계정이 이미 있어 초대 자체가 불가능** |
+| **INVITATION_ALREADY_PENDING** | **409** | **같은 회사·이메일의 대기 초대가 살아 있음 — 취소 후 재발송으로 푼다.** 계정 존재(422)와 관리자가 취할 행동이 갈려 코드를 나눈다. 기한이 지난 대기 초대는 그 자리에서 만료되고 발송이 통과한다 |
 | INVITATION_NOT_PENDING | 409 | 만료·취소·수락된 초대 링크 사용 (MB-04) |
 | LAST_ADMIN_PROTECTED | 422 | 마지막 기업 관리자 비활성화·강등 (MB-11) |
 | **MEMBER_INACTIVE_TRANSFER_REQUIRED** | 422 | **담당 Deal이 있는데 이관 대상 없이 비활성화 (MB-14, Q-29). 타사·비활성 대상 지정은 SC-09에 따라 404** (v1.6.1: 400→422 — 규칙 위반 계열, LAST_ADMIN_PROTECTED와 동일 층) |
@@ -358,6 +359,7 @@
 | APPLICATION_ALREADY_DECIDED | 409 | 이미 처리된 신청입니다. |
 | COMPANY_BUSINESS_NO_DUPLICATED | 409 | 이미 가입된 회사입니다. |
 | INVITATION_NOT_PENDING | 409 | 이 초대는 더 이상 유효하지 않습니다. 관리자에게 재발송을 요청해 주세요. |
+| **INVITATION_ALREADY_PENDING** | **409** | **이미 발송된 초대가 있습니다. 취소 후 다시 발송해 주세요.** |
 | LAST_ADMIN_PROTECTED | 422 | 회사에는 최소 한 명의 관리자가 필요합니다. |
 | MEMBER_INACTIVE_TRANSFER_REQUIRED | 422 | 담당 중인 Deal이 있습니다. 이관받을 구성원을 지정해 주세요. |
 | CUSTOMER_HAS_ACTIVE_DEALS | 409 | 진행 중인 Deal이 있어 삭제할 수 없습니다. |
