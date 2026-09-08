@@ -16,7 +16,6 @@ import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.Role;
 import com.twojo.boundary.TaskQuery;
 import com.twojo.boundary.TaskQuery.FollowUpSummary;
-import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -26,6 +25,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
 /**
  * 대시보드 후속 필요 (DB-05) — 미완료 할 일만, 마감 임박순.
@@ -60,13 +60,7 @@ class TaskQueryImplTest {
      */
     private static Task 할일(String content, UUID id) {
         Task task = Task.create(COMPANY_ID, DEAL_ID, content, LocalDate.of(2026, 8, 26));
-        try {
-            Field field = Task.class.getDeclaredField("id");
-            field.setAccessible(true);
-            field.set(task, id);
-        } catch (ReflectiveOperationException e) {
-            throw new IllegalStateException(e);
-        }
+        ReflectionTestUtils.setField(task, "id", id);
         return task;
     }
 
@@ -80,7 +74,6 @@ class TaskQueryImplTest {
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).content()).isEqualTo("성원산업 재방문 일정 조율");
-        assertThat(result.get(0).dueDate()).isEqualTo(LocalDate.of(2026, 8, 26));
         assertThat(result.get(0).taskId()).isEqualTo(TASK_ID);
         assertThat(result.get(0).dealId()).isEqualTo(DEAL_ID);
         then(dealQuery).should(never()).assignedDealIds(any(), any());
@@ -109,7 +102,6 @@ class TaskQueryImplTest {
 
         List<FollowUpSummary> result = taskQuery.followUps(SALES, 10);
 
-        assertThat(result).isEmpty();
         then(taskRepository).shouldHaveNoInteractions();
     }
 

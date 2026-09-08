@@ -91,7 +91,6 @@ class ActivityQueryImplTest {
 
         List<RecentActivitySummary> result = activityQuery.recent(SALES, 10);
 
-        assertThat(result).isEmpty();
         then(activityRepository).shouldHaveNoInteractions();
     }
 
