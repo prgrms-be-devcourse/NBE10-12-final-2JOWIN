@@ -38,23 +38,17 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | 0 | `aws configure --profile 2jo` → `export AWS_PROFILE=2jo` | — |
 | 1 | `terraform init` | 로컬 (`backend.tf` 없는 상태) |
 | 2 | `terraform plan` → 검토 → `terraform apply` | 로컬 |
-| 3 | `backend.tf` 작성 (아래 스니펫) | — |
-| 4 | `terraform init -migrate-state` → `yes` | **로컬 → S3** |
+| 3 | `backend.tf` 는 이미 레포에 있다 — `bucket` 만 다음 단계에서 주입 | — |
+| 4 | `terraform init -migrate-state -backend-config="bucket=2jo-tfstate-<계정ID>"` → `yes` | **로컬 → S3** |
 | 5 | `rm terraform.tfstate*` | 이관 확인 후 |
 
-### 3단계 `backend.tf`
+### 버킷 이름을 코드에 박지 않는 이유
 
-```hcl
-terraform {
-  backend "s3" {
-    bucket       = "2jo-tfstate-<계정ID>"   # 2단계 출력 state_bucket_name
-    key          = "bootstrap/terraform.tfstate"
-    region       = "ap-northeast-2"
-    encrypt      = true
-    use_lockfile = true                     # DynamoDB 락 테이블 대신 S3 네이티브 락
-  }
-}
-```
+버킷 이름에 **계정 ID 가 들어간다**(`2jo-tfstate-<계정ID>`). 공유 계정의 ID 를 레포에 남기지 않으려고 `backend.tf` 에서 `bucket` 만 비워두고 `init` 할 때 주입한다.
+
+메인 스택도 같은 방식이고, CI 는 같은 값을 `TF_STATE_BUCKET` 시크릿에서 넣는다.
+
+> `bucket` 을 빠뜨리면 `init` 이 `The attribute "bucket" is required by the backend.` 로 죽는다. plan·apply 의 첫 줄이라 바로 드러난다.
 
 ## 검증
 
