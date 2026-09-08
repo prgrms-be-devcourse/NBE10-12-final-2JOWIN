@@ -13,7 +13,21 @@ import type { ApproveQuoteRequest, CreateInquiryRequest, PublicQuoteResponse, Re
  *  - 그 외 문자열            404 — 존재 여부를 노출하지 않는다 (SC-09)
  *
  * 승인·반려는 견적 상태를 바꾸고(C의 도메인 메서드에 해당), 담당자에게 알림을 남긴다 (NT-04, AP-12).
+ *
+ * 판정 순서는 서버 CustomerQuoteService(#156)와 같다 — 400(@Valid) → 404 → 410 LINK_EXPIRED → 409 LINK_ALREADY_RESPONDED
+ * → 409 COMPANY_SUSPENDED → 409 QUOTE_NOT_RESPONDABLE. 문의는 응답 완료 뒤에도 되지만 정지 회사는 막힌다 (07 §D).
+ * 길이 제한도 서버 DTO 그대로 — 이름·직책 50 · 반려 사유 500 · 문의 1000.
  */
+
+const MAX = { responder: 50, reason: 500, inquiry: 1000 } as const
+const tooLong = (value: string | undefined | null, max: number) => Boolean(value && value.length > max)
+
+/** 응답자 정보 @Valid 미러 — ApproveQuoteRequest·RejectQuoteRequest 공통 */
+const responderErrors = (body: { responderName?: string; responderTitle?: string | null }) => [
+  ...(!body.responderName?.trim() ? [{ field: 'responderName', reason: '이름을 입력해 주세요.' }] : []),
+  ...(tooLong(body.responderName, MAX.responder) ? [{ field: 'responderName', reason: `${MAX.responder}자 이하로 입력해 주세요.` }] : []),
+  ...(tooLong(body.responderTitle, MAX.responder) ? [{ field: 'responderTitle', reason: `${MAX.responder}자 이하로 입력해 주세요.` }] : []),
+]
 
 const tokenOf = (raw: string) => db.viewTokens.find((t) => t.rawToken === raw)
 
@@ -51,6 +65,24 @@ const respondable = (token: NonNullable<ReturnType<typeof tokenOf>>) => {
   return token.status === 'ACTIVE' && (quote?.status === 'SENT' || quote?.status === 'VIEWED')
 }
 
+/**
+ * 승인·반려 공통 전처리 (서버 preRespond) — 링크·회사·견적 상태 순으로 거른다.
+ * 통과하면 SENT는 VIEWED로 올린다 (전이표 §6 — 응답은 열람됨에서만).
+ */
+function preRespond(token: NonNullable<ReturnType<typeof tokenOf>>) {
+  if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+  if (token.status === 'RESPONDED') return error('LINK_ALREADY_RESPONDED')
+  if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
+  const quote = findQuote(token.quoteId)!
+  if (quote.status === 'SENT') {
+    quote.status = 'VIEWED'
+    quote.firstViewedAt = now()
+    quote.version += 1
+  }
+  if (quote.status !== 'VIEWED') return error('QUOTE_NOT_RESPONDABLE')
+  return null
+}
+
 export const publicQuoteHandlers = [
   http.get('/public/api/v1/quotes/:token', ({ params }) => {
     const token = tokenOf(String(params.token))
@@ -73,13 +105,13 @@ export const publicQuoteHandlers = [
   }),
 
   http.post('/public/api/v1/quotes/:token/approve', async ({ params, request }) => {
+    const body = (await request.json()) as ApproveQuoteRequest
+    const fieldErrors = responderErrors(body)
+    if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
     const token = tokenOf(String(params.token))
     if (!token) return notFound()
-    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
-    if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
-    if (!respondable(token)) return error('LINK_ALREADY_RESPONDED')
-    const body = (await request.json()) as ApproveQuoteRequest
-    if (!body.responderName?.trim()) return error('VALIDATION_FAILED', [{ field: 'responderName', reason: '이름을 입력해 주세요.' }])
+    const blocked = preRespond(token)
+    if (blocked) return blocked
     const quote = findQuote(token.quoteId)!
     const before = quote.status
     quote.status = 'APPROVED'
@@ -96,17 +128,17 @@ export const publicQuoteHandlers = [
   }),
 
   http.post('/public/api/v1/quotes/:token/reject', async ({ params, request }) => {
-    const token = tokenOf(String(params.token))
-    if (!token) return notFound()
-    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
-    if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
-    if (!respondable(token)) return error('LINK_ALREADY_RESPONDED')
     const body = (await request.json()) as RejectQuoteRequest
     const fieldErrors = [
       ...(!body.reason?.trim() ? [{ field: 'reason', reason: '반려 사유를 입력해 주세요.' }] : []),
-      ...(!body.responderName?.trim() ? [{ field: 'responderName', reason: '이름을 입력해 주세요.' }] : []),
+      ...(tooLong(body.reason, MAX.reason) ? [{ field: 'reason', reason: `${MAX.reason}자 이하로 입력해 주세요.` }] : []),
+      ...responderErrors(body),
     ]
     if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
+    const token = tokenOf(String(params.token))
+    if (!token) return notFound()
+    const blocked = preRespond(token)
+    if (blocked) return blocked
     const quote = findQuote(token.quoteId)!
     const before = quote.status
     quote.status = 'REJECTED'
@@ -123,12 +155,19 @@ export const publicQuoteHandlers = [
     return noContent()
   }),
 
-  // 문의는 응답 완료 후에도 남길 수 있다 — 재응답 차단(AP-11)과 무관하다. 담당 구성원 + 기업 관리자 알림 (NT-10)
+  // 문의는 응답 완료 후에도 남길 수 있다 — 재응답 차단(AP-11)과 무관하다. 정지 회사만 막힌다 (07 §D, 서버 createInquiry).
+  // 담당 구성원 + 기업 관리자 알림 (NT-10)
   http.post('/public/api/v1/quotes/:token/inquiries', async ({ params, request }) => {
+    const body = (await request.json()) as CreateInquiryRequest
+    const fieldErrors = [
+      ...(!body.content?.trim() ? [{ field: 'content', reason: '문의 내용을 입력해 주세요.' }] : []),
+      ...(tooLong(body.content, MAX.inquiry) ? [{ field: 'content', reason: `${MAX.inquiry}자 이하로 입력해 주세요.` }] : []),
+    ]
+    if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
     const token = tokenOf(String(params.token))
     if (!token) return notFound()
-    const body = (await request.json()) as CreateInquiryRequest
-    if (!body.content?.trim()) return error('VALIDATION_FAILED', [{ field: 'content', reason: '문의 내용을 입력해 주세요.' }])
+    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+    if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
     const quote = findQuote(token.quoteId)!
     db.inquiries.push({ id: crypto.randomUUID(), quoteId: quote.id, content: body.content.trim(), createdAt: now() })
     const deal = findDeal(quote.dealId)

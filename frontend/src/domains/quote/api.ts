@@ -8,7 +8,8 @@ import type { QuoteStatus } from '../../shared/ui/status'
 
 /**
  * 견적 API — 07-api-spec.md §C (QT · AP-13·14 · OD-01) 구성원용 + §D 고객 열람(public, 토큰이 곧 인증).
- * 호출은 이 파일 안에서만 한다 (12 §8). 백엔드 QuoteController가 아직 없어 docs 07·08 §C가 정본이다.
+ * 호출은 이 파일 안에서만 한다 (12 §8). 정본은 백엔드 QuoteController(#101·#154)·PublicQuoteController(#156)다 —
+ * 복제(QT-19)·주문 전환(OD-01, #160)만 아직 없어 404다.
  */
 
 // ── 구성원 (/api/v1/quotes) ─────────────────────────────────────────────────
@@ -60,25 +61,23 @@ export async function withdrawQuote(id: string) {
   return data
 }
 
-/** POST /quotes/{id}/clone — 새 DRAFT (QT-19) */
+/** POST /quotes/{id}/clone — 새 DRAFT (QT-19). 백엔드 미구현 — 404("일시적인 오류") */
 export async function cloneQuote(id: string) {
   const { data } = await api.post<QuoteDetailResponse>(`/quotes/${id}/clone`)
   return data
 }
 
-/** POST /quotes/{id}/view-token/resend — 수신인 변경 재발송 (AP-13) */
+/** POST /quotes/{id}/view-token/resend — 수신인 변경 재발송 (AP-13). 204 — 견적 상태는 그대로라 응답 본문이 없다 */
 export async function resendViewToken(id: string, body: ResendViewTokenRequest) {
-  const { data } = await api.post<QuoteDetailResponse>(`/quotes/${id}/view-token/resend`, body)
-  return data
+  await api.post(`/quotes/${id}/view-token/resend`, body)
 }
 
-/** POST /quotes/{id}/view-token/expire — 링크 수동 만료 (AP-14) */
+/** POST /quotes/{id}/view-token/expire — 링크 수동 만료 (AP-14). 204 · 멱등 — 활성 링크가 없어도 성공 */
 export async function expireViewToken(id: string) {
-  const { data } = await api.post<QuoteDetailResponse>(`/quotes/${id}/view-token/expire`)
-  return data
+  await api.post(`/quotes/${id}/view-token/expire`)
 }
 
-/** POST /quotes/{id}/convert-to-order — 스냅샷 + Deal 성사 (OD-01~07). 응답 형태는 07에 미명시 → 주문 상세로 가정 */
+/** POST /quotes/{id}/convert-to-order — 스냅샷 + Deal 성사 (OD-01~07). 백엔드 미구현(#160) — 404. 응답 형태는 07에 미명시 → 주문 상세로 가정 */
 export async function convertToOrder(id: string) {
   const { data } = await api.post<OrderDetailResponse>(`/quotes/${id}/convert-to-order`)
   return data

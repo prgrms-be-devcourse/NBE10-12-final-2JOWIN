@@ -3,7 +3,8 @@ import {
   AlertDialog, Box, Button, Callout, Card, Dialog, Flex, Text, TextArea, TextField,
 } from '@radix-ui/themes'
 import { ExclamationTriangleIcon } from '@radix-ui/react-icons'
-import { Money } from '../../../shared/ui'
+import { codeOf } from '../../../shared/api/client'
+import { ErrorCallout, Money } from '../../../shared/ui'
 
 /**
  * 고객 응답 모달 3종 (10-screen-design.md §5.7 · §2.5).
@@ -14,7 +15,18 @@ import { Money } from '../../../shared/ui'
  *
  * 응답자 이름·직책은 검증 없는 자기 신고다 (AP-19, Q-44). 계정 없는 고객이
  * 링크만으로 응답하므로 시스템은 신원을 확인할 방법이 없고, 화면도 그렇게 안내한다.
+ *
+ * 길이 제한은 서버 DTO(approval/dto)와 같다 — 이름·직책 50 · 반려 사유 500(reject_reason VARCHAR(500)) · 문의 1000.
+ * 넘기면 서버가 400 VALIDATION_FAILED라 입력 단계에서 막고 남은 글자 수를 보여준다.
+ * 실패(409 등)는 모달 안에 보여준다 — 모달을 닫지 않아야 고객이 입력한 사유를 잃지 않는다.
  */
+
+const RESPONSE_MAX = { responder: 50, reason: 500, inquiry: 1000 } as const
+
+/** 서버 실패를 모달 안에 — 링크 만료(410)·응답 완료·정지 회사(409)는 코드 문구 그대로 */
+function SubmitError({ error }: { error: unknown }) {
+  return error ? <ErrorCallout code={codeOf(error)} /> : null
+}
 
 interface ResponderState {
   name: string
@@ -41,6 +53,7 @@ function ResponderFields({
             id="responder-name"
             mt="1"
             value={value.name}
+            maxLength={RESPONSE_MAX.responder}
             disabled={disabled}
             onChange={(e) => onChange({ ...value, name: e.target.value })}
           />
@@ -53,6 +66,7 @@ function ResponderFields({
             id="responder-title"
             mt="1"
             value={value.title}
+            maxLength={RESPONSE_MAX.responder}
             disabled={disabled}
             onChange={(e) => onChange({ ...value, title: e.target.value })}
           />
@@ -75,11 +89,12 @@ interface ApproveProps {
   totalAmount: number
   vatExcluded: boolean
   loading?: boolean
+  error?: unknown
   onConfirm: (responder: ResponderState) => void
 }
 
 export function ApproveDialog({
-  open, onOpenChange, companyName, quoteNo, totalAmount, vatExcluded, loading, onConfirm,
+  open, onOpenChange, companyName, quoteNo, totalAmount, vatExcluded, loading, error, onConfirm,
 }: ApproveProps) {
   const [responder, setResponder] = useState(EMPTY)
 
@@ -109,6 +124,7 @@ export function ApproveDialog({
           </Callout.Icon>
           <Callout.Text>승인하면 이 링크로는 다시 응답할 수 없습니다.</Callout.Text>
         </Callout.Root>
+        <SubmitError error={error} />
 
         <Flex gap="3" mt="4" justify="end">
           <AlertDialog.Cancel>
@@ -136,10 +152,11 @@ interface RejectProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   loading?: boolean
+  error?: unknown
   onConfirm: (responder: ResponderState, reason: string) => void
 }
 
-export function RejectDialog({ open, onOpenChange, loading, onConfirm }: RejectProps) {
+export function RejectDialog({ open, onOpenChange, loading, error, onConfirm }: RejectProps) {
   const [responder, setResponder] = useState(EMPTY)
   const [reason, setReason] = useState('')
 
@@ -161,9 +178,13 @@ export function RejectDialog({ open, onOpenChange, loading, onConfirm }: RejectP
             rows={3}
             placeholder="예: 예산 범위를 초과합니다."
             value={reason}
+            maxLength={RESPONSE_MAX.reason}
             disabled={loading}
             onChange={(e) => setReason(e.target.value)}
           />
+          <Text as="div" size="1" color="gray" align="right" mt="1">
+            {reason.length}/{RESPONSE_MAX.reason}
+          </Text>
         </Box>
 
         <ResponderFields value={responder} onChange={setResponder} disabled={loading} />
@@ -174,6 +195,7 @@ export function RejectDialog({ open, onOpenChange, loading, onConfirm }: RejectP
           </Callout.Icon>
           <Callout.Text>반려하면 이 링크로는 다시 응답할 수 없습니다.</Callout.Text>
         </Callout.Root>
+        <SubmitError error={error} />
 
         <Flex gap="3" mt="4" justify="end">
           <AlertDialog.Cancel>
@@ -201,6 +223,7 @@ interface InquiryProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   loading?: boolean
+  error?: unknown
   onSubmit: (content: string) => void
 }
 
@@ -210,7 +233,7 @@ interface InquiryProps {
  * 답변이 이 화면으로 오지 않는다는 것을 고객이 알아야 한다 (GAP-02) —
  * v1에는 문의 조회 화면이 없고(Q-42), 담당자는 알림으로만 통지받는다.
  */
-export function InquiryDialog({ open, onOpenChange, loading, onSubmit }: InquiryProps) {
+export function InquiryDialog({ open, onOpenChange, loading, error, onSubmit }: InquiryProps) {
   const [content, setContent] = useState('')
 
   return (
@@ -226,9 +249,14 @@ export function InquiryDialog({ open, onOpenChange, loading, onSubmit }: Inquiry
           rows={4}
           placeholder="예: 납기를 앞당길 수 있을까요?"
           value={content}
+          maxLength={RESPONSE_MAX.inquiry}
           disabled={loading}
           onChange={(e) => setContent(e.target.value)}
         />
+        <Text as="div" size="1" color="gray" align="right" mt="1">
+          {content.length}/{RESPONSE_MAX.inquiry}
+        </Text>
+        <SubmitError error={error} />
 
         <Flex gap="3" mt="4" justify="end">
           <Dialog.Close>
