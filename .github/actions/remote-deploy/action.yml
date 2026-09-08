@@ -14,6 +14,9 @@ inputs:
   security-group-name:
     description: 22번을 임시로 열 보안그룹 이름
     required: true
+  project:
+    description: Project 태그 값. 공유 계정이라 이름만으로는 대상을 특정할 수 없다
+    default: '2jo'
   host:
     description: 접속 대상 (도메인 또는 EIP)
     required: true
@@ -57,13 +60,21 @@ runs:
       env:
         AWS_REGION: ${{ inputs.aws-region }}
         SG_NAME: ${{ inputs.security-group-name }}
+        PROJECT: ${{ inputs.project }}
       run: |
         set -euo pipefail
 
+        # 이 계정은 여러 팀이 공유한다. 이름만으로 찾으면 다른 팀이 우연히
+        # 같은 이름을 써도 [0] 이 그걸 집는다. Project 태그로 함께 좁힌다 —
+        # 배포 역할의 IAM 조건도 같은 태그를 본다.
         sg="$(aws ec2 describe-security-groups \
-          --filters "Name=group-name,Values=${SG_NAME}" \
+          --filters "Name=group-name,Values=${SG_NAME}" "Name=tag:Project,Values=${PROJECT}" \
           --region "$AWS_REGION" \
-          --query 'SecurityGroups[0].GroupId' --output text)"
+          --query 'SecurityGroups[].GroupId' --output text)"
+        if [ "$(printf '%s' "$sg" | wc -w)" -gt 1 ]; then
+          echo "::error::보안그룹이 여러 개 잡혔다: ${sg}"
+          exit 1
+        fi
         if [ -z "$sg" ] || [ "$sg" = "None" ]; then
           echo "::error::보안그룹 ${SG_NAME} 를 찾지 못했다"
           exit 1
