@@ -2,12 +2,20 @@ package com.twojo.dashboard.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.ActivityQuery;
+import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.SalesStatsQuery;
+import com.twojo.boundary.TaskQuery;
 import com.twojo.dashboard.dto.DashboardSummaryResponse;
 import java.time.YearMonth;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -23,6 +31,7 @@ import org.springframework.stereotype.Service;
  * {@link QuoteQuery#findAwaitingResponse}가 아직 {@code UnsupportedOperationException}을 던진다.
  * 그 예외만 잡아 해당 섹션을 빈 값으로 채우고 200을 유지한다 — 다른 예외는 전파한다.
  * C 실구현이 머지되면 이 방어는 죽은 코드가 되어 제거한다 (issue #202).
+ * B의 {@link ActivityQuery}·{@link TaskQuery}는 실 빈이 있어(#178) 그대로 호출한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,8 +41,15 @@ public class DashboardService {
 
     private static final SalesStatsQuery.WonStats ZERO_WON = new SalesStatsQuery.WonStats(0L, 0);
 
+    /** 대시보드 카드 노출 건수 — 계약 상한(50) 이하. 프론트 목 기준 10. */
+    private static final int RECENT_LIMIT = 10;
+    private static final int FOLLOWUP_LIMIT = 10;
+
     private final SalesStatsQuery salesStatsQuery;
     private final QuoteQuery quoteQuery;
+    private final ActivityQuery activityQuery;
+    private final TaskQuery taskQuery;
+    private final DealQuery dealQuery;
 
     /**
      * 요약 (DB-01~05). 스코프는 {@code ctx}로 각 협력자가 해석한다 — 단, DB-03 응답 대기는
@@ -41,6 +57,9 @@ public class DashboardService {
      * {@code dealId}가 없어 영업 담당자 본인 필터가 불가능하다. 회사 전체 견적 노출은 데이터 누수라
      * <b>영업 담당자(OWNED_ONLY)에게는 빈 목록을 강제</b>한다 (v1 한계 — C가 {@code QuoteSummary.dealId}를
      * 추가하면 실필터로 전환, issue #202).
+     *
+     * <p>DB-04·05는 계약이 {@code dealId}만 주므로 제목을 {@link DealQuery#summariesByIds}로 조립한다.
+     * 소프트 삭제된 딜은 결과에서 빠지므로 그 줄을 응답에서 제외한다.
      */
     public DashboardSummaryResponse summary(AccessContext ctx, YearMonth month) {
         List<DashboardSummaryResponse.StageCount> pipeline =
@@ -56,9 +75,42 @@ public class DashboardService {
                         .map(DashboardService::toWaitingQuote)
                         .toList();
 
-        // DB-04(최근 활동)·DB-05(후속 필요)는 다음 커밋에서 채운다.
+        List<ActivityQuery.RecentActivitySummary> activities = activityQuery.recent(ctx, RECENT_LIMIT);
+        List<TaskQuery.FollowUpSummary> tasks = taskQuery.followUps(ctx, FOLLOWUP_LIMIT);
+        Map<UUID, String> dealTitles = dealTitles(ctx.companyId(), activities, tasks);
+
+        List<DashboardSummaryResponse.RecentActivity> recentActivities = activities.stream()
+                .filter(a -> dealTitles.containsKey(a.dealId()))
+                .map(a -> new DashboardSummaryResponse.RecentActivity(
+                        a.dealId(), dealTitles.get(a.dealId()), a.summary(), a.occurredAt()))
+                .toList();
+
+        List<DashboardSummaryResponse.FollowUp> followUps = tasks.stream()
+                .filter(t -> dealTitles.containsKey(t.dealId()))
+                .map(t -> new DashboardSummaryResponse.FollowUp(
+                        t.taskId(), t.dealId(), dealTitles.get(t.dealId()), t.content(), t.dueDate()))
+                .toList();
+
         return new DashboardSummaryResponse(
-                pipeline, won.amount(), won.count(), waitingQuotes, List.of(), List.of());
+                pipeline, won.amount(), won.count(), waitingQuotes, followUps, recentActivities);
+    }
+
+    /**
+     * DB-04·05 줄마다 붙는 딜 제목 — 두 목록의 {@code dealId}를 합쳐 한 번에 조회한다.
+     * 소프트 삭제된 딜은 {@link DealQuery#summariesByIds} 결과에서 빠지므로 호출부가 그 줄을 제외한다.
+     */
+    private Map<UUID, String> dealTitles(UUID companyId,
+                                         List<ActivityQuery.RecentActivitySummary> activities,
+                                         List<TaskQuery.FollowUpSummary> tasks) {
+        Set<UUID> dealIds = new LinkedHashSet<>();
+        activities.forEach(a -> dealIds.add(a.dealId()));
+        tasks.forEach(t -> dealIds.add(t.dealId()));
+        if (dealIds.isEmpty()) {
+            return Map.of();
+        }
+        return dealQuery.summariesByIds(companyId, dealIds).stream()
+                .collect(Collectors.toMap(
+                        DealQuery.DealSummary::id, DealQuery.DealSummary::title, (a, b) -> a));
     }
 
     /** throw 스텁이면 빈 목록. {@code UnsupportedOperationException}만 삼킨다 — 다른 예외는 전파한다. */
