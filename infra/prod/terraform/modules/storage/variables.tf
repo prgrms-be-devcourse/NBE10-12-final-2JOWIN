@@ -9,7 +9,7 @@ variable "project" {
 variable "ecr_repository_name" {
   description = "백엔드 이미지 저장소 이름"
   type        = string
-  default     = "2jo/backend"
+  default     = "2jo-backend"
 }
 
 variable "image_retention_count" {
@@ -46,5 +46,5 @@ variable "config_source_root" {
 variable "config_dirs" {
   description = "config_source_root 아래에서 업로드할 디렉터리. 비어 있으면 아무것도 올리지 않는다"
   type        = list(string)
-  default     = ["compose", "caddy", "scripts", "monitoring"]
+  default     = ["compose", "caddy", "scripts", "monitoring", "systemd"]
 }

@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 import com.twojo.boundary.AccessContext;
@@ -17,9 +18,11 @@ import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.member.dto.CreateInvitationRequest;
 import com.twojo.member.entity.Invitation;
+import com.twojo.member.entity.Member;
 import com.twojo.member.repository.InvitationRepository;
 import com.twojo.member.repository.MemberRepository;
 import com.twojo.member.token.InvitationTokenGenerator;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -41,7 +44,8 @@ import org.springframework.test.util.ReflectionTestUtils;
  * 초대 발송·취소 — 역할 판정(Q-43) · 회사 스코프(SC-01·09) · 이메일 점유(MB-13).
  *
  * <p>대기 초대 중복은 05 §3에 없는 경우다. 부분 유니크 인덱스가 막아 그냥 두면 500이 되므로
- * 서비스가 먼저 잡고 422로 답한다 — 그 판단이 코드에만 있어 여기서 고정한다.
+ * 서비스가 먼저 잡고 409 {@code INVITATION_ALREADY_PENDING}으로 답한다 — 그 판단이 코드에만
+ * 있어 여기서 고정한다. <b>이미 계정이 있는 이메일(422)과 다른 코드</b>인 것이 핵심이다 (#174).
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -105,14 +109,68 @@ class InvitationServiceTest {
                 .willReturn(Optional.of(살아있는_초대));
 
         // when — 김서연이 같은 사람을 또 부르면
-        // then  — 그 이메일은 이미 쓰이고 있다. 새 행을 만들지 않는다
+        // then  — 대기 초대가 자리를 점유하고 있다. 계정이 있는 것과는 다른 코드다
         assertThatThrownBy(() -> invitationService.create(
                 김서연_관리자, new CreateInvitationRequest("newbie@hanbit.co.kr", "SALES_REP")))
                 .isInstanceOf(BusinessException.class)
                 .extracting(e -> ((BusinessException) e).getErrorCode())
-                .isEqualTo(ErrorCode.EMAIL_ALREADY_MEMBER);
+                .isEqualTo(ErrorCode.INVITATION_ALREADY_PENDING);
 
         then(invitationRepository).should(never()).save(any());
+    }
+
+    /**
+     * 두 상황이 같은 응답이면 관리자가 무엇을 해야 하는지 알 수 없다 — 대기 초대는
+     * <b>취소 후 재발송</b>으로 풀리고, 이미 계정이 있는 이메일은 초대 자체가 불가능하다.
+     *
+     * <p>07 부록이 코드를 겹쳐 쓰는 기준으로 둔 것이 "프론트가 취할 행동이 하나뿐인가"다.
+     * 여기는 갈리므로 나눠야 한다.
+     */
+    @Test
+    void 대기_초대와_이미_있는_계정은_서로_다른_코드다() {
+        // given — 이미 계정이 있는 이메일
+        given(memberRepository.findByEmailLower("jihun@hanbit.co.kr"))
+                .willReturn(Optional.of(mock(Member.class)));
+
+        // when · then — 이쪽은 422 EMAIL_ALREADY_MEMBER 그대로다
+        assertThatThrownBy(() -> invitationService.create(
+                김서연_관리자, new CreateInvitationRequest("jihun@hanbit.co.kr", "SALES_REP")))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.EMAIL_ALREADY_MEMBER);
+
+        // and — 계정 검사가 먼저라 대기 초대는 보지도 않는다
+        then(invitationRepository).should(never())
+                .findByCompanyIdAndEmailAndStatus(any(), any(), any());
+    }
+
+    /**
+     * 기한이 지난 대기 초대는 <b>막지 않는다</b> — 그 자리에서 EXPIRED(TIME)으로 넘기고
+     * 새 초대를 낸다. 만료 배치가 없어 이 자리가 곧 만료 시점이다 (#174 결정 4).
+     */
+    @Test
+    void 기한이_지난_대기_초대는_자리를_비우고_통과시킨다() {
+        // given — 8일 전에 보낸 초대가 상태만 PENDING으로 남아 있다 (7일 유효)
+        Invitation 기한_지난_초대 = Invitation.issue(
+                한빛오피스, 김서연, "newbie@hanbit.co.kr", Role.SALES_REP, "hash",
+                NOW.minus(Duration.ofDays(8)));
+        given(memberRepository.findByEmailLower("newbie@hanbit.co.kr")).willReturn(Optional.empty());
+        given(invitationRepository.findByCompanyIdAndEmailAndStatus(
+                한빛오피스, "newbie@hanbit.co.kr", Invitation.Status.PENDING))
+                .willReturn(Optional.of(기한_지난_초대));
+        given(invitationRepository.save(any())).willAnswer(inv -> inv.getArgument(0));
+        // 통과하는 경로라 안내 메일 렌더까지 간다 — 회사명이 본문에 들어간다
+        given(companyQuery.get(한빛오피스)).willReturn(
+                new CompanyQuery.CompanySummary(한빛오피스, "한빛오피스", "123-45-67890", true));
+
+        // when — 같은 사람을 다시 부르면
+        invitationService.create(
+                김서연_관리자, new CreateInvitationRequest("newbie@hanbit.co.kr", "SALES_REP"));
+
+        // then — 막히지 않는다. 옛 행은 만료로 닫히고 새 행이 생긴다
+        assertThat(기한_지난_초대.getStatus()).isEqualTo(Invitation.Status.EXPIRED);
+        assertThat(기한_지난_초대.getExpiredReason()).isEqualTo(Invitation.ExpiredReason.TIME);
+        then(invitationRepository).should().save(any());
     }
 
     /** SC-01·09 — 회사 조건이 where에 있어 남의 회사 초대는 조회에 나오지 않는다. */

@@ -5,19 +5,27 @@ variable "aws_region" {
 }
 
 variable "project" {
-  description = "리소스 이름·태그 접두사. cost-guard 의 태그 조건과 반드시 같은 값"
+  description = "리소스 이름·태그 접두사. 회사 계정 공유 규칙상 모든 리소스가 이 값으로 시작한다"
   type        = string
   default     = "2jo"
 }
 
-variable "github_repo" {
-  description = "OIDC 신뢰 대상 레포 (org/repo). 신뢰 정책의 sub 조건에 그대로 들어간다"
+variable "github_sub_prefix" {
+  description = <<-EOT
+    OIDC 토큰 sub 클레임의 접두사. 신뢰 조건에 StringEquals 로 들어간다.
+
+    org/repo 를 그대로 쓰지 않는 이유: 이 조직은 subject 에 숫자 ID 를
+    함께 넣는 형식을 쓴다(org 이름이 바뀌어도 신뢰가 흔들리지 않게 하는
+    GitHub 기능). 실제 값은 다음으로 확인한다.
+
+      gh api repos/<org>/<repo>/actions/oidc/customization/sub
+  EOT
   type        = string
-  default     = "prgrms-be-devcourse/NBE10-12-final-2JOWIN"
+  default     = "repo:prgrms-be-devcourse@88020948/NBE10-12-final-2JOWIN@1347278714"
 
   validation {
-    condition     = can(regex("^[^/]+/[^/]+$", var.github_repo))
-    error_message = "github_repo 는 org/repo 형식이어야 한다."
+    condition     = startswith(var.github_sub_prefix, "repo:")
+    error_message = "github_sub_prefix 는 repo: 로 시작해야 한다."
   }
 }
 
@@ -27,16 +35,10 @@ variable "prod_environment" {
   default     = "prod"
 }
 
-variable "cost_environment" {
-  description = "일일 비용 잡이 쓰는 GitHub Environment 이름"
-  type        = string
-  default     = "cost-guard"
-}
-
 variable "ecr_repository_name" {
   description = "배포 역할이 push 할 수 있는 유일한 ECR 리포지토리. storage 모듈이 실제로 만든다"
   type        = string
-  default     = "2jo/backend"
+  default     = "2jo-backend"
 }
 
 variable "state_version_retention_days" {

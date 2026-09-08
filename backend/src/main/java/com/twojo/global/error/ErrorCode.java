@@ -34,6 +34,9 @@ public enum ErrorCode {
 
     // ── A 구성원·초대
     INVITATION_NOT_PENDING(HttpStatus.CONFLICT, "이 초대는 더 이상 유효하지 않습니다. 관리자에게 재발송을 요청해 주세요."),
+    // 대기 초대가 그 이메일을 점유하고 있다 — 계정이 있는 것(EMAIL_ALREADY_MEMBER)과 다르다.
+    // 이쪽은 취소 후 재발송으로 풀리고 저쪽은 초대 자체가 불가능하다. 관리자가 취할 행동이 갈려 나눈다
+    INVITATION_ALREADY_PENDING(HttpStatus.CONFLICT, "이미 발송된 초대가 있습니다. 취소 후 다시 발송해 주세요."),
     LAST_ADMIN_PROTECTED(HttpStatus.UNPROCESSABLE_ENTITY, "회사에는 최소 한 명의 관리자가 필요합니다."),
     MEMBER_INACTIVE_TRANSFER_REQUIRED(HttpStatus.UNPROCESSABLE_ENTITY, "담당 중인 Deal이 있습니다. 이관받을 구성원을 지정해 주세요."),
 
@@ -69,6 +72,9 @@ public enum ErrorCode {
     // 입력은 @Future로 막지만 저장된 값이 낡는 것은 못 막는다 — 발송 시점 재검증 (Q-17)
     QUOTE_VALID_UNTIL_PASSED(HttpStatus.CONFLICT, "유효기간이 지났습니다. 유효기간을 다시 지정한 뒤 발송해 주세요."),
     QUOTE_DEAL_CLOSED(HttpStatus.CONFLICT, "종결된 Deal에는 견적을 작성할 수 없습니다. 새 Deal을 만들어 진행해 주세요."),
+    // 승인·반려는 열람됨(VIEWED)에서만 열린다 (전이표 §6). 링크 상태는 D가 먼저 거르므로
+    // 여기 닿는 것은 링크가 멀쩡한데 견적 상태가 어긋난 경우다 — LINK_ALREADY_RESPONDED와 판정 축이 다르다
+    QUOTE_NOT_RESPONDABLE(HttpStatus.CONFLICT, "이 상태의 견적에는 응답할 수 없습니다."),
     CONTACT_NOT_IN_CUSTOMER(HttpStatus.CONFLICT, "이 Deal의 고객사에 소속된 담당자만 수신인으로 지정할 수 있습니다."),
     STALE_VERSION(HttpStatus.CONFLICT, "다른 사용자가 먼저 수정했습니다. 새로고침 후 다시 시도해 주세요."),
 

@@ -1,0 +1,224 @@
+# 원격 배포 — 배포하는 동안만 22번을 열고 SSH 로 deploy.sh 를 실행한다.
+#
+# deploy.yml(이미지 교체)과 infra.yml(설정 전용)이 같은 일을 한다.
+# 보안그룹을 여닫는 로직을 두 벌 두면 한쪽만 고치는 사고가 난다.
+#
+# 설계 근거: cd.md §4 · §9
+name: 원격 배포
+description: 배포 중에만 22번을 러너 IP /32 로 열고, deploy.sh 를 실행한 뒤 규칙을 회수한다
+
+inputs:
+  aws-region:
+    description: 리전
+    required: true
+  security-group-name:
+    description: 22번을 임시로 열 보안그룹 이름
+    required: true
+  project:
+    description: Project 태그 값. 공유 계정이라 이름만으로는 대상을 특정할 수 없다
+    default: '2jo'
+  host:
+    description: 접속 대상 (도메인 또는 EIP)
+    required: true
+  user:
+    description: SSH 사용자
+    default: ec2-user
+  ssh-private-key:
+    description: 배포용 개인키
+    required: true
+  known-hosts:
+    description: 대상 호스트의 공개키. TOFU 를 쓰지 않으려고 지문을 고정한다
+    required: true
+  env-file:
+    description: 서버 .env 에 그대로 쓸 내용. 비우면 전송하지 않는다
+    default: ''
+  image:
+    description: 배포할 이미지 참조. 비우면 설정 전용 모드
+    default: ''
+  app-dir:
+    description: 서버의 앱 디렉터리
+    default: /opt/2jo
+  tolerate-missing-host:
+    description: 서버가 아직 없을 때 실패로 보지 않는다 (최초 apply 직후)
+    default: 'false'
+
+outputs:
+  rc:
+    description: deploy.sh 의 종료 코드. 0 성공 · 1 롤백대상없음 · 2 롤백됨 · 3 롤백실패 · 75 배포중
+    value: ${{ steps.run.outputs.rc }}
+
+runs:
+  using: composite
+  steps:
+    # ── 22번 개방 ────────────────────────────────────────────────────────
+    # 상시 열지 않는 이유는 노출 시간이다. 상시 개방이면 100%, 이 방식이면
+    # 배포 중 몇 분이다. 대가는 배포 역할에 붙는 보안그룹 수정 권한인데,
+    # 그걸 훔칠 수 있는 주체는 같은 파이프라인의 SSH 개인키도 이미 가지고
+    # 있다 — 이미 들어올 수 있는 쪽에 문을 열 권한을 주는 건 추가 손해가 아니다.
+    - id: open
+      shell: bash
+      env:
+        AWS_REGION: ${{ inputs.aws-region }}
+        SG_NAME: ${{ inputs.security-group-name }}
+        PROJECT: ${{ inputs.project }}
+      run: |
+        set -euo pipefail
+
+        # 이 계정은 여러 팀이 공유한다. 이름만으로 찾으면 다른 팀이 우연히
+        # 같은 이름을 써도 [0] 이 그걸 집는다. Project 태그로 함께 좁힌다 —
+        # 배포 역할의 IAM 조건도 같은 태그를 본다.
+        sg="$(aws ec2 describe-security-groups \
+          --filters "Name=group-name,Values=${SG_NAME}" "Name=tag:Project,Values=${PROJECT}" \
+          --region "$AWS_REGION" \
+          --query 'SecurityGroups[].GroupId' --output text)"
+        if [ "$(printf '%s' "$sg" | wc -w)" -gt 1 ]; then
+          echo "::error::보안그룹이 여러 개 잡혔다: ${sg}"
+          exit 1
+        fi
+        if [ -z "$sg" ] || [ "$sg" = "None" ]; then
+          echo "::error::보안그룹 ${SG_NAME} 를 찾지 못했다"
+          exit 1
+        fi
+        echo "security_group=${sg}" >> "$GITHUB_OUTPUT"
+
+        # 잔류 규칙 정리가 먼저다. 아래 회수 스텝은 if: always() 라서 거의
+        # 항상 돌지만, 러너가 강제 종료되면 그것도 안 돈다. 그때 남은 규칙을
+        # 치우는 것이 여기다 — 두 겹이라야 22번이 조용히 열린 채 남지 않는다.
+        stale="$(aws ec2 describe-security-group-rules \
+          --filters "Name=group-id,Values=${sg}" \
+          --region "$AWS_REGION" \
+          --query "SecurityGroupRules[?Description=='2jo-deploy' && IsEgress==\`false\`].SecurityGroupRuleId" \
+          --output text)"
+        if [ -n "$stale" ] && [ "$stale" != "None" ]; then
+          echo "::warning::이전 배포의 22번 규칙이 남아 있었다 — 회수한다: ${stale}"
+          # shellcheck disable=SC2086
+          aws ec2 revoke-security-group-ingress \
+            --group-id "$sg" --security-group-rule-ids $stale \
+            --region "$AWS_REGION" >/dev/null
+        fi
+
+        # 러너 공인 IP. 응답이 이상하면 여기서 멈춘다 — 검증 없이 넘기면
+        # 쓰레기 값이 CIDR 로 들어가거나, 최악의 경우 의도치 않게 넓게 열린다.
+        ip="$(curl -fsS --max-time 10 https://checkip.amazonaws.com | tr -d '[:space:]')"
+        if ! printf '%s' "$ip" | grep -Eq '^([0-9]{1,3}\.){3}[0-9]{1,3}$'; then
+          echo "::error::러너 공인 IP 를 확인하지 못했다"
+          exit 1
+        fi
+        echo "러너 IP: ${ip}"
+
+        rule="$(aws ec2 authorize-security-group-ingress \
+          --group-id "$sg" \
+          --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${ip}/32,Description=2jo-deploy}]" \
+          --region "$AWS_REGION" \
+          --query 'SecurityGroupRules[0].SecurityGroupRuleId' --output text)"
+        echo "rule_id=${rule}" >> "$GITHUB_OUTPUT"
+        echo "22번 개방: ${ip}/32 (규칙 ${rule})"
+
+    # ── 키와 호스트 키 ───────────────────────────────────────────────────
+    # accept-new(TOFU)를 쓰지 않는다. 호스트 키는 인스턴스가 부팅하면서
+    # 만들어서 terraform 이 미리 알 수 없고, 그래서 사람이 첫 부팅 뒤에
+    # 지문을 Secret 에 넣어둔다. 인스턴스를 재생성하면 다시 넣어야 한다.
+    - id: ssh
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh-private-key }}
+        KNOWN_HOSTS: ${{ inputs.known-hosts }}
+      run: |
+        set -euo pipefail
+        dir="${RUNNER_TEMP}/ssh"
+        mkdir -p "$dir" && chmod 700 "$dir"
+        umask 077
+        printf '%s\n' "$SSH_KEY" > "$dir/id_deploy"
+        printf '%s\n' "$KNOWN_HOSTS" > "$dir/known_hosts"
+        echo "dir=${dir}" >> "$GITHUB_OUTPUT"
+
+    # ── .env 전송 ────────────────────────────────────────────────────────
+    # 러너 파일시스템에 쓰지 않고 stdin 으로 흘린다. 서버 쪽 umask 077 로
+    # 파일이 생기는 순간부터 권한이 좁다.
+    #
+    # Parameter Store 를 쓰던 때와 달리 배포 파이프라인이 시크릿을 보게 된다.
+    # 이건 SSM 전체를 뺀 결정의 대가이고, 숨기지 않고 적어둔다.
+    - id: env
+      if: inputs.env-file != ''
+      shell: bash
+      env:
+        ENV_CONTENT: ${{ inputs.env-file }}
+        SSH_DIR: ${{ steps.ssh.outputs.dir }}
+        TARGET: ${{ inputs.user }}@${{ inputs.host }}
+        APP_DIR: ${{ inputs.app-dir }}
+      run: |
+        set -euo pipefail
+        printf '%s\n' "$ENV_CONTENT" | ssh \
+          -i "$SSH_DIR/id_deploy" \
+          -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+          -o StrictHostKeyChecking=yes \
+          -o BatchMode=yes \
+          -o ConnectTimeout=15 \
+          "$TARGET" "umask 077 && cat > '${APP_DIR}/.env'"
+        echo ".env 전송 완료"
+
+    # ── 실행 ─────────────────────────────────────────────────────────────
+    # SSH 는 원격 명령의 종료 코드를 그대로 돌려준다. SSM 때 있던
+    # 5초/300초 폴링 루프가 통째로 필요 없어진다.
+    - id: run
+      shell: bash
+      env:
+        SSH_DIR: ${{ steps.ssh.outputs.dir }}
+        TARGET: ${{ inputs.user }}@${{ inputs.host }}
+        APP_DIR: ${{ inputs.app-dir }}
+        IMAGE: ${{ inputs.image }}
+        TOLERATE: ${{ inputs.tolerate-missing-host }}
+      run: |
+        set -uo pipefail
+
+        if [ -n "$IMAGE" ]; then
+          remote="${APP_DIR}/scripts/deploy.sh '${IMAGE}'"
+        else
+          remote="${APP_DIR}/scripts/deploy.sh"
+        fi
+
+        # composite 의 shell: bash 는 기본이 -eo pipefail 이다. 그냥 실행하면
+        # 0 이 아닌 순간 스텝이 죽어서 rc 를 잡지 못한다. || 로 받아야 한다.
+        rc=0
+        ssh -i "$SSH_DIR/id_deploy" \
+          -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
+          -o StrictHostKeyChecking=yes \
+          -o BatchMode=yes \
+          -o ConnectTimeout=15 \
+          "$TARGET" "$remote" || rc=$?
+
+        echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+        echo "deploy.sh 종료 코드: ${rc}"
+
+        # ssh 자체가 붙지 못한 경우(255)와 서버가 아직 없는 경우를 구분한다.
+        if [ "$rc" = "255" ] && [ "$TOLERATE" = "true" ]; then
+          echo "::notice::서버에 접속하지 못했다 — 아직 인스턴스가 없으면 정상이다"
+          exit 0
+        fi
+        exit "$rc"
+
+    # ── 회수 ─────────────────────────────────────────────────────────────
+    # always() 다. 실패해도 취소해도 22번은 닫혀야 한다.
+    - name: 22번 회수
+      if: always() && steps.open.outputs.rule_id != ''
+      shell: bash
+      env:
+        AWS_REGION: ${{ inputs.aws-region }}
+        SG: ${{ steps.open.outputs.security_group }}
+        RULE: ${{ steps.open.outputs.rule_id }}
+      run: |
+        set -uo pipefail
+        ok=0
+        aws ec2 revoke-security-group-ingress \
+          --group-id "$SG" --security-group-rule-ids "$RULE" \
+          --region "$AWS_REGION" >/dev/null || ok=$?
+
+        if [ "$ok" -eq 0 ]; then
+          echo "22번 회수 완료 (${RULE})"
+          exit 0
+        fi
+
+        # 여기서 실패하면 규칙이 남는다. 다음 배포의 개방 스텝이 정리하지만
+        # 그때까지는 열려 있으므로 조용히 넘기지 않는다.
+        echo "::error::22번 규칙 ${RULE} 회수에 실패했다. 콘솔에서 직접 지울 것"
+        exit 1

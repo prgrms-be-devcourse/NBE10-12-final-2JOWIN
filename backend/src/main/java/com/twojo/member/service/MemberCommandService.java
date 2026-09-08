@@ -3,6 +3,7 @@ package com.twojo.member.service;
 import com.twojo.boundary.MemberCommand;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.member.entity.Member;
 import com.twojo.member.repository.MemberRepository;
 import java.time.Instant;
@@ -34,7 +35,7 @@ public class MemberCommandService implements MemberCommand {
     @Override
     public void changePassword(UUID memberId, String newPasswordHash, Instant changedAt) {
         Member member = memberRepository.findById(memberId)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new MissingReferenceException("member", memberId));
 
         member.changePassword(newPasswordHash, changedAt);
     }
