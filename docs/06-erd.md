@@ -1,4 +1,4 @@
-# 데이터 모델(ERD) — v1.6.5
+# 데이터 모델(ERD) — v1.6.6
 
 > 🧭 [문서 지도](README.md) · ← [05 상태 전이표](05-state-transitions.md) · [07 API 명세서](07-api-spec.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 | 근거 |
 | --- | --- | --- |
+| v1.6.6 | **activity 관리자 범위 색인 추가(2026-09-08)** — `activity(company_id, occurred_at)`. 대시보드 최근 활동(DB-04)의 기업 관리자 범위 조회는 회사로 좁혀 미삭제 행을 최신순으로 읽는데, V1의 activity 색인은 `ix_activity_deal (deal_id)` 하나뿐이라 회사 조건이 색인을 타지 못했다. 같은 대시보드의 `task`는 v1.6.5에서 `task(company_id, done_at)`을 넣어 회사 조건이 색인을 타는데 activity만 못 타는 비대칭이었다. 부분 색인(`WHERE deleted_at IS NULL`)은 넣지 않는다 — 삭제 행이 소수라 이득이 없다. **마이그레이션은 `V202`(B 번호대)** | #177 · DB-04 |
 | v1.6.5 | **task.company_id 추가(2026-09-02)** — `task`에 `company_id NOT NULL` + 복합 FK `(company_id, deal_id) → deal(company_id, id)`. activity와 같은 형태로 통일. 사유: 할 일은 Deal의 자식이지만 **딜과 무관하게 독립 조회되는 대상**(DB-05 후속 필요 · "내 할 일")이라 기업 관리자(COMPANY_ALL) 범위 조회에 회사 축이 필요하고, 격리 2중 방어(서비스 스코프 + 복합 FK)가 activity에만 걸려 있던 비대칭을 없앤다. 관리자 조회용 인덱스 `task(company_id, done_at)` 추가. **마이그레이션은 `V2xx` ALTER(B 번호대)** — V1 베이스라인은 수정하지 않는다 (11 §1.2) | PR #32 논의 · PR #51 · SC-01 |
 | v1.6.4 | **NT-14 반영(2026-09-02)** — `email_log.template_type`의 값 집합에 NT-14(비밀번호 재설정 안내) 추가. 컬럼은 `VARCHAR(30)`에 CHECK가 없어 **스키마 변경은 없다** — 값 목록 주석만 갱신한다 | NT-14 (03 v1.6.4), AU-05 |
 | v1.6.3 | **AP-19·Q-44 반영(2026-08-26)** — quote에 `responder_name`·`responder_title` 추가(고객 응답자의 자기 신고 신원). 계정 없는 응답자라 인증할 수 없으므로 **검증 없는 신고값**이며, 이 사실이 화면·문서에 명시된다 | AP-19, Q-44 (`10-screen-design.md` GAP-09) |
@@ -447,7 +448,7 @@ erDiagram
 | 회사 내 유일 | quote_no · order_no · **product.name (판매 중지 포함 — 재등록 대신 판매 재개 사용)** |
 | 전역 유일 | member.email `lower(email)` · platform_admin.email · **company.business_no (사업자번호당 테넌트 1개 — 중복 가입을 DB가 최후 방어. 회사 이름은 유니크 아님: 동명 상호 합법)** — application.business_no는 재신청 허용(Q-15)이라 유니크 금지 |
 | CHECK | 금액 ≥ 0 · 수량 > 0 · sort_order ≥ 0 · 상태값 enum · **invitation.role** · **deal.stage IN (LEAD, CONSULT, QUOTE, NEGOTIATION, WON, LOST)** · **quote.status IN (DRAFT, SENT, VIEWED, APPROVED, REJECTED, WITHDRAWN, EXPIRED)** — 마이그레이션에서 값 명시 |
-| 인덱스 | 모든 FK 컬럼 · notification(recipient_member_id, read_at) · audit_log(company_id, occurred_at) · **refresh_token(member_id, status) · login_attempt(email, attempted_at DESC) · task(deal_id, done_at) · **task(company_id, done_at)** · deal(company_id, assignee_member_id, stage)** |
+| 인덱스 | 모든 FK 컬럼 · notification(recipient_member_id, read_at) · audit_log(company_id, occurred_at) · **refresh_token(member_id, status) · login_attempt(email, attempted_at DESC) · task(deal_id, done_at) · task(company_id, done_at) · activity(company_id, occurred_at) · deal(company_id, assignee_member_id, stage)** |
 
 ## DB로 못 막는 것 (서비스 레이어 담당)
 

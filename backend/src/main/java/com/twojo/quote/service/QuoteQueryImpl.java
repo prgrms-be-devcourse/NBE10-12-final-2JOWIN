@@ -7,6 +7,7 @@ import com.twojo.quote.entity.Quote;
 import com.twojo.quote.entity.QuoteItem;
 import com.twojo.quote.repository.QuoteRepository;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -29,16 +30,69 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class QuoteQueryImpl implements QuoteQuery {
 
+    /** 응답 대기 = 발송됨·열람됨 (전이표 §6) — 반려·회수·만료는 이미 끝난 건이다 */
+    private static final List<Quote.Status> AWAITING_RESPONSE =
+            List.of(Quote.Status.SENT, Quote.Status.VIEWED);
+
     private final QuoteRepository quoteRepository;
 
+    /**
+     * 응답 대기 견적 (NT-05 리마인드 · DB-03 카드) — 발송됨·열람됨.
+     *
+     * <p><b>회사 전체를 돌려주고 담당 축은 거르지 않는다.</b> 배치에는 {@code AccessContext}가 없어
+     * 여기서 SC-02를 판정할 수 없고, 그래서 계약이 {@code dealId}를 함께 준다 —
+     * 대시보드가 그 축으로 직접 거른다 (계약 javadoc, 2026-09-08 C·D 합의).
+     *
+     * <p><b>{@code customerName}은 아직 null이다.</b> 고객사는 B 소유 테이블이라 이 모듈이 직접 읽을 수 없고
+     * ({@code ModularityTests}), {@code CustomerQuery.get}은 {@code AccessContext}를 요구하는데
+     * 배치 경로에는 그것이 없다. <b>회사 스코프만으로 이름을 얻는 창구가 B 계약에 없다</b> —
+     * 그 한 칸이 열리면 여기서 채운다. 그때까지 이름이 필요한 화면은 호출자가 자기 ctx로 조회한다.
+     */
     @Override
     public List<QuoteSummary> findAwaitingResponse(UUID companyId) {
-        throw new UnsupportedOperationException("QuoteQuery.findAwaitingResponse — C 3주차 구현 예정");
+        return quoteRepository
+                .findByCompanyIdAndStatusInOrderBySentAtAsc(companyId, AWAITING_RESPONSE)
+                .stream()
+                .map(QuoteQueryImpl::toSummary)
+                .toList();
+    }
+
+    /** 엔티티 → 요약. {@code customerName}은 위 javadoc의 이유로 아직 채우지 못한다 */
+    private static QuoteSummary toSummary(Quote quote) {
+        return new QuoteSummary(quote.getId(), quote.getQuoteNo(), quote.getDealId(), quote.getCompanyId(),
+                null, quote.getSentAt(), quote.getFirstViewedAt(), quote.getValidUntil());
     }
 
     @Override
     public List<QuoteSummary> findExpiringUntil(LocalDate date) {
         throw new UnsupportedOperationException("QuoteQuery.findExpiringUntil — C 3주차 구현 예정");
+    }
+
+    /**
+     * 주문 조회가 쓰는 견적 출처 (OD-08·09) — 회사 스코프가 걸린다 (SC-01).
+     * <p>빈 목록이면 조회하지 않는다. 없는 id는 결과에서 빠진다 — 계약대로 예외가 아니다.
+     */
+    @Override
+    public List<QuoteOrigin> originsByIds(UUID companyId, Collection<UUID> quoteIds) {
+        if (quoteIds == null || quoteIds.isEmpty()) {
+            return List.of();
+        }
+        return quoteRepository.findByCompanyIdAndIdIn(companyId, quoteIds).stream()
+                .map(quote -> new QuoteOrigin(quote.getId(), quote.getQuoteNo(), quote.getDealId()))
+                .toList();
+    }
+
+    /**
+     * 주문 목록의 범위 필터 (SC-04) — 담당 Deal 묶음에 걸린 견적 id 전체.
+     * <p><b>빈 목록을 넘기면 빈 목록이다</b> — 담당 Deal이 없는 영업에게 회사 전체 주문이
+     * 보이는 사고를 여기서 끊는다 ({@code QuoteSpecs.dealIdIn}과 같은 판단).
+     */
+    @Override
+    public List<UUID> quoteIdsByDeals(UUID companyId, Collection<UUID> dealIds) {
+        if (dealIds == null || dealIds.isEmpty()) {
+            return List.of();
+        }
+        return quoteRepository.findIdsByDeals(companyId, dealIds);
     }
 
     /**

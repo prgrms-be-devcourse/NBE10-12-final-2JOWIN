@@ -29,6 +29,17 @@ variable "github_sub_prefix" {
   }
 }
 
+variable "deploy_environment" {
+  description = <<-EOT
+    백엔드 배포가 쓰는 GitHub Environment. 승인자를 두지 않는다.
+
+    prod 와 나눈 이유는 terraform-apply 가 prod 를 쓰기 때문이다. 한
+    환경에서 승인을 빼면 인프라 apply 의 게이트까지 함께 풀린다.
+  EOT
+  type        = string
+  default     = "prod-deploy"
+}
+
 variable "prod_environment" {
   description = "apply·배포에 쓰는 GitHub Environment 이름. 승인 게이트가 걸린 그 이름"
   type        = string

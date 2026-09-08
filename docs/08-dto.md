@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.18
+# DTO 설계서 — v1.6.19
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,7 +9,8 @@
 
 | 버전 | 변경 |
 | --- | --- |
-| v1.6.18 | **§D 대시보드 조립 서비스·컨트롤러 구현 + degrade 정책(2026-09-08)** — `com.twojo.dashboard` 신규 모듈: `DashboardService`(무트랜잭션 조립) + `DashboardController` 2종. DTO(`DashboardSummaryResponse`·`DashboardPerformanceResponse`)는 변경 없음 — #21 그대로. C의 `SalesStatsQuery`(`pipeline` 외 3종)·`QuoteQuery.findAwaitingResponse`가 `UnsupportedOperationException`을 던지면 서비스가 **그 예외만** 잡아 빈 값·0으로 degrade하고 200을 유지한다(다른 예외는 전파, C 실구현 시 제거). 이달 성사·담당자별 실적·단계 전환율은 자리표시자라 화면에서 "집계 준비 중"으로 표시 — 0으로 오해 금지. 영업 담당자의 `waitingQuotes`는 v1에서 강제 빈 배열(`QuoteSummary.dealId` 추가 시 실필터, #207). `month`/`from`/`to` 기본값·검증은 07 v1.6.15. 발견 경로: 대시보드 API 구현(#202) |
+| v1.6.19 | **§D 대시보드 조립 서비스·컨트롤러 구현 + degrade 정책(2026-09-08)** — `com.twojo.dashboard` 신규 모듈: `DashboardService`(무트랜잭션 조립) + `DashboardController` 2종. DTO(`DashboardSummaryResponse`·`DashboardPerformanceResponse`)는 변경 없음 — #21 그대로. C의 `SalesStatsQuery`(`pipeline` 외 3종)·`QuoteQuery.findAwaitingResponse`가 `UnsupportedOperationException`을 던지면 서비스가 **그 예외만** 잡아 빈 값·0으로 degrade하고 200을 유지한다(다른 예외는 전파, C 실구현 시 제거). 이달 성사·담당자별 실적·단계 전환율은 자리표시자라 화면에서 "집계 준비 중"으로 표시 — 0으로 오해 금지. 영업 담당자의 `waitingQuotes`는 v1에서 강제 빈 배열(`QuoteSummary.dealId` 추가 시 실필터, #207). `month`/`from`/`to` 기본값·검증은 07 v1.6.15. 발견 경로: 대시보드 API 구현(#202) |
+| v1.6.18 | **§C `OrderDetailResponse`에 `dealStage` 추가(2026-09-08)** — 주문 전환(OD-01)의 201 응답이 이 record다. 전환은 Deal을 자동 성사시키는데(OD-06, 전이표 §5) 응답에 단계가 없으면 화면이 전환 직후 Deal을 한 번 더 조회해야 확인할 수 있었다. 전환 직후에는 항상 `WON`이고, 상세 조회(OD-09)에서는 그 시점의 단계다. 목록(`OrderResponse`)에는 넣지 않는다 — 줄마다 필요한 값이 아니다. 발견 경로: 주문 전환 구현(#160) |
 | v1.6.17 | **`DeactivateMemberRequest` MB-14 주석 정정(2026-09-08)** — "담당 Deal 1건 이상"을 **진행 중(리드~협상) 담당 Deal** 기준으로. 종결 Deal은 이관하지 않으므로 필수 판정에서도 빠진다 (03 Q-48, 07 v1.6.14) |
 | v1.6.16 | **`PublicQuoteResponse` boundary 이동 + `PublicQuoteAssembler` 조립 계약 신설(2026-09-08)** — preview(§C, QT-12)와 고객 열람(§D)이 "같은 응답"이어야 하는데(v1.6 주석 규약) 조립 로직이 D의 서비스에만 있어, preview가 boundary 원본 `QuoteQuery.PublicQuoteView`를 그대로 내보내며 `companyName`·`companyBusinessNo`·`assignee`·`respondable`이 빠지고 내부 식별자(`dealId`·`companyId`)가 샜다 — 프론트 미리보기 화면이 렌더에서 크래시. `PublicQuoteResponse`를 `com.twojo.approval.dto` → `com.twojo.boundary`로 옮기고(preview·열람 두 모듈이 import), `boundary/PublicQuoteAssembler`(`assembleForPreview`·`assembleForView`, 구현 D)가 `getPublicView` + `CompanyQuery.get` + `DealQuery.assigneeIdOf` + `MemberQuery.getContact`를 하나로 조립한다. record 필드·JSON 모양 변경 없음. 발견 경로: PR #101 리뷰 ② 후속(#114) · 계약 신설이라 #163으로 분리 |
 | v1.6.15 | **`RejectQuoteRequest.reason` 길이 제한(2026-09-07)** — v1.6.3에서 응답자 필드를 넣을 때 `reason`에 `@Size(max)`가 빠졌다. `quote.reject_reason VARCHAR(500)`을 넘는 값이 Bean Validation을 통과해 DB에서 거부되고, C의 반려 트랜잭션이 통째로 롤백돼 500으로 나간다 — 400 `VALIDATION_FAILED`가 맞는 자리이고 v1.6.8·v1.6.9와 같은 구멍이다. 값은 `V1__baseline.sql`의 `reject_reason` 정의(500)를 그대로 옮겼다. 발견 경로: 고객 응답 API(#105) 착수 전 소스 대조 · 계약 변경이라 PR #136에서 분리 |
@@ -389,7 +390,9 @@ public record OrderResponse(
 
 public record OrderDetailResponse(
         UUID id, String orderNo, UUID quoteId, String quoteNo,
-        UUID dealId, String dealTitle, UUID customerId, String customerName,
+        UUID dealId, String dealTitle,
+        String dealStage,                                             // 전환 직후엔 항상 WON (OD-06 자동 성사 확인용)
+        UUID customerId, String customerName,
         Long supplyAmount, Long vatAmount, Long totalAmount,
         List<ItemResponse> items,
         LocalDate startDate, LocalDate deliveryDate, Instant createdAt) {

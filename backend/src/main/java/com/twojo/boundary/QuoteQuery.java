@@ -2,6 +2,7 @@ package com.twojo.boundary;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,8 +43,42 @@ public interface QuoteQuery {
      */
     PublicQuoteView getPublicView(UUID quoteId);
 
-    /** firstViewedAt이 null이면 미열람 (v2.0.2, GAP-08) */
-    record QuoteSummary(UUID id, String quoteNo, String customerName,
+    /**
+     * 견적 id 묶음 → 출처 배치 조회 — <b>주문 조회의 유일한 통로다</b> (OD-08·09).
+     *
+     * <p>{@code orders}에는 {@code deal_id} 컬럼이 없다 (ERD). 주문 응답의 {@code dealId}·
+     * {@code quoteNo}는 견적을 거쳐야 나오는데, order 모듈은 quote 테이블을 직접 읽지 않는다
+     * (11 §7.3). 줄마다 부르지 않게 배치로 받는다 — 목록 20건이면 조회도 20번이 된다.
+     *
+     * <p>반환은 요청 순서를 보장하지 않으므로 호출자가 id로 인덱싱한다.
+     * 없는 id는 결과에서 빠진다(예외 아님). 빈 목록을 넘기면 빈 목록을 돌려준다.
+     */
+    List<QuoteOrigin> originsByIds(UUID companyId, Collection<UUID> quoteIds);
+
+    /**
+     * 담당 Deal 묶음에 속한 견적 id 전체 — 주문 목록의 <b>범위 필터</b>다 (SC-04, 09 §80).
+     *
+     * <p>주문의 범위도 {@code deal.assignee_member_id}에서 파생하는데(견적과 같은 축),
+     * {@code orders}에서 Deal까지 가려면 quote를 거쳐야 한다. 그 조인을 모듈 밖에서 할 수 없어
+     * <b>id 집합으로 받아 {@code quote_id IN (...)}으로 좁힌다</b>.
+     *
+     * <p><b>{@code scope == OWNED_ONLY}일 때만 호출한다</b> — 기업 관리자는 회사 범위면 충분하다
+     * ({@code DealQuery.assignedDealIds}와 같은 규약). 빈 목록을 넘기면 빈 목록을 돌려준다 —
+     * 담당 Deal이 하나도 없는 영업이고, 그에게는 주문도 하나도 보이지 않아야 한다.
+     */
+    List<UUID> quoteIdsByDeals(UUID companyId, Collection<UUID> dealIds);
+
+    /**
+     * 응답 대기·만료 임박 견적 한 줄 (NT-05·06, DB-03). {@code firstViewedAt}이 null이면 미열람 (v2.0.2, GAP-08).
+     *
+     * @param dealId    <b>소비자가 범위를 스스로 거르는 축</b> — 영업 대시보드는 SC-02로 담당 딜만 보여야 하고
+     *                  (없으면 누수를 막으려 목록을 통째로 비워야 한다), NT-05 인앱 알림도 이 축으로 수신자를
+     *                  정한다. 이 계약은 회사 전체를 돌려주고 <b>거르는 일은 호출자가 한다</b> —
+     *                  배치에는 {@code AccessContext}가 없어 여기서 판정할 수 없기 때문이다
+     * @param companyId {@code findExpiringUntil}이 <b>전 회사</b>를 한 번에 돌려주므로 줄마다 필요하다 —
+     *                  정지 회사 억제(Q-27) 판정과 메일·알림 발행이 회사 단위다
+     */
+    record QuoteSummary(UUID id, String quoteNo, UUID dealId, UUID companyId, String customerName,
                         Instant sentAt, Instant firstViewedAt, LocalDate validUntil) {}
 
     /**
@@ -69,4 +104,12 @@ public interface QuoteQuery {
         public record Item(String name, String unit, int quantity,
                     Long unitPrice, Long amount, int sortOrder) {}
     }
+
+    /**
+     * 주문이 견적에서 물려받는 최소 정보 — 표시용 {@code quoteNo}와 범위 축인 {@code dealId}.
+     *
+     * <p>금액·항목은 여기 없다. 주문은 전환 시점 값을 <b>자기 테이블에 복사해 가지고</b>
+     * 있어서(OD-04·05) 조회 때 견적을 다시 볼 이유가 없다 — 다시 보면 스냅샷이 무너진다.
+     */
+    record QuoteOrigin(UUID quoteId, String quoteNo, UUID dealId) {}
 }

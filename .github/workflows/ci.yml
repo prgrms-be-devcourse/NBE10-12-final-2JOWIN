@@ -132,6 +132,26 @@ jobs:
           FLYWAY_USER: twojo
           FLYWAY_PASSWORD: twojo
 
+  # 롤백은 이미지만 되돌린다. Flyway 가 이미 적용한 스키마는 새 상태로
+  # 남고, 옛 코드가 그 위에서 돌지 못하면 롤백해도 서비스가 복구되지
+  # 않는다 — 컬럼을 지우는 마이그레이션이 그렇다.
+  #
+  # 승인 게이트로는 못 막는다. 사람이 승인 화면에서 보는 것은 커밋
+  # 목록뿐이고, 그 안에 파괴적 SQL 이 있는지는 보이지 않는다.
+  #
+  # 막는 것이 목적이 아니라 의식적인 결정으로 만드는 것이 목적이다.
+  # 의도한 경우에는 destructive-migration 라벨로 통과시킨다.
+  destructive-migration:
+    name: destructive-migration
+    needs: changes
+    if: >-
+      needs.changes.outputs.backend == 'true' &&
+      !contains(github.event.pull_request.labels.*.name, 'destructive-migration')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 .github/scripts/check-destructive-migrations.py backend/src/main/resources/db/migration
+
   flyway-version-check:
     needs: changes
     if: needs.changes.outputs.backend == 'true'
