@@ -71,6 +71,7 @@ jobs:
               - 'infra/prod/compose/**'
               - 'infra/prod/caddy/**'
               - 'infra/prod/monitoring/**'
+              - 'infra/prod/systemd/**'
               - '.github/workflows/infra.yml'
             workflows:
               - '.github/workflows/**'
@@ -263,6 +264,19 @@ jobs:
 
       # 가장 잘 깨지는 곳이다. Grafana 알람 provisioning 은 형식이 조금만
       # 어긋나도 오류 없이 그냥 등록되지 않는다 — 알람이 조용히 사라진다.
+      # 유닛 파일이 틀리면 배포는 성공하는데 백업만 조용히 안 돈다.
+      # 그건 25시간 뒤 알람으로만 드러나므로 여기서 먼저 잡는다 (이슈 #159).
+      - name: systemd 유닛
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /opt/2jo/scripts
+          echo '#!/bin/sh' | sudo tee /opt/2jo/scripts/backup.sh >/dev/null
+          sudo chmod +x /opt/2jo/scripts/backup.sh
+          cp infra/prod/systemd/backup.service infra/prod/systemd/backup.timer /tmp/
+          systemd-analyze verify --user /tmp/backup.timer
+          # OnCalendar 가 파싱되는지, 실제로 하루 한 번인지 확인한다
+          systemd-analyze calendar --iterations=2 '*-*-* 19:00:00 UTC'
+
       - name: Grafana provisioning (실제 기동)
         run: |
           set -euo pipefail
