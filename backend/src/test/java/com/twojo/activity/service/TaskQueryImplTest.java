@@ -1,0 +1,107 @@
+package com.twojo.activity.service;
+
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.never;
+
+import com.twojo.activity.entity.Task;
+import com.twojo.activity.repository.TaskRepository;
+import com.twojo.boundary.AccessContext;
+import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.DealQuery;
+import com.twojo.boundary.Role;
+import com.twojo.boundary.TaskQuery;
+import com.twojo.boundary.TaskQuery.FollowUpSummary;
+import java.time.LocalDate;
+import java.util.List;
+import java.util.UUID;
+import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
+import org.mockito.junit.jupiter.MockitoExtension;
+
+/**
+ * 대시보드 후속 필요 (DB-05) — 미완료 할 일만, 마감 임박순.
+ *
+ * <p>범위 분기는 최근 활동과 같다. 미완료 조건과 정렬은 파생 쿼리 이름이 만드는 SQL의 몫이라
+ * 목으로는 확인되지 않는다 — 로컬 실행으로 따로 확인한다 (이슈 #158 설계 결정 5·6).
+ */
+@ExtendWith(MockitoExtension.class)
+class TaskQueryImplTest {
+
+    private static final UUID COMPANY_ID = UUID.randomUUID();
+    private static final UUID MEMBER_ID = UUID.randomUUID();
+    private static final UUID DEAL_ID = UUID.randomUUID();
+
+    private static final AccessContext ADMIN =
+            new AccessContext(COMPANY_ID, MEMBER_ID, Role.COMPANY_ADMIN, AccessScope.COMPANY_ALL);
+    private static final AccessContext SALES =
+            new AccessContext(COMPANY_ID, MEMBER_ID, Role.SALES_REP, AccessScope.OWNED_ONLY);
+
+    @Mock private TaskRepository taskRepository;
+    @Mock private DealQuery dealQuery;
+    @InjectMocks private TaskQueryImpl taskQuery;
+
+    private static Task 할일(String content) {
+        return Task.create(COMPANY_ID, DEAL_ID, content, LocalDate.of(2026, 8, 26));
+    }
+
+    @Test
+    @DisplayName("기업 관리자는 회사 전체 할 일을 받는다 — 담당 딜을 묻지 않는다 (SC-05)")
+    void followUps_admin_seesWholeCompany() {
+        given(taskRepository.findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(eq(COMPANY_ID), any()))
+                .willReturn(List.of(할일("성원산업 재방문 일정 조율"), 할일("대한물산 재검토 회신 확인")));
+
+        List<FollowUpSummary> result = taskQuery.followUps(ADMIN, 10);
+
+        assertThat(result).hasSize(2);
+        assertThat(result.get(0).content()).isEqualTo("성원산업 재방문 일정 조율");
+        assertThat(result.get(0).dueDate()).isEqualTo(LocalDate.of(2026, 8, 26));
+        then(dealQuery).should(never()).assignedDealIds(any(), any());
+    }
+
+    @Test
+    @DisplayName("영업 담당자는 본인 담당 Deal의 할 일만 받는다 (SC-02·04)")
+    void followUps_salesRep_filteredByAssignedDeals() {
+        List<UUID> 담당딜 = List.of(DEAL_ID);
+        given(dealQuery.assignedDealIds(COMPANY_ID, MEMBER_ID)).willReturn(담당딜);
+        given(taskRepository.findByCompanyIdAndDealIdInAndDoneAtIsNullOrderByDueDateAscIdAsc(
+                eq(COMPANY_ID), eq(담당딜), any()))
+                .willReturn(List.of(할일("성원산업 재방문 일정 조율")));
+
+        List<FollowUpSummary> result = taskQuery.followUps(SALES, 10);
+
+        assertThat(result).hasSize(1);
+        then(taskRepository).should(never())
+                .findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(any(), any());
+    }
+
+    @Test
+    @DisplayName("담당 Deal이 없으면 조회하지 않고 빈 목록을 돌려준다 — 빈 IN 절을 만들지 않는다")
+    void followUps_salesRepWithNoDeals_skipsQuery() {
+        given(dealQuery.assignedDealIds(COMPANY_ID, MEMBER_ID)).willReturn(List.of());
+
+        List<FollowUpSummary> result = taskQuery.followUps(SALES, 10);
+
+        assertThat(result).isEmpty();
+        then(taskRepository).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("limit이 1~MAX_LIMIT 밖이면 IllegalArgumentException")
+    void followUps_limitOutOfRange_throws() {
+        assertThatThrownBy(() -> taskQuery.followUps(ADMIN, 0))
+                .isInstanceOf(IllegalArgumentException.class);
+        assertThatThrownBy(() -> taskQuery.followUps(ADMIN, TaskQuery.MAX_LIMIT + 1))
+                .isInstanceOf(IllegalArgumentException.class);
+
+        then(taskRepository).shouldHaveNoInteractions();
+        then(dealQuery).shouldHaveNoInteractions();
+    }
+}
