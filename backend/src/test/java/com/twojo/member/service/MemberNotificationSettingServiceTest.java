@@ -14,6 +14,7 @@ import com.twojo.boundary.NotificationSettingType;
 import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.ErrorResponse;
 import com.twojo.member.dto.NotificationSettingResponse;
 import com.twojo.member.dto.UpdateNotificationSettingsRequest;
 import java.util.EnumMap;
@@ -176,11 +177,24 @@ class MemberNotificationSettingServiceTest {
             then(notificationSettingCommand).shouldHaveNoInteractions();
         }
 
+        /**
+         * 세 검증 모두 400이면서 <b>어느 필드가 틀렸는지</b>를 실어야 한다 —
+         * 07 부록이 VALIDATION_FAILED에 "fieldErrors 참조"라고 적는다.
+         *
+         * <p>가리키는 것은 개별 Entry가 아니라 {@code settings} 목록 전체다. 전체 교체라
+         * 목록이 한 덩어리이고, 화면이 취할 행동도 "이 목록을 다시 만든다" 하나다.
+         */
         private void 변경이_막힌다(UpdateNotificationSettingsRequest 요청) {
             assertThatThrownBy(() -> memberNotificationSettingService.replace(김서연_관리자, 요청))
                     .isInstanceOf(BusinessException.class)
-                    .extracting(e -> ((BusinessException) e).getErrorCode())
-                    .isEqualTo(ErrorCode.VALIDATION_FAILED);
+                    .satisfies(e -> {
+                        BusinessException 예외 = (BusinessException) e;
+                        assertThat(예외.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED);
+                        assertThat(예외.getFieldErrors())
+                                .singleElement()
+                                .extracting(ErrorResponse.FieldError::field)
+                                .isEqualTo("settings");
+                    });
         }
 
         @SuppressWarnings("unchecked")
