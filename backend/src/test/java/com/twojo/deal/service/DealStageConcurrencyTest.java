@@ -6,6 +6,8 @@ import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.Role;
 import com.twojo.deal.dto.DealRequests;
+import com.twojo.global.error.BusinessException;
+import com.twojo.global.error.ErrorCode;
 import java.util.Queue;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -126,10 +128,21 @@ class DealStageConcurrencyTest {
         assertThat(성공.get()).isOne();
         assertThat(실패들).hasSize(threads - 1);
 
-        // 진 쪽이 무엇을 받는지 고정한다 — 이 타입이 GlobalExceptionHandler의 매핑 대상이고,
-        // 매핑이 없으면 폴백으로 떨어져 500이 된다. 예외를 뭉뚱그려 세면 그 사실이 가려진다
-        assertThat(실패들).allSatisfy(e ->
-                assertThat(e).isInstanceOf(ObjectOptimisticLockingFailureException.class));
+        // 진 쪽이 무엇을 받는지 고정한다 — 둘 다 GlobalExceptionHandler에서 409 STALE_VERSION이 되고,
+        // 매핑이 없으면 폴백으로 떨어져 500이 된다. 예외를 뭉뚱그려 세면 그 사실이 가려진다.
+        //
+        // 갈래가 둘인 이유는 "언제 졌는가"가 다르기 때문이다 (Deal.checkVersion javadoc과 같은 구조).
+        //   · 같은 version을 읽고 동시에 flush   → 진 쪽은 ObjectOptimisticLockingFailureException
+        //   · 이긴 쪽이 커밋한 뒤에 읽음          → version이 이미 1이라 checkVersion이 STALE_VERSION
+        // 어느 쪽이 나오는지는 스레드가 실제로 겹쳤는지에 달렸고 그건 러너 사정이다. 한쪽만 단언하면
+        // 느린 CI에서 구현이 아니라 타이밍 때문에 깨진다 (PR #197 CI 실패로 실제로 겪었다).
+        // 견적 쪽 같은 성격의 테스트(QuoteOptimisticLockTest)는 처음부터 두 갈래를 받고 있었다 —
+        // 이쪽만 옛 형태로 남아 있던 것을 맞춘다.
+        assertThat(실패들).allSatisfy(e -> assertThat(e).satisfiesAnyOf(
+                t -> assertThat(t).isInstanceOf(ObjectOptimisticLockingFailureException.class),
+                t -> assertThat(t).isInstanceOf(BusinessException.class)
+                        .extracting(x -> ((BusinessException) x).getErrorCode())
+                        .isEqualTo(ErrorCode.STALE_VERSION)));
 
         // 단계가 여러 칸 뛰지 않았는지 — 표에 없는 전이가 동시성으로 만들어지면 안 된다 (전이표 §5)
         assertThat(jdbc.queryForObject("select stage from deal where id = ?", String.class, dealId))
