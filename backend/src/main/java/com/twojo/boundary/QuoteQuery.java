@@ -68,8 +68,17 @@ public interface QuoteQuery {
      */
     List<UUID> quoteIdsByDeals(UUID companyId, Collection<UUID> dealIds);
 
-    /** firstViewedAt이 null이면 미열람 (v2.0.2, GAP-08) */
-    record QuoteSummary(UUID id, String quoteNo, String customerName,
+    /**
+     * 응답 대기·만료 임박 견적 한 줄 (NT-05·06, DB-03). {@code firstViewedAt}이 null이면 미열람 (v2.0.2, GAP-08).
+     *
+     * @param dealId    <b>소비자가 범위를 스스로 거르는 축</b> — 영업 대시보드는 SC-02로 담당 딜만 보여야 하고
+     *                  (없으면 누수를 막으려 목록을 통째로 비워야 한다), NT-05 인앱 알림도 이 축으로 수신자를
+     *                  정한다. 이 계약은 회사 전체를 돌려주고 <b>거르는 일은 호출자가 한다</b> —
+     *                  배치에는 {@code AccessContext}가 없어 여기서 판정할 수 없기 때문이다
+     * @param companyId {@code findExpiringUntil}이 <b>전 회사</b>를 한 번에 돌려주므로 줄마다 필요하다 —
+     *                  정지 회사 억제(Q-27) 판정과 메일·알림 발행이 회사 단위다
+     */
+    record QuoteSummary(UUID id, String quoteNo, UUID dealId, UUID companyId, String customerName,
                         Instant sentAt, Instant firstViewedAt, LocalDate validUntil) {}
 
     /**
