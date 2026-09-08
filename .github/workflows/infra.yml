@@ -54,6 +54,7 @@ jobs:
       aws_ready: ${{ steps.gate.outputs.aws_ready }}
       infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
       stack_ready: ${{ steps.gate.outputs.stack_ready }}
+      tfvars_ready: ${{ steps.gate.outputs.tfvars_ready }}
     steps:
       - uses: actions/checkout@v4
 
@@ -85,11 +86,16 @@ jobs:
         env:
           HAS_PLAN_ROLE: ${{ secrets.AWS_TF_PLAN_ROLE_ARN != '' }}
           HAS_INFRACOST_KEY: ${{ secrets.INFRACOST_API_KEY != '' }}
+          # key_name·deploy_public_key 는 기본값이 없다. 없는 채로 -input=false
+          # 로 돌면 "No value for required variable" 로 죽는다. 시크릿이 아니라
+          # 공개키와 키페어 이름이므로 variable 로 받는다.
+          HAS_TFVARS: ${{ vars.SSH_KEY_NAME != '' && vars.DEPLOY_PUBLIC_KEY != '' }}
         run: |
           set -euo pipefail
           {
             echo "aws_ready=${HAS_PLAN_ROLE}"
             echo "infracost_ready=${HAS_INFRACOST_KEY}"
+            echo "tfvars_ready=${HAS_TFVARS}"
             # 메인 스택은 TF_ROOT 바로 아래 .tf 파일. bootstrap/ 은 여기 해당 없음
             if compgen -G "${TF_ROOT}/*.tf" > /dev/null; then
               echo "stack_ready=true"
@@ -406,12 +412,16 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.infra == 'true' &&
       needs.changes.outputs.aws_ready == 'true' &&
-      needs.changes.outputs.stack_ready == 'true'
+      needs.changes.outputs.stack_ready == 'true' &&
+      needs.changes.outputs.tfvars_ready == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write # OIDC 토큰 발급
       pull-requests: write
+    env:
+      TF_VAR_key_name: ${{ vars.SSH_KEY_NAME }}
+      TF_VAR_deploy_public_key: ${{ vars.DEPLOY_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v6
@@ -459,7 +469,8 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       needs.changes.outputs.aws_ready == 'true' &&
-      needs.changes.outputs.stack_ready == 'true'
+      needs.changes.outputs.stack_ready == 'true' &&
+      needs.changes.outputs.tfvars_ready == 'true'
     runs-on: ubuntu-latest
     # 승인 게이트. Environment 에 Required reviewers 를 걸면
     # 승인 전에는 OIDC 토큰 자체가 발급되지 않는다 — 브랜치 기준으로는 안 되는 것
@@ -467,6 +478,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      TF_VAR_key_name: ${{ vars.SSH_KEY_NAME }}
+      TF_VAR_deploy_public_key: ${{ vars.DEPLOY_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v6
