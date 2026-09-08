@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
@@ -22,10 +23,9 @@ import com.twojo.approval.repository.CustomerInquiryRepository;
 import com.twojo.approval.repository.QuoteViewTokenRepository;
 import com.twojo.approval.token.TokenGenerator;
 import com.twojo.boundary.CompanyQuery;
-import com.twojo.boundary.DealQuery;
-import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.NotificationCommand;
 import com.twojo.boundary.NotificationCommand.NotificationType;
+import com.twojo.boundary.PublicQuoteAssembler;
 import com.twojo.boundary.PublicQuoteResponse;
 import com.twojo.boundary.QuoteCommand;
 import com.twojo.boundary.QuoteQuery;
@@ -48,8 +48,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * {@link CustomerQuoteService} — 링크 상태 방어(404/410/409), 조립, 첫 열람 부수효과 위임,
- * 승인·반려·문의의 호출 순서·차단을 목으로 고정한다. 실 PG·트랜잭션은 통합 테스트가 커버한다.
+ * {@link CustomerQuoteService} — 링크 상태 방어(404/410/409), 조립기·첫 열람 부수효과 위임,
+ * 승인·반려·문의의 호출 순서·차단을 목으로 고정한다. 조립 내용은 {@link PublicQuoteAssemblerImplTest},
+ * 실 PG·트랜잭션은 통합 테스트가 커버한다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -59,7 +60,6 @@ class CustomerQuoteServiceTest {
     private static final UUID QUOTE_ID = UUID.fromString("a0000000-0000-4000-8000-000000000001");
     private static final UUID DEAL_ID = UUID.fromString("b0000000-0000-4000-8000-000000000001");
     private static final UUID COMPANY_ID = UUID.fromString("c0000000-0000-4000-8000-000000000001");
-    private static final UUID ASSIGNEE_ID = UUID.fromString("d0000000-0000-4000-8000-000000000001");
     private static final UUID CONTACT_ID = UUID.fromString("e0000000-0000-4000-8000-000000000001");
     private static final String QUOTE_NO = "Q-2609-014";
     private static final String COMPANY_NAME = "한빛오피스";
@@ -74,15 +74,13 @@ class CustomerQuoteServiceTest {
     @Mock
     private CompanyQuery companyQuery;
     @Mock
-    private DealQuery dealQuery;
-    @Mock
-    private MemberQuery memberQuery;
-    @Mock
     private NotificationCommand notificationCommand;
     @Mock
     private CustomerInquiryRepository customerInquiryRepository;
     @Mock
     private CustomerNotificationMessages messages;
+    @Mock
+    private PublicQuoteAssembler publicQuoteAssembler;
     @Mock
     private FirstViewRecorder firstViewRecorder;
 
@@ -92,8 +90,8 @@ class CustomerQuoteServiceTest {
     void setUp() {
         // TokenGenerator는 의존성이 없어 실객체 — 조회는 findByTokenHash(anyString())로 목킹한다.
         service = new CustomerQuoteService(quoteViewTokenRepository, new TokenGenerator(), quoteQuery,
-                quoteCommand, companyQuery, dealQuery, memberQuery, notificationCommand,
-                customerInquiryRepository, messages, firstViewRecorder);
+                quoteCommand, companyQuery, notificationCommand, customerInquiryRepository, messages,
+                publicQuoteAssembler, firstViewRecorder);
     }
 
     // ─────────────── 토큰 해석 (공통) ───────────────
@@ -128,67 +126,52 @@ class CustomerQuoteServiceTest {
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.LINK_EXPIRED));
     }
 
-    // ─────────────── GET 열람 ───────────────
+    // ─────────────── GET 열람 (조립은 PublicQuoteAssembler에 위임) ───────────────
 
     @Test
-    @DisplayName("첫 열람(SENT)이면 FirstViewRecorder에 위임하고 응답 status를 VIEWED로 보정한다")
-    void 첫_열람이면_위임하고_status_VIEWED() {
+    @DisplayName("첫 열람(SENT)이면 FirstViewRecorder 다음에 조립기를 부르고 그 결과를 반환한다")
+    void 첫_열람이면_부수효과_후_조립기_호출() {
         givenToken(activeToken());
         givenView(view("SENT"));
-        givenCompany(true);
-        givenAssignee();
+        PublicQuoteResponse assembled = assembled("VIEWED", true);
+        givenAssembled(assembled);
 
         PublicQuoteResponse res = service.view("raw", NOW);
 
-        verify(firstViewRecorder).recordFirstView(any(QuoteQuery.PublicQuoteView.class));
-        assertThat(res.status()).isEqualTo("VIEWED");
-        assertThat(res.respondable()).isTrue();
+        InOrder order = inOrder(firstViewRecorder, publicQuoteAssembler);
+        order.verify(firstViewRecorder).recordFirstView(any(QuoteQuery.PublicQuoteView.class));
+        order.verify(publicQuoteAssembler).assembleForView(QUOTE_ID, true);
+        assertThat(res).isSameAs(assembled);
     }
 
     @Test
-    @DisplayName("재열람(VIEWED)이면 FirstViewRecorder를 부르지 않는다")
-    void 재열람이면_위임_안_함() {
+    @DisplayName("재열람(VIEWED)이면 FirstViewRecorder를 건너뛰고 조립기만 부른다")
+    void 재열람이면_조립기만_호출() {
         givenToken(activeToken());
         givenView(view("VIEWED"));
-        givenCompany(true);
-        givenAssignee();
+        givenAssembled(assembled("VIEWED", true));
 
-        PublicQuoteResponse res = service.view("raw", NOW);
+        service.view("raw", NOW);
 
         verifyNoInteractions(firstViewRecorder);
-        assertThat(res.status()).isEqualTo("VIEWED");
+        verify(publicQuoteAssembler).assembleForView(QUOTE_ID, true);
     }
 
     @Test
-    @DisplayName("RESPONDED 링크도 열람은 200으로 허용하고 respondable=false")
-    void RESPONDED_링크도_열람_허용() {
+    @DisplayName("RESPONDED 링크는 linkRespondable=false로 조립기에 넘긴다 (열람은 허용)")
+    void RESPONDED_링크는_linkRespondable_false로_넘긴다() {
         givenToken(respondedToken());
         givenView(view("APPROVED"));
-        givenCompany(true);
-        givenAssignee();
+        givenAssembled(assembled("APPROVED", false));
 
-        PublicQuoteResponse res = service.view("raw", NOW);
+        service.view("raw", NOW);
 
-        assertThat(res.status()).isEqualTo("APPROVED");
-        assertThat(res.respondable()).isFalse();
+        verify(publicQuoteAssembler).assembleForView(QUOTE_ID, false);
         verifyNoInteractions(firstViewRecorder);
     }
 
     @Test
-    @DisplayName("회사 정지 중이면 열람은 되고 respondable=false")
-    void 정지_회사면_열람은_되고_respondable_false() {
-        givenToken(activeToken());
-        givenView(view("VIEWED"));
-        givenCompany(false);
-        givenAssignee();
-
-        PublicQuoteResponse res = service.view("raw", NOW);
-
-        assertThat(res.respondable()).isFalse();
-    }
-
-    @Test
-    @DisplayName("견적 status가 DRAFT면 loadView 단계에서 404 (회사 조회 전)")
+    @DisplayName("견적 status가 DRAFT면 loadView 단계에서 404, 조립기는 부르지 않는다")
     void DRAFT_견적이면_404() {
         givenToken(activeToken());
         givenView(view("DRAFT"));
@@ -196,7 +179,7 @@ class CustomerQuoteServiceTest {
         assertThatThrownBy(() -> service.view("raw", NOW))
                 .isInstanceOfSatisfying(BusinessException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
-        verifyNoInteractions(companyQuery, dealQuery, memberQuery);
+        verifyNoInteractions(publicQuoteAssembler, firstViewRecorder);
     }
 
     @Test
@@ -208,44 +191,22 @@ class CustomerQuoteServiceTest {
         assertThatThrownBy(() -> service.view("raw", NOW))
                 .isInstanceOfSatisfying(BusinessException.class,
                         e -> assertThat(e.getErrorCode()).isEqualTo(ErrorCode.RESOURCE_NOT_FOUND));
+        verifyNoInteractions(publicQuoteAssembler);
     }
 
     @Test
-    @DisplayName("첫 열람 부수효과가 예외를 던져도 열람 응답은 200으로 반환한다 (status는 보정 안 됨)")
-    void 부수효과_실패해도_뷰는_반환() {
+    @DisplayName("첫 열람 부수효과가 예외를 던져도 조립기를 부르고 응답을 반환한다")
+    void 부수효과_실패해도_조립기_호출하고_반환() {
         givenToken(activeToken());
         givenView(view("SENT"));
-        givenCompany(true);
-        givenAssignee();
         willThrow(new RuntimeException("boom")).given(firstViewRecorder).recordFirstView(any());
+        PublicQuoteResponse assembled = assembled("SENT", true);
+        givenAssembled(assembled);
 
         PublicQuoteResponse res = service.view("raw", NOW);
 
-        assertThat(res.status()).isEqualTo("SENT");
-        assertThat(res.respondable()).isTrue();
-    }
-
-    @Test
-    @DisplayName("조립 — 회사·담당자·금액·항목(sortOrder 정렬)을 응답에 채운다")
-    void 조립_필드_매핑과_항목_정렬() {
-        givenToken(activeToken());
-        givenView(view("VIEWED", List.of(
-                new QuoteQuery.PublicQuoteView.Item("B품목", "개", 1, 100L, 100L, 2),
-                new QuoteQuery.PublicQuoteView.Item("A품목", "대", 3, 50L, 150L, 1))));
-        givenCompany(true);
-        givenAssignee();
-
-        PublicQuoteResponse res = service.view("raw", NOW);
-
-        assertThat(res.items()).extracting(PublicQuoteResponse.ItemView::name)
-                .containsExactly("A품목", "B품목");
-        assertThat(res.quoteNo()).isEqualTo(QUOTE_NO);
-        assertThat(res.companyName()).isEqualTo(COMPANY_NAME);
-        assertThat(res.companyBusinessNo()).isEqualTo(BUSINESS_NO);
-        assertThat(res.assignee().name()).isEqualTo("김담당");
-        assertThat(res.assignee().email()).isEqualTo("manager@hanbit.co.kr");
-        assertThat(res.vatMode()).isEqualTo("EXCLUDED");
-        assertThat(res.totalAmount()).isEqualTo(3_355_000L);
+        verify(publicQuoteAssembler).assembleForView(QUOTE_ID, true);
+        assertThat(res).isSameAs(assembled);
     }
 
     // ─────────────── 승인 ───────────────
@@ -454,10 +415,15 @@ class CustomerQuoteServiceTest {
                 .willReturn(new CompanyQuery.CompanySummary(COMPANY_ID, COMPANY_NAME, BUSINESS_NO, active));
     }
 
-    private void givenAssignee() {
-        given(dealQuery.assigneeIdOf(DEAL_ID)).willReturn(ASSIGNEE_ID);
-        given(memberQuery.getContact(ASSIGNEE_ID)).willReturn(
-                new MemberQuery.MemberContact("김담당", "manager@hanbit.co.kr", "010-1234-5678"));
+    private void givenAssembled(PublicQuoteResponse response) {
+        given(publicQuoteAssembler.assembleForView(eq(QUOTE_ID), anyBoolean())).willReturn(response);
+    }
+
+    private static PublicQuoteResponse assembled(String status, boolean respondable) {
+        return new PublicQuoteResponse(QUOTE_NO, status, COMPANY_NAME, BUSINESS_NO,
+                new PublicQuoteResponse.AssigneeInfo("김담당", "manager@hanbit.co.kr", "010-1234-5678"),
+                "EXCLUDED", "설치는 납품일로부터 3일 이내", LocalDate.of(2026, 9, 20),
+                3_050_000L, 305_000L, 3_355_000L, List.of(), respondable);
     }
 
     private static QuoteViewToken activeToken() {

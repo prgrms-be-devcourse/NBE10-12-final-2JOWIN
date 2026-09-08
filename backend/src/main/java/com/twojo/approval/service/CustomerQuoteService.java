@@ -9,18 +9,15 @@ import com.twojo.approval.repository.CustomerInquiryRepository;
 import com.twojo.approval.repository.QuoteViewTokenRepository;
 import com.twojo.approval.token.TokenGenerator;
 import com.twojo.boundary.CompanyQuery;
-import com.twojo.boundary.DealQuery;
-import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.NotificationCommand;
 import com.twojo.boundary.NotificationCommand.NotificationType;
+import com.twojo.boundary.PublicQuoteAssembler;
 import com.twojo.boundary.PublicQuoteResponse;
 import com.twojo.boundary.QuoteCommand;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import java.time.Instant;
-import java.util.Comparator;
-import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.slf4j.Logger;
@@ -33,9 +30,9 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><b>트랜잭션 경계</b>
  * <ul>
- *   <li>{@link #view} — <b>무트랜잭션</b>. 조립용 4개 boundary 조회는 각 impl이 자체 readOnly 트랜잭션을
- *       잡았다 놓는다(커넥션 장기 점유 회피). 첫 열람 부수효과만 {@link FirstViewRecorder}의 별
- *       read-write 트랜잭션으로 분리하고, 실패는 삼켜 조회가 500이 되지 않게 한다.</li>
+ *   <li>{@link #view} — <b>무트랜잭션</b>. 조립은 {@link PublicQuoteAssembler}에 위임한다(각 boundary
+ *       조회가 자체 readOnly 트랜잭션). 첫 열람 부수효과만 {@link FirstViewRecorder}의 별 read-write
+ *       트랜잭션으로 분리하고, 실패는 삼켜 조회가 500이 되지 않게 한다.</li>
  *   <li>{@link #approve}·{@link #reject}·{@link #createInquiry} — 단일 {@code @Transactional}.
  *       markViewed + 상태 전이 + {@code token.respond()} + 알림이 한 원자 단위다(docs/11 §D).</li>
  * </ul>
@@ -54,25 +51,20 @@ public class CustomerQuoteService {
     private final QuoteQuery quoteQuery;
     private final QuoteCommand quoteCommand;
     private final CompanyQuery companyQuery;
-    private final DealQuery dealQuery;
-    private final MemberQuery memberQuery;
     private final NotificationCommand notificationCommand;
     private final CustomerInquiryRepository customerInquiryRepository;
     private final CustomerNotificationMessages messages;
+    private final PublicQuoteAssembler publicQuoteAssembler;
     private final FirstViewRecorder firstViewRecorder;
 
-    /** 열람 조회 (AP-02·07·18). 무트랜잭션 — 첫 열람 부수효과만 {@link FirstViewRecorder}로 분리한다. */
+    /** 열람 조회 (AP-02·07·18). 무트랜잭션 — 조립은 {@link PublicQuoteAssembler}, 첫 열람 부수효과는 {@link FirstViewRecorder}. */
     public PublicQuoteResponse view(String rawToken, Instant now) {
         QuoteViewToken token = resolve(rawToken, now);
         QuoteQuery.PublicQuoteView view = loadView(token.getQuoteId());
-        CompanyQuery.CompanySummary company = companyQuery.get(view.companyId());
-        MemberQuery.MemberContact assignee = memberQuery.getContact(dealQuery.assigneeIdOf(view.dealId()));
 
-        String status = view.status();
-        if ("SENT".equals(status)) {
+        if ("SENT".equals(view.status())) {
             try {
-                firstViewRecorder.recordFirstView(view);   // 별 read-write 트랜잭션
-                status = "VIEWED";                          // 방금 전이시킨 상태를 응답에 반영
+                firstViewRecorder.recordFirstView(view);   // 별 read-write 트랜잭션 — SENT→VIEWED 커밋
             } catch (RuntimeException e) {
                 // 계약(Quote.markViewed = 비-SENT면 무동작)을 지키면 여기 안 온다. 오면 C markViewed 회귀 의심.
                 log.error("첫 열람 부수효과 실패 - 열람 응답은 그대로 반환. quoteId={}, {}",
@@ -80,10 +72,9 @@ public class CustomerQuoteService {
             }
         }
 
-        boolean respondable = company.active()
-                && token.isRespondable(now)
-                && ("SENT".equals(status) || "VIEWED".equals(status));
-        return assemble(view, company, assignee, respondable, status);
+        // loadView가 DRAFT/WITHDRAWN을 이미 걸렀다. 조립기가 status를 다시 읽는다(첫 열람 커밋 반영,
+        // getPublicView 2회 — readOnly라 v1 허용).
+        return publicQuoteAssembler.assembleForView(token.getQuoteId(), token.isRespondable(now));
     }
 
     /** 승인 (AP-08·19). 토큰 소진과 한 트랜잭션. */
@@ -170,22 +161,6 @@ public class CustomerQuoteService {
                     view.dealId(), messages.quoteViewed(view.quoteNo()), view.quoteId());
         }
         return new Preflight(token, view);
-    }
-
-    private PublicQuoteResponse assemble(QuoteQuery.PublicQuoteView view,
-                                        CompanyQuery.CompanySummary company,
-                                        MemberQuery.MemberContact assignee,
-                                        boolean respondable, String status) {
-        List<PublicQuoteResponse.ItemView> items = view.items().stream()
-                .sorted(Comparator.comparingInt(QuoteQuery.PublicQuoteView.Item::sortOrder))
-                .map(i -> new PublicQuoteResponse.ItemView(
-                        i.name(), i.unit(), i.quantity(), i.unitPrice(), i.amount()))
-                .toList();
-        return new PublicQuoteResponse(
-                view.quoteNo(), status, company.name(), company.businessNo(),
-                new PublicQuoteResponse.AssigneeInfo(assignee.name(), assignee.email(), assignee.phone()),
-                view.vatMode(), view.terms(), view.validUntil(),
-                view.supplyAmount(), view.vatAmount(), view.totalAmount(), items, respondable);
     }
 
     private record Preflight(QuoteViewToken token, QuoteQuery.PublicQuoteView view) {}
