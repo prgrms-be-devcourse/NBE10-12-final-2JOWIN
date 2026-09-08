@@ -175,11 +175,55 @@ data "aws_iam_policy_document" "gha_deploy" {
   }
 }
 
+# 배포 역할만 쓰는 신뢰 조건.
+#
+# terraform-apply 와 환경을 나눈 이유: 배포는 하루에도 여러 번이고 팀원
+# 5명이 머지한다. 승인자 1명이 매번 챙기는 것은 현실적이지 않고, 결국
+# "일단 승인" 이 되어 게이트가 형식만 남는다.
+#
+# 인프라 apply 는 반대다 — 드물고, 리소스를 지울 수 있다. 승인 화면에서
+# Plan 의 destroy 개수를 확인하는 것이 유일한 방어라 게이트를 남긴다.
+#
+# 배포 쪽 안전망은 승인이 아니라 다른 층이다:
+#   머지 전   필수 체크 9종 (build · flyway-validate 등)
+#   배포 전   DB 덤프 (deploy.sh)
+#   배포 중   헬스체크 90초
+#   실패 시   자동 롤백 -> 직전 SHA
+#   사후      Discord · ECR SHA 태그
+data "aws_iam_policy_document" "trust_env_deploy" {
+  statement {
+    effect  = "Allow"
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+
+    principals {
+      type        = "Federated"
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    # 두 환경을 다 받는다. prod 는 승인이 걸린 쪽이라 더 엄격하므로
+    # 남겨둬도 위험하지 않고, 워크플로 전환 중에 배포가 끊기지 않는다.
+    condition {
+      test     = "StringEquals"
+      variable = "${local.oidc_host}:sub"
+      values = [
+        "${var.github_sub_prefix}:environment:${var.prod_environment}",
+        "${var.github_sub_prefix}:environment:${var.deploy_environment}",
+      ]
+    }
+  }
+}
+
 resource "aws_iam_role" "gha_deploy" {
   name = "${var.project}-gha-deploy"
   # 백엔드 배포 워크플로. ECR push + 배포 중 22번 임시 개방만.
   description          = "Backend deploy workflow: ECR push and temporary SSH rule on Project=2jo security groups."
-  assume_role_policy   = data.aws_iam_policy_document.trust_env_prod.json
+  assume_role_policy   = data.aws_iam_policy_document.trust_env_deploy.json
   max_session_duration = 3600
 }
 
