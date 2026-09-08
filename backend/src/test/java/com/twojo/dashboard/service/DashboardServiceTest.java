@@ -36,8 +36,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * {@link DashboardService#summary} — 집계 3섹션(DB-01·02·03) 매핑과 C 미구현 degrade,
- * 영업 담당자의 응답 대기 강제 빈 목록, DB-04·05의 딜 제목 조립과 소프트 삭제 행 제외를 고정한다.
+ * {@link DashboardService} — 집계 섹션 매핑, 영업 담당자의 응답 대기 본인 담당 필터(SC-02),
+ * DB-04·05의 딜 제목 조립과 소프트 삭제 행 제외, performance 역할 가드·기간 검증을 고정한다.
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -74,8 +74,8 @@ class DashboardServiceTest {
         return new SalesStatsQuery.StageCount(name, count, sum);
     }
 
-    private static QuoteQuery.QuoteSummary awaiting(String quoteNo) {
-        return new QuoteQuery.QuoteSummary(UUID.randomUUID(), quoteNo, "도담건설",
+    private static QuoteQuery.QuoteSummary awaiting(String quoteNo, UUID dealId) {
+        return new QuoteQuery.QuoteSummary(UUID.randomUUID(), quoteNo, dealId, COMPANY_ID, null,
                 Instant.parse("2026-09-01T00:00:00Z"), null, LocalDate.of(2026, 9, 30));
     }
 
@@ -114,7 +114,7 @@ class DashboardServiceTest {
         given(salesStatsQuery.monthlyWon(any(), eq(MONTH)))
                 .willReturn(new SalesStatsQuery.WonStats(48_500_000L, 3));
         given(quoteQuery.findAwaitingResponse(COMPANY_ID))
-                .willReturn(List.of(awaiting("Q-2609-001")));
+                .willReturn(List.of(awaiting("Q-2609-001", DEAL_A)));
 
         DashboardSummaryResponse res = dashboardService.summary(ctx(AccessScope.COMPANY_ALL), MONTH);
 
@@ -129,44 +129,35 @@ class DashboardServiceTest {
     }
 
     @Test
-    @DisplayName("SalesStatsQuery가 미구현이면 pipeline은 빈 목록, 이달 성사는 0이다")
-    void 집계_스텁이면_빈_값으로_degrade한다() {
-        given(salesStatsQuery.pipeline(any()))
-                .willThrow(new UnsupportedOperationException("SalesStatsQuery.pipeline - C 3주차 구현 예정"));
-        given(salesStatsQuery.monthlyWon(any(), any()))
-                .willThrow(new UnsupportedOperationException("SalesStatsQuery.monthlyWon - C 3주차 구현 예정"));
-        given(quoteQuery.findAwaitingResponse(COMPANY_ID)).willReturn(List.of());
-
-        DashboardSummaryResponse res = dashboardService.summary(ctx(AccessScope.COMPANY_ALL), MONTH);
-
-        assertThat(res.pipeline()).isEmpty();
-        assertThat(res.monthWonAmount()).isEqualTo(0L);
-        assertThat(res.monthWonCount()).isEqualTo(0);
-    }
-
-    @Test
-    @DisplayName("findAwaitingResponse가 미구현이면 응답 대기는 빈 목록이다")
-    void 응답대기_스텁이면_빈_목록이다() {
+    @DisplayName("관리자는 회사 전체 응답 대기를 받고 담당 딜 조회를 하지 않는다")
+    void 관리자는_회사_전체_응답대기를_받는다() {
         given(salesStatsQuery.pipeline(any())).willReturn(List.of());
         given(salesStatsQuery.monthlyWon(any(), any())).willReturn(new SalesStatsQuery.WonStats(0L, 0));
         given(quoteQuery.findAwaitingResponse(COMPANY_ID))
-                .willThrow(new UnsupportedOperationException("QuoteQuery.findAwaitingResponse - C 3주차 구현 예정"));
+                .willReturn(List.of(awaiting("Q-A", DEAL_A), awaiting("Q-B", DEAL_B)));
 
         DashboardSummaryResponse res = dashboardService.summary(ctx(AccessScope.COMPANY_ALL), MONTH);
 
-        assertThat(res.waitingQuotes()).isEmpty();
+        assertThat(res.waitingQuotes())
+                .extracting(DashboardSummaryResponse.WaitingQuote::quoteNo)
+                .containsExactly("Q-A", "Q-B");
+        verify(dealQuery, never()).assignedDealIds(any(), any());
     }
 
     @Test
-    @DisplayName("영업 담당자는 응답 대기가 강제로 빈 목록이고 findAwaitingResponse를 부르지 않는다")
-    void 영업담당자는_응답대기가_강제로_빈_목록이다() {
+    @DisplayName("영업 담당자의 응답 대기는 본인 담당 딜의 견적만 남는다 (SC-02)")
+    void 영업담당자는_본인_담당_딜의_응답대기만_받는다() {
         given(salesStatsQuery.pipeline(any())).willReturn(List.of());
         given(salesStatsQuery.monthlyWon(any(), any())).willReturn(new SalesStatsQuery.WonStats(0L, 0));
+        given(quoteQuery.findAwaitingResponse(COMPANY_ID))
+                .willReturn(List.of(awaiting("Q-MINE", DEAL_A), awaiting("Q-OTHER", DEAL_B)));
+        given(dealQuery.assignedDealIds(COMPANY_ID, MEMBER_ID)).willReturn(List.of(DEAL_A));
 
         DashboardSummaryResponse res = dashboardService.summary(ctx(AccessScope.OWNED_ONLY), MONTH);
 
-        assertThat(res.waitingQuotes()).isEmpty();
-        verify(quoteQuery, never()).findAwaitingResponse(any());
+        assertThat(res.waitingQuotes())
+                .extracting(DashboardSummaryResponse.WaitingQuote::quoteNo)
+                .containsExactly("Q-MINE");
     }
 
     @Test
@@ -302,12 +293,10 @@ class DashboardServiceTest {
     }
 
     @Test
-    @DisplayName("performance 계약이 미구현이면 members·conversions는 빈 목록이다")
-    void performance_스텁이면_빈_목록으로_degrade한다() {
-        given(salesStatsQuery.performance(eq(COMPANY_ID), any(), any()))
-                .willThrow(new UnsupportedOperationException("SalesStatsQuery.performance - 자리표시자"));
-        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any()))
-                .willThrow(new UnsupportedOperationException("SalesStatsQuery.conversions - 자리표시자"));
+    @DisplayName("performance 자리표시자(빈 목록)는 그대로 나간다 - 화면이 집계 준비 중으로 표시")
+    void performance_자리표시자_빈_목록은_그대로_나간다() {
+        given(salesStatsQuery.performance(eq(COMPANY_ID), any(), any())).willReturn(List.of());
+        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any())).willReturn(List.of());
 
         DashboardPerformanceResponse res =
                 dashboardService.performance(ctx(AccessScope.COMPANY_ALL), FROM, TO);

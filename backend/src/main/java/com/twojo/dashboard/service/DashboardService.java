@@ -20,11 +20,8 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
 /**
@@ -33,19 +30,15 @@ import org.springframework.stereotype.Service;
  * <p><b>무트랜잭션</b> — 각 boundary 구현이 자기 readOnly 트랜잭션을 잡는다. 커넥션 하나를
  * 조립 내내 붙들지 않기 위함이며 {@code PublicQuoteAssembler}·{@code CustomerQuoteService}와 같은 방침이다.
  *
- * <p><b>C 미구현부 우회(degrade)</b> — C의 {@link SalesStatsQuery} 일부와
- * {@link QuoteQuery#findAwaitingResponse}가 {@code UnsupportedOperationException}을 던지면
- * 그 예외만 잡아 해당 섹션을 빈 값으로 채우고 200을 유지한다 — 다른 예외는 전파한다.
- * C 실구현이 머지되면 이 방어는 죽은 코드가 되어 제거한다 (issue #202).
- * B의 {@link ActivityQuery}·{@link TaskQuery}는 실 빈이 있어(#178) 그대로 호출한다.
+ * <p><b>일부 집계는 아직 자리표시자다</b> (#207) — {@link SalesStatsQuery#monthlyWon}·
+ * {@link SalesStatsQuery#performance}·{@link SalesStatsQuery#conversions}가 빈 값·0을 돌려준다
+ * (성사 금액은 orders 경계 창구, 전환율은 전이 이력이 아직 없음 — C 후속). 화면은 이 세 카드를
+ * "0"이 아니라 "집계 준비 중"으로 표시한다. {@code pipeline}과 {@link QuoteQuery#findAwaitingResponse}는
+ * 실구현이다.
  */
 @Service
 @RequiredArgsConstructor
 public class DashboardService {
-
-    private static final Logger log = LoggerFactory.getLogger(DashboardService.class);
-
-    private static final SalesStatsQuery.WonStats ZERO_WON = new SalesStatsQuery.WonStats(0L, 0);
 
     /** 대시보드 카드 노출 건수 — 계약 상한(50) 이하. 프론트 목 기준 10. */
     private static final int RECENT_LIMIT = 10;
@@ -61,28 +54,21 @@ public class DashboardService {
     private final DealQuery dealQuery;
 
     /**
-     * 요약 (DB-01~05). 스코프는 {@code ctx}로 각 협력자가 해석한다 — 단, DB-03 응답 대기는
-     * {@link QuoteQuery#findAwaitingResponse}가 {@code companyId}만 받고 {@code QuoteSummary}에
-     * {@code dealId}가 없어 영업 담당자 본인 필터가 불가능하다. 회사 전체 견적 노출은 데이터 누수라
-     * <b>영업 담당자(OWNED_ONLY)에게는 빈 목록을 강제</b>한다 (v1 한계 — C가 {@code QuoteSummary.dealId}를
-     * 추가하면 실필터로 전환, issue #202).
+     * 요약 (DB-01~05). 스코프는 대부분 {@code ctx}로 각 협력자가 해석한다 — 단, DB-03 응답 대기는
+     * {@link QuoteQuery#findAwaitingResponse}가 회사 전체를 돌려주므로 <b>영업 담당자(OWNED_ONLY)는
+     * {@link DealQuery#assignedDealIds}로 본인 담당 딜 견적만 남긴다</b> (SC-02).
      *
      * <p>DB-04·05는 계약이 {@code dealId}만 주므로 제목을 {@link DealQuery#summariesByIds}로 조립한다.
      * 소프트 삭제된 딜은 결과에서 빠지므로 그 줄을 응답에서 제외한다.
      */
     public DashboardSummaryResponse summary(AccessContext ctx, YearMonth month) {
-        List<DashboardSummaryResponse.StageCount> pipeline =
-                orEmptyList("pipeline", () -> salesStatsQuery.pipeline(ctx)).stream()
-                        .map(DashboardService::toStageCount)
-                        .toList();
+        List<DashboardSummaryResponse.StageCount> pipeline = salesStatsQuery.pipeline(ctx).stream()
+                .map(DashboardService::toStageCount)
+                .toList();
 
-        SalesStatsQuery.WonStats won = orZeroWon(() -> salesStatsQuery.monthlyWon(ctx, month));
+        SalesStatsQuery.WonStats won = salesStatsQuery.monthlyWon(ctx, month);
 
-        List<DashboardSummaryResponse.WaitingQuote> waitingQuotes = ctx.scope() == AccessScope.OWNED_ONLY
-                ? List.of()
-                : orEmptyList("findAwaitingResponse", () -> quoteQuery.findAwaitingResponse(ctx.companyId())).stream()
-                        .map(DashboardService::toWaitingQuote)
-                        .toList();
+        List<DashboardSummaryResponse.WaitingQuote> waitingQuotes = waitingQuotes(ctx);
 
         List<ActivityQuery.RecentActivitySummary> activities = activityQuery.recent(ctx, RECENT_LIMIT);
         List<TaskQuery.FollowUpSummary> tasks = taskQuery.followUps(ctx, FOLLOWUP_LIMIT);
@@ -105,12 +91,23 @@ public class DashboardService {
     }
 
     /**
-     * 실적 분석 (DB-06~08) — <b>기업 관리자 전용</b>. 역할 자체로 갈리는 행위라 위반은 403
-     * {@code FORBIDDEN}이다 (Q-43). 기간은 {@code from ≤ to}이고 {@link #MAX_RANGE_DAYS}일 이하여야
-     * 하며, 벗어나면 400 {@code VALIDATION_FAILED}.
-     *
-     * <p>{@link SalesStatsQuery#performance}·{@link SalesStatsQuery#conversions}는 아직 자리표시자라
-     * 빈 목록으로 나갈 수 있다 — 화면은 "0"이 아니라 "집계 준비 중"으로 표시한다 (C·D 협의 2026-09-08).
+     * DB-03 응답 대기. {@link QuoteQuery#findAwaitingResponse}는 {@code AccessContext}를 받지 못해
+     * 회사 전체를 돌려주므로, 영업 담당자는 {@link DealQuery#assignedDealIds}로 본인 담당 딜만 남긴다.
+     * ({@code customerName}은 계약상 아직 {@code null} — B의 회사 스코프 이름 조회 창구 대기.)
+     */
+    private List<DashboardSummaryResponse.WaitingQuote> waitingQuotes(AccessContext ctx) {
+        List<QuoteQuery.QuoteSummary> awaiting = quoteQuery.findAwaitingResponse(ctx.companyId());
+        if (ctx.scope() == AccessScope.OWNED_ONLY) {
+            Set<UUID> ownedDeals = Set.copyOf(dealQuery.assignedDealIds(ctx.companyId(), ctx.memberId()));
+            awaiting = awaiting.stream().filter(q -> ownedDeals.contains(q.dealId())).toList();
+        }
+        return awaiting.stream().map(DashboardService::toWaitingQuote).toList();
+    }
+
+    /**
+     * 실적 분석 (DB-06~08) — <b>기업 관리자 전용</b>. 역할 위반은 403 {@code FORBIDDEN} (Q-43).
+     * 기간은 {@code from <= to}이고 {@link #MAX_RANGE_DAYS}일 이하여야 하며, 벗어나면 400 {@code VALIDATION_FAILED}.
+     * {@code performance}·{@code conversions}는 아직 자리표시자라 빈 목록으로 나갈 수 있다 (위 클래스 주석).
      */
     public DashboardPerformanceResponse performance(AccessContext ctx, LocalDate from, LocalDate to) {
         if (ctx.role() != Role.COMPANY_ADMIN) {
@@ -121,12 +118,12 @@ public class DashboardService {
         }
 
         List<DashboardPerformanceResponse.MemberPerformance> members =
-                orEmptyList("performance", () -> salesStatsQuery.performance(ctx.companyId(), from, to)).stream()
+                salesStatsQuery.performance(ctx.companyId(), from, to).stream()
                         .map(DashboardService::toMemberPerformance)
                         .toList();
 
         List<DashboardPerformanceResponse.StageConversion> conversions =
-                orEmptyList("conversions", () -> salesStatsQuery.conversions(ctx.companyId(), from, to)).stream()
+                salesStatsQuery.conversions(ctx.companyId(), from, to).stream()
                         .map(DashboardService::toStageConversion)
                         .toList();
 
@@ -149,26 +146,6 @@ public class DashboardService {
         return dealQuery.summariesByIds(companyId, dealIds).stream()
                 .collect(Collectors.toMap(
                         DealQuery.DealSummary::id, DealQuery.DealSummary::title, (a, b) -> a));
-    }
-
-    /** throw 스텁이면 빈 목록. {@code UnsupportedOperationException}만 삼킨다 — 다른 예외는 전파한다. */
-    private static <T> List<T> orEmptyList(String label, Supplier<List<T>> call) {
-        try {
-            return call.get();
-        } catch (UnsupportedOperationException notReady) {
-            log.warn("집계 계약 미구현 - {} 섹션을 빈 목록으로 응답한다 (C 실구현 대기)", label);
-            return List.of();
-        }
-    }
-
-    /** throw 스텁이면 {@code (0, 0)}. */
-    private static SalesStatsQuery.WonStats orZeroWon(Supplier<SalesStatsQuery.WonStats> call) {
-        try {
-            return call.get();
-        } catch (UnsupportedOperationException notReady) {
-            log.warn("집계 계약 미구현 - 이달 성사를 0으로 응답한다 (C 실구현 대기)");
-            return ZERO_WON;
-        }
     }
 
     private static DashboardSummaryResponse.StageCount toStageCount(SalesStatsQuery.StageCount s) {

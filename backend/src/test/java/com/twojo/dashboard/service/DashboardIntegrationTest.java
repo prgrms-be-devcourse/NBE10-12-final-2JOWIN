@@ -29,11 +29,11 @@ import org.springframework.test.context.ActiveProfiles;
  * 대시보드 조립을 실 DB·실 빈으로 검증한다 — <b>하이브리드</b>다.
  *
  * <ul>
- *   <li>B 모듈({@code ActivityQuery}·{@code TaskQuery})은 #178로 실구현이라 시드한 활동·할 일이
- *       딜 제목까지 채워져 <b>실데이터</b>로 나온다 (목 테스트로는 JPQL 한 줄도 안 돈다).</li>
- *   <li>C 모듈({@code SalesStatsQuery}·{@code QuoteQuery.findAwaitingResponse})은 아직 throw 스텁이라
- *       서비스의 degrade가 걸려 <b>빈 값</b>으로 나온다. (#207 머지 후 {@code pipeline}은 실구현이
- *       되므로 그 단언은 그때 시드 딜 버킷 검증으로 교체한다.)</li>
+ *   <li>B의 {@code ActivityQuery}·{@code TaskQuery}(#178), C의 {@code SalesStatsQuery.pipeline}·
+ *       {@code QuoteQuery.findAwaitingResponse}(#207)는 실구현이라 시드한 딜·견적·활동·할 일이
+ *       실 JPQL로 조회돼 나온다 (목 테스트로는 쿼리 한 줄도 안 돈다).</li>
+ *   <li>C의 {@code monthlyWon}·{@code performance}·{@code conversions}는 아직 자리표시자라
+ *       빈 값·0으로 나온다 — 화면은 "0"이 아니라 "집계 준비 중"으로 표시한다.</li>
  * </ul>
  *
  * <p>클래스에 {@code @Transactional}을 붙이지 않는다 — 붙이면 커밋이 미뤄져 JdbcTemplate이 확정 전
@@ -54,11 +54,12 @@ class DashboardIntegrationTest {
     private UUID customerId;
     private UUID contactId;
     private UUID dealId;
+    private UUID quoteId;
     private UUID activityId;
     private UUID taskId;
 
     @BeforeEach
-    void 한_회사_한_딜_한_활동_한_할일을_심는다() {
+    void 한_회사_한_딜_한_견적_한_활동_한_할일을_심는다() {
         applicationId = UUID.randomUUID();
         companyId = UUID.randomUUID();
         adminId = UUID.randomUUID();
@@ -66,6 +67,7 @@ class DashboardIntegrationTest {
         customerId = UUID.randomUUID();
         contactId = UUID.randomUUID();
         dealId = UUID.randomUUID();
+        quoteId = UUID.randomUUID();
         activityId = UUID.randomUUID();
         taskId = UUID.randomUUID();
 
@@ -101,6 +103,11 @@ class DashboardIntegrationTest {
                 values (?, ?, ?, ?, '대시보드 시연 딜', 'QUOTE', 5000000, ?, 0)
                 """, dealId, companyId, customerId, repId, LocalDate.now().plusDays(30));
         jdbc.update("""
+                insert into quote (id, company_id, deal_id, quote_no, status, vat_mode,
+                                   supply_amount, vat_amount, total_amount, valid_until, sent_at, version)
+                values (?, ?, ?, 'Q-INT-001', 'SENT', 'EXCLUDED', 1000000, 100000, 1100000, ?, ?, 0)
+                """, quoteId, companyId, dealId, LocalDate.now().plusDays(30), OffsetDateTime.now().minusDays(2));
+        jdbc.update("""
                 insert into activity (id, company_id, deal_id, author_member_id, channel, content, occurred_at)
                 values (?, ?, ?, ?, 'CALL', '리모델링 일정 확인', ?)
                 """, activityId, companyId, dealId, repId, OffsetDateTime.now());
@@ -114,6 +121,7 @@ class DashboardIntegrationTest {
     void 역순으로_지운다() {
         jdbc.update("delete from task where id = ?", taskId);
         jdbc.update("delete from activity where id = ?", activityId);
+        jdbc.update("delete from quote where id = ?", quoteId);
         jdbc.update("delete from deal where id = ?", dealId);
         jdbc.update("delete from customer_contact where id = ?", contactId);
         jdbc.update("delete from customer where id = ?", customerId);
@@ -132,44 +140,55 @@ class DashboardIntegrationTest {
     }
 
     @Test
-    @DisplayName("관리자 summary는 활동·할 일을 딜 제목까지 채워 실데이터로 주고, C 집계는 degrade로 빈 값이다")
-    void 관리자_summary는_하이브리드로_나온다() {
+    @DisplayName("관리자 summary — 파이프라인·응답 대기·활동·할 일이 실데이터, 이달 성사는 자리표시자(0)")
+    void 관리자_summary는_실데이터와_자리표시자가_섞여_나온다() {
         DashboardSummaryResponse res = dashboardService.summary(admin(), YearMonth.now());
 
+        // DB-01 — 시드 딜(QUOTE 단계)이 QUOTE 버킷에 1건, 나머지 단계는 0으로 채워짐
+        assertThat(res.pipeline())
+                .filteredOn(s -> s.stage().equals("QUOTE"))
+                .singleElement()
+                .satisfies(s -> assertThat(s.count()).isEqualTo(1));
+
+        // DB-03 — 시드한 SENT 견적. customerName은 계약상 아직 null (B 창구 대기)
+        assertThat(res.waitingQuotes())
+                .singleElement()
+                .satisfies(w -> {
+                    assertThat(w.quoteNo()).isEqualTo("Q-INT-001");
+                    assertThat(w.customerName()).isNull();
+                });
+
+        // DB-04·05 — 딜 제목까지 조립
         assertThat(res.recentActivities())
                 .singleElement()
                 .satisfies(a -> {
                     assertThat(a.dealTitle()).isEqualTo("대시보드 시연 딜");
                     assertThat(a.summary()).contains("리모델링 일정 확인");
-                    assertThat(a.dealId()).isEqualTo(dealId);
                 });
         assertThat(res.followUps())
                 .singleElement()
-                .satisfies(f -> {
-                    assertThat(f.dealTitle()).isEqualTo("대시보드 시연 딜");
-                    assertThat(f.content()).isEqualTo("재방문 예약");
-                });
+                .satisfies(f -> assertThat(f.content()).isEqualTo("재방문 예약"));
 
-        // C degrade — #207 머지 후 pipeline은 실구현되므로 이 단언은 시드 딜(QUOTE) 버킷 검증으로 교체한다.
-        assertThat(res.pipeline()).isEmpty();
+        // DB-02 — 자리표시자
         assertThat(res.monthWonAmount()).isEqualTo(0L);
         assertThat(res.monthWonCount()).isEqualTo(0);
-        assertThat(res.waitingQuotes()).isEmpty();
     }
 
     @Test
-    @DisplayName("영업 담당자 summary는 waitingQuotes가 강제 빈 목록이고, 본인 담당 딜의 활동·할 일은 나온다")
-    void 영업담당자_summary는_응답대기가_비고_본인_담당은_나온다() {
+    @DisplayName("영업 담당자 summary — 본인 담당 딜의 응답 대기·활동·할 일이 나온다 (SC-02)")
+    void 영업담당자_summary는_본인_담당만_나온다() {
         DashboardSummaryResponse res = dashboardService.summary(rep(), YearMonth.now());
 
-        assertThat(res.waitingQuotes()).isEmpty();
+        assertThat(res.waitingQuotes())
+                .extracting(DashboardSummaryResponse.WaitingQuote::quoteNo)
+                .containsExactly("Q-INT-001");
         assertThat(res.recentActivities()).hasSize(1);
         assertThat(res.followUps()).hasSize(1);
     }
 
     @Test
-    @DisplayName("관리자 performance는 degrade로 members·conversions가 빈 목록이다")
-    void 관리자_performance는_빈_목록으로_degrade한다() {
+    @DisplayName("관리자 performance — members·conversions는 자리표시자라 빈 목록")
+    void 관리자_performance는_자리표시자로_빈_목록이다() {
         DashboardPerformanceResponse res =
                 dashboardService.performance(admin(), LocalDate.now().minusMonths(1), LocalDate.now());
 
