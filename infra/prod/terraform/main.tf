@@ -33,6 +33,20 @@ module "storage" {
 module "compute" {
   source = "./modules/compute"
 
+  # 보안그룹 "규칙"이 다 붙은 뒤에 인스턴스를 만든다.
+  #
+  # 이게 없으면 terraform 이 둘을 형제로 본다. 인스턴스가 참조하는 것은
+  # aws_security_group.web 하나뿐이고, 규칙들은 별도 리소스라 인스턴스와
+  # 순서 관계가 없다 — 병렬로 만들어질 수 있다.
+  #
+  # 아웃바운드 규칙보다 인스턴스가 먼저 뜨면 cloud-init 이 인터넷에
+  # 나가지 못해 도커 설치에서 멈춘다. 첫 apply 때 실제로 그랬다
+  # (규칙 생성이 실패했는데 인스턴스는 그대로 떴다).
+  #
+  # 경쟁 조건이라 될 때도 있고 안 될 때도 된다. network 는 작고 빨라서
+  # 전체를 기다려도 손해가 없다.
+  depends_on = [module.network]
+
   project             = var.project
   aws_region          = var.aws_region
   instance_type       = var.instance_type
