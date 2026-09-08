@@ -71,6 +71,7 @@ jobs:
               - 'infra/prod/compose/**'
               - 'infra/prod/caddy/**'
               - 'infra/prod/monitoring/**'
+              - 'infra/prod/systemd/**'
               - '.github/workflows/infra.yml'
             workflows:
               - '.github/workflows/**'
@@ -263,6 +264,19 @@ jobs:
 
       # 가장 잘 깨지는 곳이다. Grafana 알람 provisioning 은 형식이 조금만
       # 어긋나도 오류 없이 그냥 등록되지 않는다 — 알람이 조용히 사라진다.
+      # 유닛 파일이 틀리면 배포는 성공하는데 백업만 조용히 안 돈다.
+      # 그건 25시간 뒤 알람으로만 드러나므로 여기서 먼저 잡는다 (이슈 #159).
+      - name: systemd 유닛
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /opt/2jo/scripts
+          echo '#!/bin/sh' | sudo tee /opt/2jo/scripts/backup.sh >/dev/null
+          sudo chmod +x /opt/2jo/scripts/backup.sh
+          cp infra/prod/systemd/backup.service infra/prod/systemd/backup.timer /tmp/
+          systemd-analyze verify --user /tmp/backup.timer
+          # OnCalendar 가 파싱되는지, 실제로 하루 한 번인지 확인한다
+          systemd-analyze calendar --iterations=2 '*-*-* 19:00:00 UTC'
+
       - name: Grafana provisioning (실제 기동)
         run: |
           set -euo pipefail
@@ -279,8 +293,26 @@ jobs:
           docker logs gf-check 2>&1 | grep "level=error" || true
 
           docker rm -f gf-check > /dev/null
-          if [ "$rules" -ne 6 ]; then
-            echo "::error::알람 규칙이 6개가 아니다 (${rules}개). provisioning 형식을 확인할 것"
+
+          # 개수를 코드에 박아두면 알람을 하나 추가할 때마다 여기가 깨진다.
+          # 이 검사가 막으려는 건 그게 아니라 "형식이 틀린 규칙을 Grafana 가
+          # 조용히 버리는 것" 이다. 그러니 파일에 선언된 개수와 대조한다.
+          declared="$(python3 -c "
+          import yaml
+          d = yaml.safe_load(open('infra/prod/monitoring/grafana/provisioning/alerting/rules.yml'))
+          print(sum(len(g['rules']) for g in d['groups']))
+          ")"
+          echo "rules.yml 에 선언된 규칙: ${declared}개"
+
+          if [ "$rules" -ne "$declared" ]; then
+            echo "::error::선언은 ${declared}개인데 Grafana 가 ${rules}개만 등록했다. 규칙 하나가 조용히 버려졌다"
+            exit 1
+          fi
+
+          # 알람 개수 상한은 별개 관심사다. 울려도 아무도 안 보게 되면 0개와 같다.
+          # 늘려야 한다면 그건 의식적인 결정이어야 하므로 여기서 한 번 막는다.
+          if [ "$declared" -gt 8 ]; then
+            echo "::error::알람이 ${declared}개다. 상한(8)을 넘기려면 이 줄을 함께 고칠 것"
             exit 1
           fi
 

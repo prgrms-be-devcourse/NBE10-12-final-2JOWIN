@@ -1,0 +1,28 @@
+[Unit]
+# 야간 PostgreSQL 덤프 -> S3. 실제 동작은 backup.sh 안에 있다.
+#
+# systemd **user** unit 이다. deploy.sh 와 마찬가지로 ec2-user 로 돌고
+# sudo 를 요구하지 않는다. 그래서 이 파일은 /etc 가 아니라
+# ~/.config/systemd/user/ 에 설치된다 (deploy.sh 가 한다).
+#
+# 설계 근거: 이슈 #159
+Description=2JO PostgreSQL 야간 덤프 -> S3
+Documentation=https://github.com/prgrms-be-devcourse/NBE10-12-final-2JOWIN/issues/159
+
+# 도커가 없으면 덤프를 뜰 수 없다. user unit 은 시스템 유닛을 Requires 로
+# 걸 수 없으므로 여기서는 선언하지 않고, backup.sh 가 컨테이너를 못 찾으면
+# 스스로 실패한다.
+
+[Service]
+Type=oneshot
+ExecStart=/opt/2jo/scripts/backup.sh
+
+# 덤프가 길어져도 하루를 넘기지는 않는다. 걸리면 죽여서 다음 회차를 막지 않는다.
+TimeoutStartSec=30min
+
+# 75 는 "배포가 진행 중이라 건너뛰었다" 다. 장애가 아니므로 성공으로 본다 —
+# 이걸 실패로 두면 배포와 겹칠 때마다 알림이 울린다.
+SuccessExitStatus=75
+
+[Install]
+WantedBy=default.target
