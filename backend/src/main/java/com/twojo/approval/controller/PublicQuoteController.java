@@ -2,9 +2,9 @@ package com.twojo.approval.controller;
 
 import com.twojo.approval.dto.ApproveQuoteRequest;
 import com.twojo.approval.dto.CreateInquiryRequest;
-import com.twojo.approval.dto.PublicQuoteResponse;
 import com.twojo.approval.dto.RejectQuoteRequest;
 import com.twojo.approval.service.CustomerQuoteService;
+import com.twojo.boundary.PublicQuoteResponse;
 import jakarta.validation.Valid;
 import java.time.Instant;
 import lombok.RequiredArgsConstructor;
