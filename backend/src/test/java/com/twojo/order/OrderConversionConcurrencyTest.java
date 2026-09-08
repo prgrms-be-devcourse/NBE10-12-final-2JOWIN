@@ -59,7 +59,18 @@ import org.springframework.test.context.ActiveProfiles;
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class OrderConversionConcurrencyTest {
 
-    private static final int THREADS = 100;
+    /**
+     * 동시 요청 수 — <b>커넥션 풀(기본 10)의 두 배</b>다.
+     *
+     * <p>경쟁을 만드는 데 필요한 것은 "여럿이 같은 행을 동시에 노린다"이지 숫자의 크기가 아니다.
+     * 풀의 두 배면 <b>반드시</b> 대기가 생기고 {@code FOR UPDATE}가 줄을 세운다.
+     *
+     * <p><b>100으로 두었다가 내렸다.</b> 2코어 CI 러너에서는 90개가 커넥션을 기다리다
+     * Hikari 타임아웃(기본 30초)에 걸릴 수 있고, 그러면 이 테스트의 단언
+     * ("진 쪽은 전부 {@code QUOTE_ALREADY_CONVERTED}")이 <b>구현이 아니라 러너 사정</b>으로 깨진다.
+     * 검증하는 내용은 20이든 100이든 같으므로 안정적인 쪽을 택한다.
+     */
+    private static final int THREADS = 20;
 
     @Autowired
     private OrderService orderService;
@@ -132,7 +143,7 @@ class OrderConversionConcurrencyTest {
     }
 
     @Test
-    @DisplayName("동일 견적 100건 동시 전환 → 주문 1건만 생성된다 (OD-03)")
+    @DisplayName("동일 견적 동시 전환 → 주문 1건만 생성된다 (OD-03)")
     void 동시_전환은_1건만_성공한다() throws InterruptedException {
         CountDownLatch 출발선 = new CountDownLatch(1);
         CountDownLatch 종료 = new CountDownLatch(THREADS);
@@ -169,7 +180,7 @@ class OrderConversionConcurrencyTest {
 
         assertThat(jdbc.queryForObject("select count(*) from orders where quote_id = ?", Integer.class, quoteId))
                 .isOne();
-        // 채번도 한 번만 소비돼야 한다 — 실패한 99건이 번호를 먼저 뽑았다면 카운터가 100까지 올라간다
+        // 채번도 한 번만 소비돼야 한다 — 진 쪽이 번호를 먼저 뽑았다면 카운터가 그만큼 올라간다
         assertThat(jdbc.queryForObject(
                 "select last_seq from document_sequence where company_id = ? and doc_type = 'ORDER'",
                 Integer.class, companyId)).isOne();
