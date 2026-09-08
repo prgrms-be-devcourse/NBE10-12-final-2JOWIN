@@ -10,14 +10,22 @@ variable "project" {
   default     = "2jo"
 }
 
-variable "github_repo" {
-  description = "OIDC 신뢰 대상 레포 (org/repo). 신뢰 정책의 sub 조건에 그대로 들어간다"
+variable "github_sub_prefix" {
+  description = <<-EOT
+    OIDC 토큰 sub 클레임의 접두사. 신뢰 조건에 StringEquals 로 들어간다.
+
+    org/repo 를 그대로 쓰지 않는 이유: 이 조직은 subject 에 숫자 ID 를
+    함께 넣는 형식을 쓴다(org 이름이 바뀌어도 신뢰가 흔들리지 않게 하는
+    GitHub 기능). 실제 값은 다음으로 확인한다.
+
+      gh api repos/<org>/<repo>/actions/oidc/customization/sub
+  EOT
   type        = string
-  default     = "prgrms-be-devcourse/NBE10-12-final-2JOWIN"
+  default     = "repo:prgrms-be-devcourse@88020948/NBE10-12-final-2JOWIN@1347278714"
 
   validation {
-    condition     = can(regex("^[^/]+/[^/]+$", var.github_repo))
-    error_message = "github_repo 는 org/repo 형식이어야 한다."
+    condition     = startswith(var.github_sub_prefix, "repo:")
+    error_message = "github_sub_prefix 는 repo: 로 시작해야 한다."
   }
 }
 

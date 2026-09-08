@@ -34,6 +34,9 @@ public enum ErrorCode {
 
     // ── A 구성원·초대
     INVITATION_NOT_PENDING(HttpStatus.CONFLICT, "이 초대는 더 이상 유효하지 않습니다. 관리자에게 재발송을 요청해 주세요."),
+    // 대기 초대가 그 이메일을 점유하고 있다 — 계정이 있는 것(EMAIL_ALREADY_MEMBER)과 다르다.
+    // 이쪽은 취소 후 재발송으로 풀리고 저쪽은 초대 자체가 불가능하다. 관리자가 취할 행동이 갈려 나눈다
+    INVITATION_ALREADY_PENDING(HttpStatus.CONFLICT, "이미 발송된 초대가 있습니다. 취소 후 다시 발송해 주세요."),
     LAST_ADMIN_PROTECTED(HttpStatus.UNPROCESSABLE_ENTITY, "회사에는 최소 한 명의 관리자가 필요합니다."),
     MEMBER_INACTIVE_TRANSFER_REQUIRED(HttpStatus.UNPROCESSABLE_ENTITY, "담당 중인 Deal이 있습니다. 이관받을 구성원을 지정해 주세요."),
 

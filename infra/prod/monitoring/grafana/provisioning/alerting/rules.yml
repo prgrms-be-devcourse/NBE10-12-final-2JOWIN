@@ -1,4 +1,4 @@
-# 알람 6개. 이 숫자를 넘기지 않는다 — 울려도 아무도 안 보게 되면 0개와 같다.
+# 알람 7개. 이 숫자를 크게 넘기지 않는다 — 울려도 아무도 안 보게 되면 0개와 같다.
 #
 # ERROR 로그는 여기 없다. 개발 중에는 상시 발생해서 알람으로 걸면 첫날부터
 # 무시하게 된다. 대시보드 패널로만 둔다 (monitoring.md §4.2).
@@ -232,6 +232,52 @@ groups:
               expression: A
               conditions:
                 - evaluator: { type: gt, params: [3] }
+                  operator: { type: and }
+                  query: { params: [A] }
+                  reducer: { type: last }
+                  type: query
+
+      # ── 7. 백업 부재 ─────────────────────────────────────────────────
+      # 실패가 아니라 "마지막 성공이 언제냐"를 본다. 이 방식만이 타이머가
+      # 아예 돌지 않은 경우까지 잡는다 — 실패는 흔적을 남기지만 부재는
+      # 흔적조차 남기지 않는다.
+      #
+      # `or vector(0)` 이 핵심이다. 지표가 한 번도 생긴 적 없으면 시계열이
+      # 없어서 쿼리가 빈 결과를 내고, 조건이 평가되지 않아 조용히 넘어간다.
+      # 0 으로 대체하면 time() - 0 이 되어 즉시 발화한다.
+      #
+      # 값은 호스트의 backup.sh 가 node_exporter textfile collector 로
+      # 올린다 (이슈 #159).
+      - uid: 2jo-backup-stale
+        title: '백업이 하루 넘게 없다'
+        condition: B
+        for: 10m
+        labels:
+          severity: critical
+        annotations:
+          summary: '마지막 백업 성공이 25시간을 넘었다'
+          description: 'systemctl --user list-timers 로 backup.timer 를 먼저 확인할 것. 지표가 없으면 타이머가 설치되지 않은 것이다'
+        noDataState: Alerting
+        execErrState: Error
+        data:
+          - refId: A
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: prometheus
+            model:
+              refId: A
+              editorMode: code
+              expr: 'time() - max(twojo_backup_last_success_timestamp_seconds or vector(0))'
+              instant: true
+              range: false
+          - refId: B
+            relativeTimeRange: { from: 600, to: 0 }
+            datasourceUid: __expr__
+            model:
+              refId: B
+              type: threshold
+              expression: A
+              conditions:
+                - evaluator: { type: gt, params: [90000] }
                   operator: { type: and }
                   query: { params: [A] }
                   reducer: { type: last }

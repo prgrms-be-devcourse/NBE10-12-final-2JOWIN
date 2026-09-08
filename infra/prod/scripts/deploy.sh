@@ -88,6 +88,40 @@ aws s3 sync "s3://${BUCKET}/config/" "$APP_DIR/" \
 # S3 는 실행 비트를 보존하지 않는다. 방금 받아온 스크립트는 전부 644 다.
 chmod +x "$APP_DIR"/scripts/*.sh
 
+# node_exporter 가 바인드 마운트하는 자리. compose 보다 먼저 있어야 한다 —
+# 없으면 도커가 root 소유로 만들고, ec2-user 로 도는 backup.sh 가 못 쓴다.
+install -d -m 755 "$APP_DIR/metrics"
+
+# ── 3-1. 예약 작업 ───────────────────────────────────────────────────────
+# 백업 타이머를 여기서 설치한다. cloud-init 이 아니라 배포가 하는 이유:
+# user_data 를 고쳐도 인스턴스는 재생성되지도 재실행되지도 않는다
+# (user_data_replace_on_change 기본 false). cloud-init 에 두면 스케줄을
+# 한 번 정한 뒤로는 손으로 고치기 전까지 바뀌지 않는다.
+#
+# 실패해도 배포를 멈추지 않는다. 앱이 정상인데 타이머 하나 때문에 배포가
+# 막히는 건 과하다. 대신 조용히 넘어가지도 않는다 — 타이머가 안 붙으면
+# 백업 지표가 갱신되지 않고, 25시간 뒤 알람이 대신 잡는다 (이슈 #159).
+install_timers() {
+  # 비대화형 SSH 세션에는 이 변수가 없을 수 있다. linger 가 켜져 있으면
+  # /run/user/<uid> 는 로그인과 무관하게 항상 존재한다.
+  export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
+
+  local unit_dir="$HOME/.config/systemd/user"
+  install -d "$unit_dir"
+  cp "$APP_DIR"/systemd/*.service "$APP_DIR"/systemd/*.timer "$unit_dir/"
+
+  systemctl --user daemon-reload
+  systemctl --user enable --now backup.timer
+}
+
+if [ -d "$APP_DIR/systemd" ]; then
+  if install_timers; then
+    log "백업 타이머 설치 완료"
+  else
+    log "경고: 백업 타이머 설치 실패 — 배포는 계속한다. journalctl --user 확인할 것"
+  fi
+fi
+
 # ── 4. 시크릿 확인 ───────────────────────────────────────────────────────
 # 이 스크립트는 시크릿을 만들지도 읽지도 않는다. .env 는 배포 워크플로가
 # GitHub Secrets 에서 조립해 SSH stdin 으로 미리 넣어둔다.

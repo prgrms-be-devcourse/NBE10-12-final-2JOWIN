@@ -21,7 +21,7 @@ data "aws_iam_policy_document" "trust_pull_request" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
     }
 
     condition {
@@ -33,7 +33,7 @@ data "aws_iam_policy_document" "trust_pull_request" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${var.github_repo}:pull_request"]
+      values   = ["${var.github_sub_prefix}:pull_request"]
     }
   }
 }
@@ -47,7 +47,7 @@ data "aws_iam_policy_document" "trust_env_prod" {
 
     principals {
       type        = "Federated"
-      identifiers = [aws_iam_openid_connect_provider.github.arn]
+      identifiers = [data.aws_iam_openid_connect_provider.github.arn]
     }
 
     condition {
@@ -59,7 +59,7 @@ data "aws_iam_policy_document" "trust_env_prod" {
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values   = ["repo:${var.github_repo}:environment:${var.prod_environment}"]
+      values   = ["${var.github_sub_prefix}:environment:${var.prod_environment}"]
     }
   }
 }

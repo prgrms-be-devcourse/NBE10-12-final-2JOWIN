@@ -41,6 +41,7 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | `prod/caddy/` | `Caddyfile` — TLS 종단 · `/actuator` 차단 · 재시도 버퍼 |
 | `prod/monitoring/` | Prometheus · Loki · Promtail · Grafana 설정과 대시보드 |
 | `prod/scripts/` | `deploy.sh` · `backup.sh` |
+| `prod/systemd/` | 백업 타이머 (systemd **user** unit — `deploy.sh` 가 설치한다) |
 
 ### terraform 모듈
 
@@ -53,11 +54,31 @@ docker compose -f infra/dev/docker-compose.yml up -d
 
 ### 최초 실행 순서
 
-| # | 명령 | 비고 |
+순서가 강제된다. bootstrap 이 만드는 역할이 있어야 CI 가 apply 를 할 수 있고, EIP 가 생겨야 등록할 A 레코드가 생긴다.
+
+| # | 무엇 | 누가 | 비고 |
+| --- | --- | --- | --- |
+| 1 | `cd prod/terraform/bootstrap && terraform apply` | 사람 · 로컬 | 이 시점에는 backend 없이 로컬 state |
+| 2 | `terraform init -migrate-state -backend-config="bucket=..."` | 사람 · 로컬 | 로컬 → S3. 확인 후 로컬 state 삭제 |
+| 3 | Secrets · Variables 등록 | 사람 | 아래 표 |
+| 4 | **메인 스택 apply** | **CI** | develop 에 머지 → `infra.yml` 이 승인 게이트를 거쳐 apply |
+| 5 | dnszi 에 A 레코드 등록 (`api` → EIP) | 사람 | **4 에서 EIP 가 생긴 뒤에** 가능하다 |
+| 6 | 첫 배포 | CI | Let's Encrypt 발급은 5 가 전파된 뒤에 성공한다 |
+
+메인 스택을 손으로 `apply` 하지 않는다. 그 역할(`2jo-tf-apply`)의 신뢰 조건이 `environment:prod` 라서 **사람의 자격증명으로는 맡을 수 없다** — CI 가 승인을 받아야만 토큰이 나온다.
+
+#### 4 단계 전에 있어야 하는 값
+
+| 이름 | 종류 | 값 |
 | --- | --- | --- |
-| 1 | `cd prod/terraform/bootstrap && terraform apply` | 로컬 state → 생성된 S3로 이관 |
-| 2 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
-| 3 | `cd prod/terraform && terraform apply` | 전체 |
+| `TF_STATE_BUCKET` | secret | 2 단계에서 쓴 버킷 이름 |
+| `AWS_TF_PLAN_ROLE_ARN` · `AWS_TF_APPLY_ROLE_ARN` | secret | bootstrap 출력 |
+| `SSH_KEY_NAME` | **variable** | 사람 접속용 AWS 키페어 이름 |
+| `DEPLOY_PUBLIC_KEY` | **variable** | 배포용 SSH 공개키 |
+
+앞의 둘이 없으면 `terraform init` 이 `The attribute "bucket" is required` 로, 뒤의 둘이 없으면 `plan` 이 `No value for required variable` 로 죽는다. 그래서 `infra.yml` 의 게이트가 값이 없으면 잡을 아예 건너뛴다 — 첫 apply 전까지 모든 인프라 PR 이 빨간불이 되는 것을 막는다.
+
+공개키와 키페어 이름을 secret 이 아니라 variable 로 두는 이유: 감출 값이 아니고, secret 이면 마스킹돼서 `terraform plan` diff 가 `***` 로 나와 읽을 수 없다.
 
 ### 이미지 빌드
 
@@ -75,6 +96,31 @@ docker build -f infra/prod/docker/backend.Dockerfile backend/
 - **AWS 환경은 prod 하나뿐이다.** 예산 ₩80,000 안에서 두 번째 상시 환경이 불가능하다 → terraform에 `envs/` 계층을 두지 않았다.
 - 그래서 **인프라 변경을 미리 시험할 AWS 환경이 없다.** `terraform plan` PR 코멘트 · Infracost 비용 게이트 · GitHub Environment 승인으로 대신한다.
 - 시크릿은 저장소에 두지 않는다. GitHub Secrets → 배포 워크플로가 SSH stdin 으로 → `/opt/2jo/.env` (600).
+- **예약 작업은 cron 이 아니라 systemd user timer 다.** AL2023 에는 cronie 가 기본 설치되지 않고, `deploy.sh` 를 sudo 없이 돌리기로 한 결정과도 맞는다. cloud-init 은 `enable-linger` 만 켜고, 유닛 설치는 배포가 한다 — `user_data` 는 고쳐도 다시 실행되지 않아 스케줄을 바꿀 수 없다.
+
+### 백업 복원
+
+> 서버는 자기 백업을 읽지 못한다. 인스턴스 프로파일에 `backup/*` **PutObject 만** 있고 `GetObject` 는 없다 — 서버가 침해돼도 과거 백업이 남게 한 의도적 설계다. 그래서 복원은 **사람이 별도 자격증명으로** 한다.
+
+| # | 단계 |
+| --- | --- |
+| 1 | `aws s3 ls s3://<버킷>/backup/` 으로 대상 확인 |
+| 2 | `aws s3 cp s3://<버킷>/backup/<파일> - \| gunzip > dump.sql` 로 로컬에 받는다 |
+| 3 | `head -50 dump.sql` — 스키마 헤더가 보이는지 눈으로 확인 |
+| 4 | 빈 DB 에 넣어본다: `docker compose exec -T postgres psql -U "$DB_USERNAME" -d <임시DB> < dump.sql` |
+| 5 | 운영 DB 로 복원할 때만 기존 DB 를 내리고 진행한다 |
+
+**한 번은 실제로 해봐야 한다.** 검증하지 않은 백업은 백업이 아니다 — 필요해지는 순간이 처음 시도하는 순간이면 안 된다.
+
+### 백업이 도는지 확인
+
+| 확인 | 명령 |
+| --- | --- |
+| 타이머가 붙어 있나 | `systemctl --user list-timers backup.timer` |
+| 마지막 실행 결과 | `journalctl --user -u backup.service -n 50` |
+| 지표가 올라갔나 | Prometheus 에서 `twojo_backup_last_success_timestamp_seconds` |
+
+마지막 성공이 25시간을 넘으면 Grafana 알람이 발화한다. **지표가 아예 없어도 발화한다** — 타이머가 설치되지 않은 상태가 가장 위험한데 그때가 가장 조용하기 때문이다.
 
 ## 이 디렉터리 밖 관련 파일
 

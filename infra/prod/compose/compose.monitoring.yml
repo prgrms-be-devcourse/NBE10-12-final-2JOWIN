@@ -112,10 +112,15 @@ services:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro
       - /:/rootfs:ro
+      # backup.sh 가 여기에 마지막 성공 시각을 떨군다. 호스트에서 도는 작업의
+      # 성패를 Prometheus 로 끌어올 통로가 이것뿐이다 — promtail 은 컨테이너
+      # 로그만 보고, 호스트 journald 는 아무 데도 닿지 않는다 (이슈 #159).
+      - ../metrics:/textfile:ro
     command:
       - --path.procfs=/host/proc
       - --path.sysfs=/host/sys
       - --path.rootfs=/rootfs
+      - --collector.textfile.directory=/textfile
       - --collector.filesystem.mount-points-exclude=^/(sys|proc|dev|host|etc|rootfs/var/lib/docker)($$|/)
     mem_limit: 32m
     logging: *default-logging

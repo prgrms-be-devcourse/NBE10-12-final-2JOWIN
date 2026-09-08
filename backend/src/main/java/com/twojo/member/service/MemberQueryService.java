@@ -2,8 +2,7 @@ package com.twojo.member.service;
 
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
-import com.twojo.global.error.BusinessException;
-import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.member.entity.Member;
 import com.twojo.member.repository.MemberRepository;
 import java.util.List;
@@ -35,7 +34,7 @@ public class MemberQueryService implements MemberQuery {
     public MemberSummary get(UUID memberId) {
         return memberRepository.findById(memberId)
                 .map(this::toSummary)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new MissingReferenceException("member", memberId));
     }
 
     /** 담당자 선택지 — 활성 구성원만 (DL-04). */
@@ -86,7 +85,7 @@ public class MemberQueryService implements MemberQuery {
     public AuthCredential getCredential(UUID memberId) {
         return memberRepository.findById(memberId)
                 .map(this::toCredential)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new MissingReferenceException("member", memberId));
     }
 
     /** 열람 페이지 담당자 표시 — 없으면 데이터 이상이다 (deal.assignee_member_id FK 보장). */
@@ -94,7 +93,7 @@ public class MemberQueryService implements MemberQuery {
     public MemberContact getContact(UUID memberId) {
         return memberRepository.findById(memberId)
                 .map(this::toContact)
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new MissingReferenceException("member", memberId));
     }
 
     /** 회사 목록의 이용 현황 (ON-12 · Q-41) — 비활성 포함, 행을 불러오지 않는다. */

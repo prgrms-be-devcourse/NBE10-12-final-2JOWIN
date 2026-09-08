@@ -7,7 +7,7 @@ output "state_bucket_name" {
 
 output "oidc_provider_arn" {
   description = "향후 역할을 추가할 때 신뢰 정책이 참조한다"
-  value       = aws_iam_openid_connect_provider.github.arn
+  value       = data.aws_iam_openid_connect_provider.github.arn
 }
 
 output "tf_plan_role_arn" {
