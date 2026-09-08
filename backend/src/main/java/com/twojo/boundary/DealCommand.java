@@ -1,5 +1,6 @@
 package com.twojo.boundary;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -38,20 +39,30 @@ public interface DealCommand {
     void promoteToQuoteStage(UUID dealId);
 
     /**
-     * 구성원 비활성화에 따른 담당 Deal 일괄 이관 (MB-14, Q-29) — A의 비활성화 API가 부른다.
+     * 구성원 비활성화에 따른 담당 Deal 이관 (MB-14, Q-29) — A의 비활성화 API가 부른다.
      *
      * <p>{@code fromMemberId}가 담당인 <b>진행 중(리드~협상)</b> Deal 전부를 {@code toMemberId}로 옮긴다.
-     * 소프트 삭제된 Deal은 대상이 아니다. 담당 Deal이 0건이면 아무 일도 하지 않는다 — 예외가 아니다.
-     * 건수를 돌려주지 않는다: 호출자는 {@link DealQuery#assignedDealIds}로 이관이 필요한지 <b>먼저</b>
-     * 판정하고(07 §A: 담당 Deal이 있는데 이관 대상이 없으면 422 {@code MEMBER_INACTIVE_TRANSFER_REQUIRED}),
-     * 여기는 그 뒤에 실행만 한다.
+     * 이름이 "Open"인 이유가 그것이다 — <b>종결(WON·LOST) Deal은 그대로 둔다</b>(아래).
+     * 소프트 삭제된 Deal도 대상이 아니다. 옮길 Deal이 0건이면 아무 일도 하지 않는다 — 예외가 아니다.
      *
-     * <p><b>종결(WON·LOST) Deal은 그대로 둔다</b> — 담당자 이력이다. 그 결과 성사 Deal의 담당자가
-     * 비활성 구성원으로 남고, SC-02 때문에 그 Deal은 기업 관리자만 다룰 수 있게 된다
-     * (성사 후 두 번째 승인 견적의 주문 추가 전환도 마찬가지, Q-25). 이 선택은 #130 「리뷰 필요」 1번이다 —
-     * 종결 Deal까지 옮기기로 정해지면 이 문단과 구현이 같이 바뀐다.
+     * <p><b>이관이 필요한지는 호출자가 {@link DealQuery#countOpenAssigned}로 먼저 판정한다</b>
+     * (07 §A: 진행 중 담당 Deal이 있는데 이관 대상이 없으면 422 {@code MEMBER_INACTIVE_TRANSFER_REQUIRED}).
+     * {@link DealQuery#assignedDealIds}로 판정하면 안 된다 — 그쪽은 종결 Deal을 <b>포함</b>하므로
+     * 종결 Deal만 남은 구성원이 이관 대상 없이는 비활성화되지 못한다.
+     *
+     * <p><b>옮긴 Deal id를 돌려준다</b> — 감사는 Deal마다 한 건이 아니라 {@code MEMBER_DEACTIVATED}
+     * 한 건의 payload에 {@code dealIds}로 묶는다(#130 「리뷰 필요」 2번, C·E 합의). 그 감사 행을 쓰는 쪽은
+     * 호출자(A)라 여기서 id를 넘겨줘야 한다. 호출자는 사전 판정 건수와 반환 건수가 같은지 단언해도 된다.
+     *
+     * <p><b>종결 Deal을 남기는 이유와 대가</b> — {@code deal.assignee_member_id}는 담당자별 성과 집계의
+     * 유일한 축이라, 종결 Deal까지 옮기면 퇴사자의 성사 실적이 후임 것이 되고 복구할 수 없다. 대신
+     * 성사 Deal의 담당자가 비활성 구성원으로 남는다: SC-02 때문에 그 Deal은 기업 관리자만 다루고
+     * (성사 후 두 번째 승인 견적의 주문 추가 전환도 마찬가지, Q-25), 응답 완료 뒤에도 열람이 허용되는
+     * 성사 Deal의 열람 페이지는 비활성 담당자를 표시하며(AP-18), 그 Deal의 고객 문의 알림도
+     * 비활성 담당자에게 간다(NT-10 — 기업 관리자에게도 가므로 유실은 아니다). 03 §3 Q-48로 등재한다(C).
      *
      * <p>할 일(task)은 따로 옮기지 않는다 — 배정 컬럼이 없어 Deal을 따라 자동으로 옮겨간다 (Q-29).
+     * 상담 기록도 담당 축으로 조회되므로 새 담당자가 그대로 읽는다 (AC-08).
      *
      * <p><b>{@code toMemberId} 검증은 호출자 몫이다</b> — 같은 회사의 활성 구성원인지를
      * {@link MemberQuery#isActive}와 회사 대조로 비활성화 서비스(A)가 먼저 본다(위반 시 404, SC-09).
@@ -62,8 +73,15 @@ public interface DealCommand {
      * <p><b>호출자의 트랜잭션에 합류한다</b> — 비활성화가 롤백되면 이관도 되돌아간다.
      * "구성원은 비활성인데 Deal은 그대로"나 그 반대는 존재하면 안 되는 상태다 (11 §2 "한 트랜잭션").
      *
-     * <p>감사 기록의 단위(Deal마다 한 건 / {@code MEMBER_DEACTIVATED} 한 건의 changes에 묶음)는
-     * 구현자(C)가 정한다 — #130 「리뷰 필요」 2번.
+     * <p><b>구현 규약(C)</b>: 엔티티를 경유해 옮긴다 — JPQL 일괄 update는 {@code @Version}과
+     * {@code updated_at}을 건드리지 않아, 열어 둔 딜 상세의 낙관적 락(DL-05)이 이관을 알아채지 못한다.
+     * 구성원당 몇 건이라 성능은 문제가 아니다.
+     *
+     * <p><b>알려진 공백(v1)</b>: 사전 판정과 이관 사이에 잠금이 없다. 그 사이 이 구성원에게 Deal이 새로
+     * 배정되면 비활성 담당자가 남을 수 있다. 배정 쪽 검증({@code MemberQuery#isActive})도 비활성화 커밋
+     * 전에는 활성으로 답한다. 드물고 관리자가 담당자 변경(DL-05)으로 바로잡을 수 있어 v1에서는 받아들인다.
+     *
+     * @return 옮긴 Deal id — 0건이면 빈 목록. 순서는 보장하지 않는다
      */
-    void reassignAll(UUID companyId, UUID fromMemberId, UUID toMemberId);
+    List<UUID> reassignOpenDeals(UUID companyId, UUID fromMemberId, UUID toMemberId);
 }

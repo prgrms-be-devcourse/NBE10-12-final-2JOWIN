@@ -5,6 +5,7 @@ import com.twojo.deal.entity.Deal;
 import com.twojo.deal.repository.DealRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -37,7 +38,7 @@ class DealCommandImpl implements DealCommand {
 
     /** 계약만 먼저 들어왔다(#130) — 구현은 C. {@code QuoteQueryImpl}의 스텁과 같은 방식 */
     @Override
-    public void reassignAll(UUID companyId, UUID fromMemberId, UUID toMemberId) {
-        throw new UnsupportedOperationException("DealCommand.reassignAll — C 구현 예정 (#130)");
+    public List<UUID> reassignOpenDeals(UUID companyId, UUID fromMemberId, UUID toMemberId) {
+        throw new UnsupportedOperationException("DealCommand.reassignOpenDeals — C 구현 예정 (#130)");
     }
 }

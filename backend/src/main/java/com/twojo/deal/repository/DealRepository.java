@@ -68,4 +68,11 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
               and d.deletedAt is null
             """)
     List<UUID> findIdsByAssignee(@Param("companyId") UUID companyId, @Param("memberId") UUID memberId);
+
+    /**
+     * A의 MB-14 — 진행 중 담당 Deal 건수. 위 {@code findIdsByAssignee}와 달리 종결(WON·LOST)을 <b>제외</b>한다 —
+     * 비활성화의 "이관 대상 필수" 판정은 실제로 옮길 Deal만 세야 한다. {@code ix_deal_company_assignee_stage}를 탄다.
+     */
+    long countByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
+            UUID companyId, UUID assigneeMemberId, Collection<Deal.Stage> stages);
 }
