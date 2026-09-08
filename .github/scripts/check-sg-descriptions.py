@@ -24,6 +24,10 @@ import os
 import re
 import sys
 
+# 윈도우 콘솔은 기본이 cp949 라 한글 출력이 깨진다. CI(리눅스)에서는
+# 영향이 없지만, 이 스크립트는 로컬에서도 돌린다.
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # AWS 문서의 허용 집합. 공백도 포함된다.
 ALLOWED = re.compile(r'^[a-zA-Z0-9. _\-:/()#,@\[\]+=&;{}!$*]*$')
 MAX_LEN = 255
