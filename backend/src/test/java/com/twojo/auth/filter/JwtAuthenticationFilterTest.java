@@ -2,6 +2,7 @@ package com.twojo.auth.filter;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatNoException;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.junit.jupiter.params.provider.Arguments.arguments;
 import static org.mockito.BDDMockito.given;
 
@@ -11,8 +12,7 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.CompanyQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
-import com.twojo.global.error.BusinessException;
-import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
@@ -136,11 +136,16 @@ class JwtAuthenticationFilterTest {
             assertThat(SecurityContextHolder.getContext().getAuthentication()).isNull();
         }
 
-        /** getCredential 은 행이 없으면 BusinessException 을 던진다 — 필터가 안 잡으면 500 이다 */
+        /**
+         * getCredential 은 행이 없으면 MissingReferenceException 을 던진다 — 필터가 안 잡으면 500 이다.
+         *
+         * <p>여기서 500 을 내면 그 응답 자체가 "이 토큰의 구성원 행이 사라졌다"는 통보가 된다.
+         * 무결성 이상이라도 인증 경로에서는 401 로 접는다 (SC-09).
+         */
         @Test
         void 구성원_행이_사라졌으면_미인증으로_남는다() {
             given(memberQuery.getCredential(MEMBER_ID))
-                    .willThrow(new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                    .willThrow(new MissingReferenceException("member", MEMBER_ID));
 
             assertThat(필터를_통과시킨다("Bearer " + 유효한_토큰(Role.SALES_REP))).isNull();
         }
@@ -153,9 +158,32 @@ class JwtAuthenticationFilterTest {
         void 회사_행이_사라졌으면_미인증으로_남는다() {
             given(memberQuery.getCredential(MEMBER_ID)).willReturn(자격(Role.SALES_REP, true));
             given(companyQuery.get(COMPANY_ID))
-                    .willThrow(new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                    .willThrow(new MissingReferenceException("company", COMPANY_ID));
 
             assertThat(필터를_통과시킨다("Bearer " + 유효한_토큰(Role.SALES_REP))).isNull();
+        }
+
+        /**
+         * 무결성 이상이 아닌 IllegalStateException 은 잡지 않는다 — 필터가 바닥 타입을 잡으면
+         * 그 try 블록의 프로그래밍 오류까지 401 로 삼켜져 원인이 사라진다 (#165).
+         *
+         * <p>이 하나만 {@code 필터를_통과시킨다}를 쓰지 않는다. 그 헬퍼는 "예외를 내보내지
+         * 않는다"를 전제로 두고 잡아서 AssertionError 로 바꾸는데, 여기서 보려는 것이
+         * <b>바로 그 예외가 밖으로 나가는가</b>이기 때문이다.
+         */
+        @Test
+        void 무결성_이상이_아닌_상태_오류는_삼키지_않는다() {
+            given(memberQuery.getCredential(MEMBER_ID))
+                    .willThrow(new IllegalStateException("배선 실수"));
+
+            MockHttpServletRequest request = new MockHttpServletRequest("GET", "/api/v1/me");
+            request.addHeader(HttpHeaders.AUTHORIZATION, "Bearer " + 유효한_토큰(Role.SALES_REP));
+
+            assertThatThrownBy(() -> filter.doFilter(
+                    request, new MockHttpServletResponse(), new MockFilterChain()))
+                    .isInstanceOf(IllegalStateException.class)
+                    .isNotInstanceOf(MissingReferenceException.class)
+                    .hasMessage("배선 실수");
         }
     }
 
