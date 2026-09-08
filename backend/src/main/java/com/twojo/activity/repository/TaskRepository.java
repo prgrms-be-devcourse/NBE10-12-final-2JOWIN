@@ -5,13 +5,14 @@ import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
  * 할 일 조회 (AC-09).
  *
  * <p>범위 축이 둘이다 — 영업(OWNED_ONLY)은 담당 딜 범위, 기업 관리자(COMPANY_ALL)는 회사 범위다.
- * 딜 범위는 C의 {@code DealQuery.assignedDealIds()}가 준 목록으로, 회사 범위는 {@code company_id}로 건다
+ * 딜 범위는 {@code DealQuery.assignedDealIds()}가 준 목록으로, 회사 범위는 {@code company_id}로 건다
  * (ERD v1.6.5).
  *
  * <p><b>⚠️ 상속된 {@code findById(UUID)}를 쓰지 말 것.</b> 회사 조건이 빠져 타사 할 일이 나온다.
@@ -25,9 +26,22 @@ public interface TaskRepository extends JpaRepository<Task, UUID> {
      * <p>{@code dealIds}가 이미 회사로 걸러진 목록이지만 회사 조건을 함께 건다 —
      * 13 §2 셀프 체크리스트가 <b>"모든 조회에 회사 스코프"</b>로 정했고,
      * {@code ActivityRepository}도 목록에 회사를 첫 조건으로 건다.
+     *
+     * <p>건수는 {@code Pageable}로 받는다. <b>빈 {@code dealIds}를 넘기지 말 것</b> —
+     * 담당 딜이 없으면 호출부가 조회하지 않고 빈 결과를 돌려준다.
      */
     List<Task> findByCompanyIdAndDealIdInAndDoneAtIsNullOrderByDueDateAscIdAsc(
-            UUID companyId, Collection<UUID> dealIds);
+            UUID companyId, Collection<UUID> dealIds, Pageable pageable);
+
+    /**
+     * 후속 필요 (DB-05) — <b>회사 범위</b> (기업 관리자, COMPANY_ALL · SC-05).
+     *
+     * <p>관리자는 회사 전체 딜 id를 IN 절에 넣는 것이 답이 아니라 회사 축으로 바로 건다.
+     * 복합 FK가 "할 일의 회사 = 딜의 회사"를 보장하므로 이 조건만으로 테넌트 격리가 된다.
+     *
+     * <p>마감이 지난 할 일도 포함한다 — 정렬이 임박순이라 가장 오래 밀린 것이 맨 위에 온다.
+     */
+    List<Task> findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(UUID companyId, Pageable pageable);
 
     /**
      * 단건 접근 — <b>담당 딜 범위</b> (영업, OWNED_ONLY).

@@ -13,13 +13,23 @@
 name: deploy
 
 on:
-  push:
-    branches: [develop]
-    paths:
-      - 'backend/**'
-      - 'infra/prod/docker/**'
-      - '.github/workflows/deploy.yml'
-      - '.github/actions/remote-deploy/**'
+  # ┌──────────────────────────────────────────────────────────────────┐
+  # │ 임시로 꺼둔다 — 첫 수동 배포가 끝나면 되살릴 것 (이슈 #194)      │
+  # └──────────────────────────────────────────────────────────────────┘
+  #
+  # 왜 껐나: 시크릿이 방금 다 채워져서, 지금 백엔드 PR 이 머지되면 배포가
+  # 승인 대기로 걸린다. 첫 배포가 남의 PR 에 얹혀 일어나면 실패했을 때
+  # 백엔드 코드 문제인지 SSH 경로 문제인지 구분이 안 된다.
+  #
+  # 수동으로 한 번 성공시켜 인프라를 검증한 뒤 아래 주석을 풀면 된다.
+  #
+  # push:
+  #   branches: [develop]
+  #   paths:
+  #     - 'backend/**'
+  #     - 'infra/prod/docker/**'
+  #     - '.github/workflows/deploy.yml'
+  #     - '.github/actions/remote-deploy/**'
   workflow_dispatch:
     inputs:
       config_only:

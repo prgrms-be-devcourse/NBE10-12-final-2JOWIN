@@ -19,4 +19,8 @@ infra/**/Caddyfile   text eol=lf
 infra/**/*.Dockerfile text eol=lf
 infra/**/*.service   text eol=lf
 infra/**/*.timer     text eol=lf
+# S3 설정 번들로 올라간다. CRLF 면 로컬 plan 에만 가짜 diff 가 뜬다.
+infra/**/*.md        text eol=lf
+# 값을 채워 PROD_ENV_FILE 로 올리는 원본. CRLF 면 서버 .env 가 깨진다.
+infra/**/*.example   text eol=lf
 .github/**/*.yml     text eol=lf

@@ -1,9 +1,11 @@
 package com.twojo.activity.repository;
 
 import com.twojo.activity.entity.Activity;
+import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /**
@@ -21,4 +23,28 @@ public interface ActivityRepository extends JpaRepository<Activity, UUID> {
 
     /** 수정·삭제 대상 조회 — 회사 스코프 + 미삭제. 못 찾으면 호출부에서 404로 변환한다 (SC-09). */
     Optional<Activity> findByIdAndCompanyIdAndDeletedAtIsNull(UUID id, UUID companyId);
+
+    /**
+     * 대시보드 최근 활동 — <b>회사 범위</b> (기업 관리자, COMPANY_ALL · SC-05).
+     *
+     * <p>기준 시각은 기록 시각이 아니라 <b>활동 발생 시각</b>이다 (AC-01). 동률은 {@code id}로
+     * 안정화한다 — 순서가 흔들리면 새로고침마다 목록이 바뀐다.
+     *
+     * <p>건수는 {@code Pageable}로 받는다. 상한 판정은 호출부의 몫이다 ({@code ActivityQuery.MAX_LIMIT}).
+     */
+    List<Activity> findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
+            UUID companyId, Pageable pageable);
+
+    /**
+     * 대시보드 최근 활동 — <b>담당 딜 범위</b> (영업, OWNED_ONLY · SC-02·04).
+     *
+     * <p>{@code dealIds}는 {@code DealQuery.assignedDealIds(companyId, memberId)}가 준 목록이라
+     * 이미 회사로 걸러져 있지만, 회사 조건을 함께 건다 — 13 §2 셀프 체크리스트가
+     * <b>"모든 조회에 회사 스코프"</b>로 정했다.
+     *
+     * <p><b>빈 목록을 넘기지 말 것.</b> 빈 {@code IN} 절은 처리 방식이 환경에 따라 다르다.
+     * 담당 딜이 없으면 호출부가 조회하지 않고 빈 결과를 돌려준다.
+     */
+    List<Activity> findByCompanyIdAndDealIdInAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
+            UUID companyId, Collection<UUID> dealIds, Pageable pageable);
 }

@@ -22,6 +22,12 @@ const inRange = (iso: string, from: string, to: string) => {
   const day = iso.slice(0, 10)
   return day >= from && day <= to
 }
+/** ActivityQuery.RecentActivitySummary.summary 규칙 — 줄바꿈·연속 공백은 공백 하나, 80자 넘으면 자르고 … */
+const SUMMARY_MAX_LENGTH = 80
+const toSummary = (content: string) => {
+  const flat = content.replace(/\s+/g, ' ').trim()
+  return flat.length <= SUMMARY_MAX_LENGTH ? flat : `${flat.slice(0, SUMMARY_MAX_LENGTH)}…`
+}
 
 export const dashboardHandlers = [
   // 단계별 현황 · 이달 성사 · 응답 대기 · 후속 필요 · 최근 활동 (DB-01~05)
@@ -59,10 +65,14 @@ export const dashboardHandlers = [
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
       .map((t) => ({ taskId: t.id, dealId: t.dealId, dealTitle: dealTitle(t.dealId), content: t.content, dueDate: t.dueDate }))
 
-    // DB-04 — 최근 활동: 수동 기록 + 자동 기록 최근 10건
-    const manual = db.activities.filter((a) => dealIds.has(a.dealId) && !a.deleted).map((a) => ({ dealId: a.dealId, dealTitle: dealTitle(a.dealId), summary: a.content, occurredAt: a.occurredAt }))
-    const auto = db.autoActivities.filter((a) => dealIds.has(a.dealId)).map((a) => ({ dealId: a.dealId, dealTitle: dealTitle(a.dealId), summary: a.content, occurredAt: a.occurredAt }))
-    const recentActivities = [...manual, ...auto].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt)).slice(0, 10)
+    // DB-04 — 최근 활동: activity 단일 원천 최근 10건 (ActivityQuery 계약 · 10 §5.1 v2.0.1).
+    // 자동 기록(autoActivities)은 합치지 않는다 — 실 API가 안 주므로 목이 합치면 건수가 어긋난다 (PR #178).
+    // summary는 계약대로 공백 정리 + 80자 절단 (ActivityQuery.SUMMARY_MAX_LENGTH)
+    const recentActivities = db.activities
+      .filter((a) => dealIds.has(a.dealId) && !a.deleted)
+      .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+      .slice(0, 10)
+      .map((a) => ({ dealId: a.dealId, dealTitle: dealTitle(a.dealId), summary: toSummary(a.content), occurredAt: a.occurredAt }))
 
     const body: DashboardSummaryResponse = {
       pipeline,

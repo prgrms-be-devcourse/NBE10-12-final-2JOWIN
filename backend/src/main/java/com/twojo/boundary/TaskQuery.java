@@ -16,11 +16,12 @@ import java.util.UUID;
  * <b>B가 deal 테이블이나 Repository를 직접 보지 않는다</b>(§7.3).
  * {@code dealTitle}을 여기 넣지 않는 이유는 {@link ActivityQuery}와 같다.
  *
- * <p><b>{@link AccessScope#OWNED_ONLY} 구현에는 선행 계약이 필요하다.</b> 그 판정은
- * "이 구성원이 담당하는 Deal 집합"을 알아야 하는데, 현재 {@code DealQuery}에는 그것을 주는
- * 조회가 없다 — {@code assigneeIdOf}는 Deal 하나의 담당자를 되돌려줄 뿐이라 목록을 거르는 데
- * 쓰려면 Deal을 이미 알고 있어야 한다. 이 계약이 생기기 전에는 {@code OWNED_ONLY} 범위를
- * 만족하는 구현이 나오지 않는다.
+ * <p><b>{@link AccessScope#OWNED_ONLY} 범위는 {@code DealQuery.assignedDealIds(companyId, memberId)}로
+ * 판정한다.</b> 그 조회가 "이 구성원이 담당하는 Deal 집합"을 주고, 구현은 그 목록으로 할 일을 거른다.
+ * 담당 Deal이 0건이면 조회하지 않고 빈 목록을 돌려준다.
+ *
+ * <p><b>마감이 지난 할 일도 포함한다</b> — 미완료면 후속 조치가 필요한 것이고, 정렬이 임박순이라
+ * 가장 오래 밀린 것이 맨 위에 온다 (PR #178 합의).
  */
 public interface TaskQuery {
 
