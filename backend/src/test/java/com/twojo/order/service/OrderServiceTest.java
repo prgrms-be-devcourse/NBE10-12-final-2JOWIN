@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 
 import com.twojo.boundary.AccessContext;
@@ -25,11 +26,14 @@ import com.twojo.order.dto.OrderResponses;
 import com.twojo.order.entity.Order;
 import com.twojo.order.repository.OrderRepository;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -71,6 +75,13 @@ class OrderServiceTest {
     @Mock private DocumentNumberService documentNumberService;
 
     @InjectMocks private OrderService orderService;
+
+    @Captor private ArgumentCaptor<Instant> 하한;
+    @Captor private ArgumentCaptor<Instant> 상한;
+
+    /** 기업 관리자 — 범위 제한이 없어 기간 변환만 남는다 (SC-05) */
+    private final AccessContext 관리자 =
+            new AccessContext(COMPANY_ID, MEMBER_ID, Role.COMPANY_ADMIN, AccessScope.COMPANY_ALL);
 
     private static QuoteQuery.QuoteOrigin 출처() {
         return new QuoteQuery.QuoteOrigin(QUOTE_ID, "Q-2609-001", DEAL_ID);
@@ -208,5 +219,47 @@ class OrderServiceTest {
                 .willReturn(Page.<Order>empty());
 
         assertThat(orderService.list(ctx, null, null, PageRequest.of(0, 20)).content()).isEmpty();
+    }
+
+    /**
+     * 기간은 <b>한국 날짜로</b> 끊는다 (OD-08). 서버 시간대로 끊으면 KST 자정 부근의 주문이
+     * 하루 어긋난 칸에 들어간다 — 채번의 연월 판정과 같은 이유다 (#72).
+     *
+     * <p><b>{@code to}는 그날을 포함한다.</b> 사람이 "9/1~9/8"이라고 쓸 때 9/8의 주문을 빼는
+     * 필터는 쓰는 사람의 뜻과 다르다. 그래서 상한은 <b>다음 날 0시 미만</b>으로 만든다 —
+     * {@code to}일 0시로 끊으면 그날 주문이 통째로 사라진다.
+     *
+     * <p><b>여기서 보는 것은 서비스가 만든 경계값까지다.</b> {@code OrderSpecs}가 그 값을
+     * {@code >=} / {@code <}로 쓰는지는 이 테스트가 보지 않는다 — 상한을 {@code <=}로 쓰면
+     * 다음 날 0시 정각 주문 한 건이 더 딸려 들어온다.
+     */
+    @Test
+    @DisplayName("기간 필터는 KST 경계로 변환된다 — to는 그날을 포함한다 (OD-08)")
+    void 기간_필터는_KST_경계로_변환된다() {
+        given(orderRepository.search(any(), any(), any(), any(), any())).willReturn(Page.<Order>empty());
+
+        orderService.list(관리자, LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 8), PageRequest.of(0, 20));
+
+        verify(orderRepository).search(any(), 하한.capture(), 상한.capture(), any(), any());
+        assertThat(하한.getValue()).isEqualTo(Instant.parse("2026-08-31T15:00:00Z"));   // 9/1 00:00 KST
+        assertThat(상한.getValue()).isEqualTo(Instant.parse("2026-09-08T15:00:00Z"));   // 9/9 00:00 KST (제외)
+    }
+
+    /**
+     * 비운 쪽만 조건에서 빠진다 — <b>한쪽만 주는 것이 정상 사용</b>이다 ("9월 이후 전부" 같은).
+     * 빈 값을 오늘이나 epoch 같은 기본값으로 채우면 사용자가 걸지 않은 조건이 생긴다.
+     */
+    @Test
+    @DisplayName("비운 쪽만 조건에서 빠진다 — 한쪽만 비운 경우와 둘 다 비운 경우")
+    void 비운_쪽만_조건에서_빠진다() {
+        given(orderRepository.search(any(), any(), any(), any(), any())).willReturn(Page.<Order>empty());
+
+        orderService.list(관리자, null, LocalDate.of(2026, 9, 8), PageRequest.of(0, 20));   // from만 비움
+        orderService.list(관리자, null, null, PageRequest.of(0, 20));                       // 둘 다 비움
+
+        verify(orderRepository, times(2)).search(any(), 하한.capture(), 상한.capture(), any(), any());
+        assertThat(하한.getAllValues()).containsExactly(null, null);
+        assertThat(상한.getAllValues())
+                .containsExactly(Instant.parse("2026-09-08T15:00:00Z"), null);
     }
 }
