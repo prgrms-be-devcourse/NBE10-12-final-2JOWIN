@@ -18,7 +18,8 @@
  *       · {@link com.twojo.boundary.NotificationCommand} (인앱 알림 쓰기 통로 — approval·notification이 호출)
  *       · {@link com.twojo.boundary.NotificationSettingQuery} · {@link com.twojo.boundary.NotificationSettingCommand}
  *         (메일 수신 설정 통로 — auth가 호출; NT-07)
- *       · {@link com.twojo.boundary.PublicQuoteAssembler} (고객 화면 조립 통로 — approval·quote가 호출; QT-12)</li>
+ *       · {@link com.twojo.boundary.PublicQuoteAssembler} (고객 화면 조립 통로 — approval·quote가 호출; QT-12)
+ *       + {@link com.twojo.boundary.PublicQuoteResponse} record (조립 결과 — approval·quote 공유)</li>
  * </ul>
  * 시그니처 변경은 소유자 + 소비자 합의로만 한다.
  */

@@ -7,7 +7,7 @@ import java.util.UUID;
  * approval(고객 열람 {@code GET /public/api/v1/quotes/{token}})과
  * quote(구성원 미리보기 {@code GET /quotes/{id}/preview}, QT-12)가 호출한다.
  *
- * <p><b>왜 계약 하나로 모으나</b> — 08 §D(:323)가 "preview는 D의 {@link PublicQuoteResponse}를
+ * <p><b>왜 계약 하나로 모으나</b> — 08 §C preview 주석이 "preview는 D의 {@link PublicQuoteResponse}를
  * 그대로 재사용 — 고객이 볼 화면과 동일 보장"으로 못박았다. 조립을
  * ({@link QuoteQuery#getPublicView} + {@link CompanyQuery} + {@link DealQuery#assigneeIdOf}
  * + {@link MemberQuery}) 양쪽이 각자 하면 동일 로직이 두 벌이 되어 respondable 공식·담당자

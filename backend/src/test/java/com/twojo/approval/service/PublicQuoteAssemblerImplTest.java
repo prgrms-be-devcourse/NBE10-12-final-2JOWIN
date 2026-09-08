@@ -20,6 +20,8 @@ import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -108,26 +110,20 @@ class PublicQuoteAssemblerImplTest {
         assertThat(assembler.assembleForPreview(QUOTE_ID).respondable()).isFalse();
     }
 
-    @Test
+    @ParameterizedTest(name = "status={0}, active={1}, link={2} -> respondable={3}")
+    @CsvSource({
+            "SENT,      true,  true,  true",
+            "VIEWED,    true,  true,  true",
+            "RESPONDED, true,  true,  false",
+            "DRAFT,     true,  true,  false",
+            "VIEWED,    false, true,  false",   // 정지 회사
+            "VIEWED,    true,  false, false",   // 만료·소진 링크
+    })
     @DisplayName("assembleForView respondable = 링크 && 회사 active && status in {SENT,VIEWED}")
-    void view_respondable_규칙() {
-        givenChain(view("SENT", List.of()), true);
-        assertThat(assembler.assembleForView(QUOTE_ID, true).respondable()).isTrue();
+    void view_respondable_규칙(String status, boolean active, boolean link, boolean expected) {
+        givenChain(view(status, List.of()), active);
 
-        givenChain(view("VIEWED", List.of()), true);
-        assertThat(assembler.assembleForView(QUOTE_ID, true).respondable()).isTrue();
-
-        givenChain(view("RESPONDED", List.of()), true);
-        assertThat(assembler.assembleForView(QUOTE_ID, true).respondable()).isFalse();
-
-        givenChain(view("DRAFT", List.of()), true);
-        assertThat(assembler.assembleForView(QUOTE_ID, true).respondable()).isFalse();
-
-        givenChain(view("VIEWED", List.of()), false);   // 정지 회사
-        assertThat(assembler.assembleForView(QUOTE_ID, true).respondable()).isFalse();
-
-        givenChain(view("VIEWED", List.of()), true);
-        assertThat(assembler.assembleForView(QUOTE_ID, false).respondable()).isFalse();   // 만료·소진 링크
+        assertThat(assembler.assembleForView(QUOTE_ID, link).respondable()).isEqualTo(expected);
     }
 
     @Test
