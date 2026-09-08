@@ -148,7 +148,10 @@ runs:
         APP_DIR: ${{ inputs.app-dir }}
       run: |
         set -euo pipefail
-        printf '%s\n' "$ENV_CONTENT" | ssh \
+        # CR 을 걸러낸다. 시크릿 내용은 우리가 통제할 수 없다 — 윈도우에서
+        # 만든 파일을 붙여넣으면 CRLF 가 섞이고, 서버 .env 의 모든 값 끝에
+        # CR 이 붙는다. DB_URL 이 jdbc:...twojo 뒤에 CR 이 달려 조용히 깨진다.
+        printf '%s\n' "$ENV_CONTENT" | tr -d '\r' | ssh \
           -i "$SSH_DIR/id_deploy" \
           -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
           -o StrictHostKeyChecking=yes \
