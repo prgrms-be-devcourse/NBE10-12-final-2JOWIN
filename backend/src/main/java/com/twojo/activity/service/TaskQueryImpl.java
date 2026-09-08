@@ -25,7 +25,7 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class TaskQueryImpl implements TaskQuery {
+class TaskQueryImpl implements TaskQuery {
 
     private final TaskRepository taskRepository;
     private final DealQuery dealQuery;

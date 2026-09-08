@@ -17,12 +17,12 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 대시보드 최근 활동 조회 (DB-04) — {@link ActivityQuery} 구현.
  *
- * <p>소비자는 D의 대시보드다. 딜 제목은 여기서 붙이지 않는다 — 소비자가 조립한다 (11 §7.2).
+ * <p>딜 제목은 여기서 붙이지 않는다 — 소비자가 조립한다 (11 §7.2).
  */
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
-public class ActivityQueryImpl implements ActivityQuery {
+class ActivityQueryImpl implements ActivityQuery {
 
     /** 카드 한 줄 상한. 시드 활동 최장 30자 기준 두 배 이상 여유 — 정상 입력은 잘리지 않는다 */
     private static final int SUMMARY_MAX = 80;
