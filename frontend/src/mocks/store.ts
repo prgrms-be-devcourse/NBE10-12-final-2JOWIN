@@ -1,7 +1,7 @@
 import { HttpResponse } from 'msw'
 import { ERROR_MESSAGES, type ErrorCode } from '../shared/api/errors'
 import type { ErrorResponse, PageResponse } from '../shared/api/types'
-import type { DealStage, NotificationType, Role } from '../shared/ui/status'
+import type { DealStage, NotificationSettingType, NotificationType, Role } from '../shared/ui/status'
 import { date } from '../shared/lib/format'
 import * as fx from './fixtures'
 
@@ -40,7 +40,7 @@ export const db = {
   /** 채번 카운터 — global/sequence/DocumentSequence (PR #80). 발급은 이 행을 +1 하는 것뿐 */
   documentSequences: clone(fx.documentSequences),
   /** 메일 수신 설정 — 행 없으면 기본 ON (08 §A NotificationSettingResponse) */
-  notificationSettings: new Map<string, { type: NotificationType; emailEnabled: boolean }[]>(),
+  notificationSettings: new Map<string, { type: NotificationSettingType; emailEnabled: boolean }[]>(),
   /**
    * 자동 기록(AC-07) — 도메인 이벤트에서 파생되는 타임라인 항목. 시드에는 테이블이 없고
    * 실제로는 audit_log에서 만들어지므로, 목에서는 발송·열람·단계 이동 시점에 여기에 쌓는다.
