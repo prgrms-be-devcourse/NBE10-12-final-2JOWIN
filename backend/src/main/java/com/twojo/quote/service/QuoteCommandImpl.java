@@ -94,7 +94,8 @@ public class QuoteCommandImpl implements QuoteCommand {
                 quote.getSupplyAmount(), quote.getVatAmount(), quote.getTotalAmount(),
                 quote.getItems().stream()
                         .map(item -> new ConversionSnapshot.Line(item.getName(), item.getUnit(),
-                                item.getQuantity(), item.getUnitPrice(), item.getAmount()))
+                                item.getQuantity(), item.getUnitPrice(), item.getAmount(),
+                                item.getSortOrder()))
                         .toList());
     }
 
