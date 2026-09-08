@@ -8,9 +8,12 @@ import type { ApproveQuoteRequest, CreateInquiryRequest, PublicQuoteResponse, Re
  * 데모 링크 (픽스처 viewTokens.rawToken):
  *  - `/q/demo-dodam-14`      메인 시나리오 — 응답 가능 (S-01 5막)
  *  - `/q/demo-hanul-16`      단가 재조정안 — 응답 가능
- *  - `/q/demo-shinyoung-01`  응답 완료 — 열람은 되고 재응답만 막힌다 (AP-11, 전이표 §7)
+ *  - `/q/demo-sungwon-03`    응답 완료 — 열람은 되고 재응답만 막힌다 (AP-11, 전이표 §7)
  *  - `/q/demo-mirae-05`      만료 — 410 LINK_EXPIRED (AP-05)
  *  - 그 외 문자열            404 — 존재 여부를 노출하지 않는다 (SC-09)
+ *
+ * 링크의 시간 만료도 서버(QuoteViewToken.isViewable)처럼 읽는 시점에 본다 — 만료 배치 전이라 status가 ACTIVE·RESPONDED로
+ * 남아 있어도 expiresAt이 지났으면 410이다. 픽스처의 만료일이 지나면 데모 링크도 그렇게 닫힌다(시드와 같은 날짜).
  *
  * 승인·반려는 견적 상태를 바꾸고(C의 도메인 메서드에 해당), 담당자에게 알림을 남긴다 (NT-04, AP-12).
  *
@@ -30,6 +33,10 @@ const responderErrors = (body: { responderName?: string; responderTitle?: string
 ]
 
 const tokenOf = (raw: string) => db.viewTokens.find((t) => t.rawToken === raw)
+type Token = NonNullable<ReturnType<typeof tokenOf>>
+
+/** 열람 가능 — EXPIRED가 아니고 유효기간 안 (QuoteViewToken.isViewable). RESPONDED도 열람은 된다 (전이표 §7, v1.6.1) */
+const viewable = (token: Token) => token.status !== 'EXPIRED' && token.expiresAt > now()
 
 /** PublicQuoteResponse 조립 — 담당자는 Deal의 현재 담당자 (AP-18) */
 export function buildPublicQuote(quoteId: string, respondable: boolean): PublicQuoteResponse | null {
@@ -59,18 +66,18 @@ export function buildPublicQuote(quoteId: string, respondable: boolean): PublicQ
   }
 }
 
-/** 응답 가능 조건 — 링크 활성 + 견적이 발송됨·열람됨 */
-const respondable = (token: NonNullable<ReturnType<typeof tokenOf>>) => {
+/** 응답 가능 조건 — 링크 ACTIVE·유효기간 안(QuoteViewToken.isRespondable) + 견적이 발송됨·열람됨 */
+const respondable = (token: Token) => {
   const quote = findQuote(token.quoteId)
-  return token.status === 'ACTIVE' && (quote?.status === 'SENT' || quote?.status === 'VIEWED')
+  return token.status === 'ACTIVE' && token.expiresAt > now() && (quote?.status === 'SENT' || quote?.status === 'VIEWED')
 }
 
 /**
  * 승인·반려 공통 전처리 (서버 preRespond) — 링크·회사·견적 상태 순으로 거른다.
  * 통과하면 SENT는 VIEWED로 올린다 (전이표 §6 — 응답은 열람됨에서만).
  */
-function preRespond(token: NonNullable<ReturnType<typeof tokenOf>>) {
-  if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+function preRespond(token: Token) {
+  if (!viewable(token)) return error('LINK_EXPIRED')
   if (token.status === 'RESPONDED') return error('LINK_ALREADY_RESPONDED')
   if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
   const quote = findQuote(token.quoteId)!
@@ -88,7 +95,7 @@ export const publicQuoteHandlers = [
     const token = tokenOf(String(params.token))
     if (!token) return notFound()
     // 410은 만료 링크만 — 응답 완료(RESPONDED) 링크도 열람은 허용 (전이표 §7, v1.6.1)
-    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+    if (!viewable(token)) return error('LINK_EXPIRED')
     const quote = findQuote(token.quoteId)!
     // 첫 열람 시각 기록 + SENT → VIEWED (AP-02·07) + 담당자 알림 (NT-03)
     if (quote.status === 'SENT' && token.status === 'ACTIVE') {
@@ -166,7 +173,7 @@ export const publicQuoteHandlers = [
     if (fieldErrors.length) return error('VALIDATION_FAILED', fieldErrors)
     const token = tokenOf(String(params.token))
     if (!token) return notFound()
-    if (token.status === 'EXPIRED') return error('LINK_EXPIRED')
+    if (!viewable(token)) return error('LINK_EXPIRED')
     if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
     const quote = findQuote(token.quoteId)!
     db.inquiries.push({ id: crypto.randomUUID(), quoteId: quote.id, content: body.content.trim(), createdAt: now() })

@@ -94,8 +94,20 @@ describe('POST /api/v1/quotes/{id}/view-token/* — 링크 재발송·수동 만
 
 describe('/public/api/v1/quotes/{token} — 고객 열람·응답 (AP-02·08~11·15)', () => {
   const company = () => db.companies[0]
+  const tokenOf = (raw: string) => db.viewTokens.find((t) => t.rawToken === raw)!
+  // 픽스처 만료일은 시드와 같은 고정 날짜라 시간이 지나면 410이 된다 — 테스트는 만료일을 미래로 두고 돌린다
+  const FUTURE = '2999-12-31T14:59:59Z'
+  const expiresAt = new Map<string, string>()
+  const keepAlive = (raw: string) => {
+    const token = tokenOf(raw)
+    if (!expiresAt.has(raw)) expiresAt.set(raw, token.expiresAt)
+    token.expiresAt = FUTURE
+    return raw
+  }
   afterEach(() => {
     company().status = 'ACTIVE'
+    for (const [raw, original] of expiresAt) tokenOf(raw).expiresAt = original
+    expiresAt.clear()
   })
 
   it('quote 핸들러는 답하지 않고 publicQuote 핸들러가 답한다 — 견적과 고객 링크는 따로 켜고 끈다', async () => {
@@ -114,15 +126,32 @@ describe('/public/api/v1/quotes/{token} — 고객 열람·응답 (AP-02·08~11�
     expect(inquiry!.status).toBe(400)
   })
 
-  it('응답 완료 링크는 승인·반려 409 LINK_ALREADY_RESPONDED지만 문의는 된다 (AP-11 · 07 §D)', async () => {
-    const responded = '/quotes/demo-shinyoung-01'
+  it('응답 완료 링크는 열람 200(respondable=false)·승인 409 LINK_ALREADY_RESPONDED·문의 204 (AP-11 · 07 §D)', async () => {
+    const responded = `/quotes/${keepAlive('demo-shinyoung-01')}`
+    const view = await call(publicQuoteHandlers, new Request(`http://localhost/public/api/v1${responded}`))
+    expect(view!.status).toBe(200)
+    expect(((await view!.json()) as { respondable: boolean }).respondable).toBe(false)
     expect((await errorOf(await publicPost(`${responded}/approve`, { responderName: '김서연' }))).code).toBe('LINK_ALREADY_RESPONDED')
     expect((await publicPost(`${responded}/inquiries`, { content: '납기 문의' }))!.status).toBe(204)
   })
 
+  it('유효기간이 지난 링크는 status가 ACTIVE·RESPONDED여도 410 — 열람·응답·문의 전부 (QuoteViewToken.isViewable)', async () => {
+    const token = tokenOf('demo-hanul-16')
+    const original = token.expiresAt
+    token.expiresAt = '2000-01-01T00:00:00Z'
+    try {
+      const view = await call(publicQuoteHandlers, new Request('http://localhost/public/api/v1/quotes/demo-hanul-16'))
+      expect(view!.status).toBe(410)
+      expect((await errorOf(await publicPost('/quotes/demo-hanul-16/approve', { responderName: '서동윤' }))).code).toBe('LINK_EXPIRED')
+      expect((await errorOf(await publicPost('/quotes/demo-hanul-16/inquiries', { content: '문의' }))).code).toBe('LINK_EXPIRED')
+    } finally {
+      token.expiresAt = original
+    }
+  })
+
   it('정지 회사는 승인·반려·문의 전부 409 COMPANY_SUSPENDED — 열람 응답의 respondable도 false', async () => {
     company().status = 'SUSPENDED'
-    const active = '/quotes/demo-dodam-14'
+    const active = `/quotes/${keepAlive('demo-dodam-14')}`
     expect((await errorOf(await publicPost(`${active}/approve`, { responderName: '이수정' }))).code).toBe('COMPANY_SUSPENDED')
     expect((await errorOf(await publicPost(`${active}/reject`, { reason: '예산 초과', responderName: '이수정' }))).code).toBe('COMPANY_SUSPENDED')
     expect((await errorOf(await publicPost(`${active}/inquiries`, { content: '문의' }))).code).toBe('COMPANY_SUSPENDED')
