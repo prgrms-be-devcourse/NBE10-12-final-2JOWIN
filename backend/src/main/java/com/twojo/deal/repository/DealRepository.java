@@ -83,4 +83,38 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
      */
     List<Deal> findByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
             UUID companyId, UUID assigneeMemberId, Collection<Deal.Stage> stages);
+
+    /**
+     * D의 대시보드 파이프라인 집계 (DB-01) — 단계별 건수와 예상 금액 합.
+     *
+     * <p><b>{@code assigneeMemberId}가 null이면 회사 전체</b>다 (기업 관리자, SC-05). 영업이면 본인 담당만
+     * 넘어온다 (SC-02) — 스코프 판정은 {@code SalesStatsQueryImpl}이 하고 여기서는 걸린 값을 쓰기만 한다.
+     *
+     * <p><b>건수가 0인 단계는 결과에 없다</b> — {@code group by}의 성질이다. 네 단계를 항상 채우는 것은
+     * 호출자 몫이고, 그래야 "리드 0건"이 화면에서 빈칸이 아니라 0으로 보인다.
+     *
+     * <p>{@code expectedAmount}는 nullable이라(DL-02 미정 허용) {@code coalesce}로 0을 채운다 —
+     * 전부 null인 단계에서 합이 null로 나오면 소비자가 다시 방어해야 한다.
+     */
+    @Query("""
+            select d.stage as stage, count(d) as count, coalesce(sum(d.expectedAmount), 0) as amount
+            from Deal d
+            where d.companyId = :companyId
+              and d.deletedAt is null
+              and d.stage in :stages
+              and (:assigneeMemberId is null or d.assigneeMemberId = :assigneeMemberId)
+            group by d.stage
+            """)
+    List<StageAggregate> aggregateByStage(@Param("companyId") UUID companyId,
+                                          @Param("assigneeMemberId") UUID assigneeMemberId,
+                                          @Param("stages") Collection<Deal.Stage> stages);
+
+    /** {@link #aggregateByStage} 투영 — {@code Object[]}로 받으면 호출부가 인덱스로 캐스팅하게 된다 */
+    interface StageAggregate {
+        Deal.Stage getStage();
+
+        long getCount();
+
+        Long getAmount();
+    }
 }
