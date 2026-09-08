@@ -5,9 +5,9 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.twojo.approval.dto.ApproveQuoteRequest;
 import com.twojo.approval.dto.CreateInquiryRequest;
-import com.twojo.approval.dto.PublicQuoteResponse;
 import com.twojo.approval.dto.RejectQuoteRequest;
 import com.twojo.approval.token.TokenGenerator;
+import com.twojo.boundary.PublicQuoteResponse;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import java.sql.Timestamp;

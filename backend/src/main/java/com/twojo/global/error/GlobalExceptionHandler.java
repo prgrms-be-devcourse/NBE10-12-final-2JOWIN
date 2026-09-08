@@ -1,6 +1,8 @@
 package com.twojo.global.error;
 
+import java.util.List;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.TypeMismatchException;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatusCode;
 import org.springframework.http.ResponseEntity;
@@ -9,6 +11,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.context.request.WebRequest;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExceptionHandler;
 
 /**
@@ -28,10 +31,15 @@ import org.springframework.web.servlet.mvc.method.annotation.ResponseEntityExcep
 @RestControllerAdvice
 public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
 
+    /**
+     * fieldErrors는 대개 비어 있다 — 입력 검증 실패만 채워서 던진다
+     * (BusinessException#invalidField · 07 부록 "fieldErrors 참조").
+     */
     @ExceptionHandler(BusinessException.class)
     public ResponseEntity<ErrorResponse> handleBusiness(BusinessException e) {
         ErrorCode code = e.getErrorCode();
-        return ResponseEntity.status(code.getStatus()).body(ErrorResponse.of(code));
+        return ResponseEntity.status(code.getStatus())
+                .body(ErrorResponse.of(code, e.getFieldErrors()));
     }
 
     /**
@@ -63,6 +71,34 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
         log.error("처리되지 않은 예외", e);
         return ResponseEntity.status(ErrorCode.INTERNAL_ERROR.getStatus())
                 .body(ErrorResponse.of(ErrorCode.INTERNAL_ERROR));
+    }
+
+    /**
+     * 쿼리 파라미터·경로 변수의 타입 불일치 → 400 VALIDATION_FAILED.
+     *
+     * <p>이 자리를 비워 두면 부모가 RFC 7807 {@code ProblemDetail}로 내보낸다 — 같은 400인데
+     * Content-Type도 스키마도 다르고, {@code detail}에 "Failed to convert 'status'…"라는
+     * 내부 바인딩 메시지가 그대로 실린다. 공통 에러 핸들러가 {@code code}로 분기하는 프론트는
+     * 그 응답을 아예 알아보지 못한다.
+     *
+     * <p>여기서 막으면 enum·UUID·int 어느 것을 바인딩해도 응답 형태가 하나로 유지된다 —
+     * 컨트롤러마다 손으로 파싱하는 것보다 새는 자리가 적다.
+     *
+     * <p>reason에 받은 값을 싣지 않는 이유는 {@link BusinessException#invalidField}와 같다.
+     */
+    @Override
+    protected ResponseEntity<Object> handleTypeMismatch(
+            TypeMismatchException e, HttpHeaders headers,
+            HttpStatusCode status, WebRequest request) {
+
+        // 파라미터·경로 변수는 이름을 알 수 있다. 그 밖의 바인딩은 프로퍼티명으로 떨어진다
+        String field = e instanceof MethodArgumentTypeMismatchException mismatch
+                ? mismatch.getName()
+                : e.getPropertyName();
+
+        return ResponseEntity.status(ErrorCode.VALIDATION_FAILED.getStatus())
+                .body(ErrorResponse.of(ErrorCode.VALIDATION_FAILED,
+                        List.of(new ErrorResponse.FieldError(field, "허용되지 않는 값입니다"))));
     }
 
     /** 부모가 400으로 내보내는 자리를 우리 ErrorResponse 포맷으로 바꾼다. */

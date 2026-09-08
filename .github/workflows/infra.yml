@@ -52,6 +52,7 @@ jobs:
       config: ${{ steps.filter.outputs.config }}
       workflows: ${{ steps.filter.outputs.workflows }}
       aws_ready: ${{ steps.gate.outputs.aws_ready }}
+      state_ready: ${{ steps.gate.outputs.state_ready }}
       infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
       stack_ready: ${{ steps.gate.outputs.stack_ready }}
       tfvars_ready: ${{ steps.gate.outputs.tfvars_ready }}
@@ -85,6 +86,10 @@ jobs:
         shell: bash
         env:
           HAS_PLAN_ROLE: ${{ secrets.AWS_TF_PLAN_ROLE_ARN != '' }}
+          # backend.tf 에 bucket 이 없다(계정 ID 를 코드에 박지 않는다).
+          # 없으면 terraform init 이 "The attribute bucket is required" 로
+          # 죽는다 — plan·apply 의 첫 줄이다.
+          HAS_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET != '' }}
           HAS_INFRACOST_KEY: ${{ secrets.INFRACOST_API_KEY != '' }}
           # key_name·deploy_public_key 는 기본값이 없다. 없는 채로 -input=false
           # 로 돌면 "No value for required variable" 로 죽는다. 시크릿이 아니라
@@ -94,6 +99,7 @@ jobs:
           set -euo pipefail
           {
             echo "aws_ready=${HAS_PLAN_ROLE}"
+            echo "state_ready=${HAS_STATE_BUCKET}"
             echo "infracost_ready=${HAS_INFRACOST_KEY}"
             echo "tfvars_ready=${HAS_TFVARS}"
             # 메인 스택은 TF_ROOT 바로 아래 .tf 파일. bootstrap/ 은 여기 해당 없음
@@ -412,6 +418,7 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.infra == 'true' &&
       needs.changes.outputs.aws_ready == 'true' &&
+      needs.changes.outputs.state_ready == 'true' &&
       needs.changes.outputs.stack_ready == 'true' &&
       needs.changes.outputs.tfvars_ready == 'true'
     runs-on: ubuntu-latest
@@ -435,9 +442,12 @@ jobs:
 
       - name: plan
         working-directory: ${{ env.TF_ROOT }}
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
         run: |
           set -euo pipefail
-          terraform init -input=false -no-color
+          terraform init -input=false -no-color \
+            -backend-config="bucket=${TF_STATE_BUCKET}"
           terraform plan -input=false -no-color -lock-timeout=120s | tee /tmp/plan.txt
 
       - name: PR 코멘트
@@ -469,6 +479,7 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       needs.changes.outputs.aws_ready == 'true' &&
+      needs.changes.outputs.state_ready == 'true' &&
       needs.changes.outputs.stack_ready == 'true' &&
       needs.changes.outputs.tfvars_ready == 'true'
     runs-on: ubuntu-latest
@@ -494,9 +505,12 @@ jobs:
 
       - name: apply
         working-directory: ${{ env.TF_ROOT }}
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
         run: |
           set -euo pipefail
-          terraform init -input=false -no-color
+          terraform init -input=false -no-color \
+            -backend-config="bucket=${TF_STATE_BUCKET}"
           terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
 
       # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면
