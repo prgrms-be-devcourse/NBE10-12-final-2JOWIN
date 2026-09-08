@@ -104,21 +104,21 @@ export const dealHandlers = [
     return HttpResponse.json(toItem(created), { status: 201 })
   }),
 
-  // 수정 (DL-02·03) — title은 record에 @NotBlank가 없어 선택, version 필수
+  // 수정 (DL-02·03) — PATCH: null·미전송 = 미변경 (Deal.update — 미정으로 되돌리는 경로는 v1에 없다), version 필수
   http.patch(`${BASE}/:id`, async ({ params, request }) => {
     const hit = scoped(request, String(params.id))
     if (!hit) return notFound()
     const body = (await request.json()) as UpdateDealRequest
     if (body.expectedAmount != null && body.expectedAmount < 0) return error('VALIDATION_FAILED', [{ field: 'expectedAmount', reason: '0 이상이어야 합니다.' }])
-    if (body.title !== undefined && !body.title.trim()) return error('VALIDATION_FAILED', [{ field: 'title', reason: '공백일 수 없습니다' }])
+    if (body.title != null && !body.title.trim()) return error('VALIDATION_FAILED', [{ field: 'title', reason: '공백일 수 없습니다' }])
     if (!bumpVersion(hit.deal, body.version)) return stale()
     const changes: Record<string, { before: unknown; after: unknown }> = {}
-    if (body.title !== undefined && body.title.trim() !== hit.deal.title) changes.title = { before: hit.deal.title, after: body.title.trim() }
-    if (body.expectedAmount !== undefined && body.expectedAmount !== hit.deal.expectedAmount) changes.expectedAmount = { before: hit.deal.expectedAmount, after: body.expectedAmount }
-    if (body.dueDate !== undefined && body.dueDate !== hit.deal.dueDate) changes.dueDate = { before: hit.deal.dueDate, after: body.dueDate }
-    if (body.title !== undefined) hit.deal.title = body.title.trim()
-    if (body.expectedAmount !== undefined) hit.deal.expectedAmount = body.expectedAmount as number
-    if (body.dueDate !== undefined) hit.deal.dueDate = body.dueDate as string
+    if (body.title != null && body.title.trim() !== hit.deal.title) changes.title = { before: hit.deal.title, after: body.title.trim() }
+    if (body.expectedAmount != null && body.expectedAmount !== hit.deal.expectedAmount) changes.expectedAmount = { before: hit.deal.expectedAmount, after: body.expectedAmount }
+    if (body.dueDate != null && body.dueDate !== hit.deal.dueDate) changes.dueDate = { before: hit.deal.dueDate, after: body.dueDate }
+    if (body.title != null) hit.deal.title = body.title.trim()
+    if (body.expectedAmount != null) hit.deal.expectedAmount = body.expectedAmount
+    if (body.dueDate != null) hit.deal.dueDate = body.dueDate
     if (Object.keys(changes).length) recordAudit({ entityType: 'DEAL', entityId: hit.deal.id, eventType: 'UPDATED', actorType: 'MEMBER', actorId: hit.member.id, changes })
     return HttpResponse.json(toItem(hit.deal))
   }),

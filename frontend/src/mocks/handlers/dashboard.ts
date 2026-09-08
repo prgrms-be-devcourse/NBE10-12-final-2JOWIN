@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
-import { currentMember, db, error, memberActive, memberName, visibleDeals } from '../store'
+import { currentMember, db, error, memberActive, memberName, today, visibleDeals } from '../store'
 import type { DashboardPerformanceResponse, DashboardSummaryResponse } from '../../shared/api/types'
 import { DEAL_STAGES, OPEN_DEAL_STAGES, isOpenStage, type DealStage } from '../../shared/ui/status'
 
@@ -11,7 +11,7 @@ import { DEAL_STAGES, OPEN_DEAL_STAGES, isOpenStage, type DealStage } from '../.
  * 담당 스코프: 영업 담당자는 본인 담당 Deal 기준 집계 (🔶, DB-01~05).
  */
 
-const thisMonth = () => new Date().toISOString().slice(0, 7)
+const thisMonth = () => today().slice(0, 7) // KST — 화면의 기본 월과 같은 기준
 const monthRange = (month: string) => {
   const [y, m] = month.split('-').map(Number)
   const from = `${month}-01`

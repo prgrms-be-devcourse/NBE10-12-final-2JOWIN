@@ -140,7 +140,9 @@ export function QuoteDetailPage() {
       <TrackingCards quote={quote} />
 
       {draft ? (
-        <QuoteEditor quote={quote} onSend={() => setDialog('send')} onPreview={() => navigate(`/quotes/${quote.id}/preview`)} />
+        // key: 캐시된 다른 견적으로 이동하거나(id) 저장·새로고침으로 version이 바뀌면(version) 편집기를 새로 마운트한다 —
+        // 이전 견적의 rows·terms가 새 version으로 저장되는 덮어쓰기 경로를 막는다 (10 §5.4 · 12 §6.3-4)
+        <QuoteEditor key={`${quote.id}:${quote.version}`} quote={quote} onSend={() => setDialog('send')} onPreview={() => navigate(`/quotes/${quote.id}/preview`)} />
       ) : (
         <ReadOnlyItems quote={quote} />
       )}

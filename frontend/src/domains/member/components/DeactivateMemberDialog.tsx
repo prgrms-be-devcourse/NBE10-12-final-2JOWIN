@@ -23,18 +23,26 @@ interface Props {
  * 담당 Deal 수를 알려주는 API가 없어(딜 목록은 C 도메인) 2단계로 간다 —
  * 먼저 이관 대상 없이 호출하고, 서버가 422 MEMBER_INACTIVE_TRANSFER_REQUIRED를 돌려주면
  * 그때 이관 대상 Select를 펼친다. 담당 Deal이 0건이면 첫 호출로 끝난다 (MB-14).
+ *
+ * 422를 한 번 받으면 다이얼로그가 닫힐 때까지 이관 단계로 고정한다 — 2차 호출이 시작되는 순간 mutation error가
+ * 비워지므로 error에서 바로 파생하면 로딩 중에 Select가 사라지고, 2차가 다른 이유로 실패하면 1단계로 되돌아간다.
  */
 export function DeactivateMemberDialog({ member, onOpenChange, options, loading, error, onConfirm }: Props) {
   const [transferTo, setTransferTo] = useState<string>('')
+  const [transferStep, setTransferStep] = useState(false)
   const apiError = error instanceof ApiError ? error : null
-  const needsTransfer = apiError?.code === 'MEMBER_INACTIVE_TRANSFER_REQUIRED'
+  if (apiError?.code === 'MEMBER_INACTIVE_TRANSFER_REQUIRED' && !transferStep) setTransferStep(true)
+  const needsTransfer = transferStep
   const candidates = options.filter((o) => o.id !== member?.id)
 
   return (
     <AlertDialog.Root
       open={member !== null}
       onOpenChange={(open) => {
-        if (!open) setTransferTo('')
+        if (!open) {
+          setTransferTo('')
+          setTransferStep(false)
+        }
         onOpenChange(open)
       }}
     >
@@ -79,7 +87,7 @@ export function DeactivateMemberDialog({ member, onOpenChange, options, loading,
           <Text size="2" color="gray">· 작성한 상담 기록은 이름 그대로 남습니다</Text>
         </Flex>
 
-        {apiError && !needsTransfer && <ErrorCallout code={apiError.code} />}
+        {apiError && apiError.code !== 'MEMBER_INACTIVE_TRANSFER_REQUIRED' && <ErrorCallout code={apiError.code} />}
 
         <Flex gap="3" mt="4" justify="end">
           <AlertDialog.Cancel>

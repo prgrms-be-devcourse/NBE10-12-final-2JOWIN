@@ -76,3 +76,19 @@ describe('판매 중지·재개 (PR-05)', () => {
     expect(product.status).toBe('ACTIVE')
   })
 })
+
+describe('PATCH /api/v1/products/{id} — 수정 (PR-04)', () => {
+  it('null·미전송 필드는 미변경이고 설명은 빈 문자열로 지운다 (Product.update)', async () => {
+    session.login(admin)
+    const product = db.products.find((p) => p.status === 'ACTIVE' && p.description)!
+    const before = { name: product.name, unit: product.unit, unitPrice: product.unitPrice }
+    const patch = (body: unknown) => call(productHandlers, new Request(`http://localhost/api/v1/products/${product.id}`, {
+      method: 'PATCH', headers: { ...auth(admin), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+    }))
+    expect((await patch({ name: null, unit: null, unitPrice: null, description: null })).status).toBe(200)
+    expect({ name: product.name, unit: product.unit, unitPrice: product.unitPrice }).toEqual(before)
+    expect(product.description).not.toBeNull()
+    expect((await patch({ description: '' })).status).toBe(200)
+    expect(product.description).toBeNull()
+  })
+})
