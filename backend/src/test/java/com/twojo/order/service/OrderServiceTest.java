@@ -20,6 +20,7 @@ import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.global.sequence.DocumentNumberService;
 import com.twojo.global.sequence.DocumentSequence.DocType;
 import com.twojo.order.dto.OrderResponses;
@@ -28,6 +29,7 @@ import com.twojo.order.repository.OrderRepository;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -261,5 +263,39 @@ class OrderServiceTest {
         assertThat(하한.getAllValues()).containsExactly(null, null);
         assertThat(상한.getAllValues())
                 .containsExactly(Instant.parse("2026-09-08T15:00:00Z"), null);
+    }
+
+    /**
+     * <b>같은 조회, 다른 층위</b> (#167). 견적을 못 찾았을 때의 답이 <b>id의 출처</b>에 따라 갈린다.
+     *
+     * <ul>
+     *   <li>전환 — 사용자가 URL로 준 id다. 없는 것이 정상 시나리오라 <b>404</b> (SC-09)</li>
+     *   <li>상세 — {@code orders.quote_id}(NOT NULL FK)에서 온 id이고 {@code quote}에는 소프트
+     *       삭제가 없다. 사라질 수 없는 자리라 <b>데이터 이상</b>이고, 404로 내보내면 멀쩡한 주문이
+     *       "없거나 권한 없음"으로 보이며 원인 단서가 사라진다</li>
+     * </ul>
+     *
+     * <p>둘을 한 테스트에 둔 이유는, 나중에 누가 두 경로를 하나로 합치면 <b>여기서 바로 깨지게</b>
+     * 하기 위해서다.
+     */
+    @Test
+    @DisplayName("견적 부재의 답이 id 출처에 따라 갈린다 — 전환은 404, 주문 상세는 무결성 이상 (#167)")
+    void 견적_부재는_출처에_따라_층위가_다르다() {
+        given(quoteQuery.originsByIds(COMPANY_ID, List.of(QUOTE_ID))).willReturn(List.of());
+
+        // 전환 — 사용자가 지목한 견적이 없다
+        assertThatThrownBy(() -> orderService.convert(ctx, QUOTE_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(OrderServiceTest::errorOf)
+                .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+
+        // 상세 — 주문은 있는데 그 주문이 가리키는 견적이 없다
+        UUID orderId = UUID.randomUUID();
+        given(orderRepository.findWithItemsByIdAndCompanyId(orderId, COMPANY_ID))
+                .willReturn(Optional.of(Order.from(COMPANY_ID, 스냅샷(), "O-2609-001")));
+
+        assertThatThrownBy(() -> orderService.get(ctx, orderId))
+                .isInstanceOf(MissingReferenceException.class)   // 폴백 핸들러가 500 + 스택
+                .isNotInstanceOf(BusinessException.class);
     }
 }

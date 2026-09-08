@@ -9,6 +9,7 @@ import com.twojo.boundary.QuoteCommand;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.global.response.PageResponse;
 import com.twojo.global.sequence.DocumentNumberService;
 import com.twojo.global.sequence.DocumentSequence.DocType;
@@ -130,7 +131,10 @@ public class OrderService {
                 .stream().collect(Collectors.toMap(DealQuery.DealSummary::id, Function.identity()));
 
         return PageResponse.from(page.map(order -> {
-            QuoteQuery.QuoteOrigin origin = requireFound(originByQuote.get(order.getQuoteId()));
+            QuoteQuery.QuoteOrigin origin = originByQuote.get(order.getQuoteId());
+            if (origin == null) {
+                throw new MissingReferenceException("quote", order.getQuoteId());   // FK가 보장하는 자리 (#167)
+            }
             return OrderResponses.OrderRow.of(order,
                     originOf(ctx, origin, requireFound(dealById.get(origin.dealId()))));
         }));
@@ -161,7 +165,7 @@ public class OrderService {
     private ScopedOrder findInScope(AccessContext ctx, UUID orderId) {
         Order order = orderRepository.findWithItemsByIdAndCompanyId(orderId, ctx.companyId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-        QuoteQuery.QuoteOrigin origin = requireQuoteOrigin(ctx.companyId(), order.getQuoteId());
+        QuoteQuery.QuoteOrigin origin = originOfOrder(ctx.companyId(), order.getQuoteId());
         return new ScopedOrder(order, originOf(ctx, origin, requireDealInScope(ctx, origin.dealId())));
     }
 
@@ -188,10 +192,30 @@ public class OrderService {
                 customerId, customerQuery.get(ctx, customerId).name());
     }
 
-    /** 견적 출처 — 없으면 404. 회사가 다르면 목록이 비므로 같은 답이 된다 (SC-01·09) */
+    /**
+     * <b>요청이 지목한</b> 견적 — 사용자가 준 id라 없거나 다른 회사면 404다 (SC-01·09).
+     * 전환({@code convert})만 이 경로를 쓴다.
+     */
     private QuoteQuery.QuoteOrigin requireQuoteOrigin(UUID companyId, UUID quoteId) {
-        return requireFound(quoteQuery.originsByIds(companyId, List.of(quoteId)).stream()
-                .findFirst().orElse(null));
+        return quoteQuery.originsByIds(companyId, List.of(quoteId)).stream().findFirst()
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    /**
+     * <b>주문이 가리키는</b> 견적 — 없으면 404가 아니라 <b>데이터 이상</b>이다 (#167).
+     *
+     * <p>{@code orders.quote_id}는 NOT NULL FK이고 {@code quote}에는 소프트 삭제가 없다
+     * (11 §1.5 — 소프트 삭제 대상은 customer·deal·activity뿐). 즉 <b>행이 사라질 수 없는 자리</b>라,
+     * 여기서 404를 던지면 멀쩡한 주문이 "없거나 권한 없음"으로 보이고 원인이 견적 쪽이라는
+     * 단서가 응답에도 로그에도 남지 않는다 — {@code MissingReferenceException}이 500으로 바꾸며
+     * 스택을 남긴다.
+     *
+     * <p>같은 조회라도 {@link #requireQuoteOrigin}은 404다. <b>id의 출처가 다르기 때문이다</b> —
+     * 저쪽은 사용자가 URL로 준 값이라 없는 것이 정상 시나리오다.
+     */
+    private QuoteQuery.QuoteOrigin originOfOrder(UUID companyId, UUID quoteId) {
+        return quoteQuery.originsByIds(companyId, List.of(quoteId)).stream().findFirst()
+                .orElseThrow(() -> new MissingReferenceException("quote", quoteId));
     }
 
     /**
@@ -209,13 +233,16 @@ public class OrderService {
     }
 
     /**
-     * 주문에 딸린 견적·Deal이 안 보이면 404다.
+     * Deal이 안 보이면 404다 — <b>{@code MissingReferenceException}(500)이 아니다</b>.
      *
-     * <p>견적은 {@code orders.quote_id}가 NOT NULL FK라 사라질 수 없다. <b>Deal은 다르다</b> —
-     * 소프트 삭제라 FK가 막아 주지 않고, {@code DealQuery.summariesByIds}는 삭제된 Deal을
-     * 결과에서 뺀다. 지금 도달할 수 없는 이유는 <b>Deal 삭제(DL-16)가 아직 구현되지 않아서</b>이고,
-     * 구현된 뒤에는 DL-17("견적이 연결된 Deal은 삭제할 수 없다", 에러 코드 {@code DEAL_HAS_QUOTES}가
-     * 이미 예약돼 있다)이 유일한 방어선이 된다 — 주문이 있으면 견적도 반드시 있기 때문이다.
+     * <p>#167이 나눈 두 층위 중 이쪽은 <b>보이지 않는 것</b>이다. {@code quote.deal_id}가 FK라
+     * <b>행 자체는 반드시 있고</b>, {@code DealQuery.summariesByIds}가 빼는 것은 <b>소프트 삭제된</b>
+     * Deal이다 (11 §1.5). 행의 부재가 아니라 가시성 규칙이므로 "범위 밖인지 없는지 구별하지 않는다"는
+     * SC-09의 404가 맞다 — 주문이 가리키는 견적({@link #originOfOrder})과 다른 이유가 여기 있다.
+     *
+     * <p>지금 도달할 수 없는 이유는 <b>Deal 삭제(DL-16)가 아직 구현되지 않아서</b>이고, 구현된
+     * 뒤에는 DL-17("견적이 연결된 Deal은 삭제할 수 없다", {@code DEAL_HAS_QUOTES}가 이미 예약돼
+     * 있다)이 유일한 방어선이 된다 — 주문이 있으면 견적도 반드시 있기 때문이다.
      *
      * <p>조용히 null을 흘려보내지 않는 이유는, 그러면 dealTitle이 빈 주문 행이 화면에 나가서다.
      * <b>다만 목록에서는 한 줄의 이상이 페이지 전체를 404로 만든다</b> — DL-16을 구현할 때
