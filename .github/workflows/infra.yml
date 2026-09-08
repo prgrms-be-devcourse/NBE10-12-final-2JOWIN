@@ -50,6 +50,7 @@ jobs:
       infra: ${{ steps.filter.outputs.infra }}
       scripts: ${{ steps.filter.outputs.scripts }}
       config: ${{ steps.filter.outputs.config }}
+      workflows: ${{ steps.filter.outputs.workflows }}
       aws_ready: ${{ steps.gate.outputs.aws_ready }}
       infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
       stack_ready: ${{ steps.gate.outputs.stack_ready }}
@@ -71,6 +72,9 @@ jobs:
               - 'infra/prod/caddy/**'
               - 'infra/prod/monitoring/**'
               - '.github/workflows/infra.yml'
+            workflows:
+              - '.github/workflows/**'
+              - '.github/actions/**'
 
       # 아직 없는 것들 때문에 CI 가 빨간불로 남지 않게 한다.
       # bootstrap apply 전에는 OIDC 역할이 없고, 메인 스택 코드도 아직 없다.
@@ -175,6 +179,38 @@ jobs:
           # 미할당 셸 변수로 오인하기 때문이다. 나머지 경고는 전부 실패로 본다.
           shellcheck --exclude=SC2154 "${files[@]}"
 
+  # 워크플로 YAML 은 지금까지 아무도 검사하지 않았다. 틀리면 머지된 뒤에야
+  # 드러나고, 배포 워크플로에서 그러면 서버 앞에서 멈춘다.
+  #
+  # actionlint 는 composite action(action.yml)을 이해하지 못한다 — 워크플로만
+  # 본다. 그래서 액션의 run 블록은 따로 뽑아 shellcheck 에 건다.
+  workflow-lint:
+    name: workflow-lint
+    needs: changes
+    if: needs.changes.outputs.workflows == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: actionlint
+        run: |
+          set -euo pipefail
+          docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.7 -color
+
+      - name: composite action 의 run 블록 shellcheck
+        run: |
+          set -euo pipefail
+          out="$(mktemp -d)"
+          python3 .github/scripts/extract-action-scripts.py "$out"
+          shopt -s nullglob
+          files=("$out"/*.sh)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "composite action 이 없다"
+            exit 0
+          fi
+          # SC2154 만 끈다 — 워크플로 스크립트도 env 로 주입받는 변수를 쓴다.
+          shellcheck --exclude=SC2154 "${files[@]}"
+
   config-check:
     name: config-check
     needs: changes
@@ -275,7 +311,7 @@ jobs:
           sarif_file: checkov.sarif
           category: checkov
 
-  # ── 비용 게이트 — cost-guard 1계층 ───────────────────────────────
+  # ── 비용 게이트 — PR 단계에서 월 예상 비용을 막는다 ──────────────
   # 3계층 중 유일하게 "돈이 나가기 전에" 막는다.
   # IAM Deny 는 apply 시점, Budgets 는 이미 쓴 뒤다.
   infracost:
@@ -290,7 +326,7 @@ jobs:
       contents: read
       pull-requests: write
     env:
-      # 하드 한도는 $50 (cost-guard.md). 여유를 두고 $45 에서 막는다.
+      # 자체 예산은 8만원(약 $57). 여유를 두고 $45 에서 막는다.
       COST_LIMIT: ${{ vars.INFRACOST_COST_LIMIT || '45' }}
     steps:
       - uses: actions/checkout@v4
@@ -324,7 +360,7 @@ jobs:
           total=$(jq -r '.totalMonthlyCost // "0"' /tmp/infracost.json)
           echo "월 예상 비용 ${total} / 한도 ${COST_LIMIT} (USD)"
           if awk -v t="$total" -v l="$COST_LIMIT" 'BEGIN { exit !(t > l) }'; then
-            echo "::error::월 예상 비용 ${total} USD 가 한도 ${COST_LIMIT} USD 를 넘었다. 하드 한도는 50 USD (cost-guard.md)"
+            echo "::error::월 예상 비용 ${total} USD 가 한도 ${COST_LIMIT} USD 를 넘었다"
             exit 1
           fi
           echo "한도 이내"
@@ -418,23 +454,26 @@ jobs:
           terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
 
       # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면
-      # S3 만 바뀌고 서버는 옛 설정으로 계속 돈다 (cd.md §6.3).
+      # S3 만 바뀌고 서버는 옛 설정으로 계속 돈다 (cd.md §9.3).
       #
-      # 이미지는 건드리지 않는 설정 전용 모드다. 서버가 아직 없으면
-      # 대상이 0개라 실패하는데, 그건 정상이므로 워크플로를 깨지 않는다.
+      # 이미지는 건드리지 않는 설정 전용 모드다. .env 도 보내지 않는다 —
+      # 이미 서버에 있고, 여기서 다시 보내면 시크릿이 한 경로 더 지나간다.
+      #
+      # 서버가 아직 없으면 접속이 실패하는데 그건 정상이므로 워크플로를
+      # 깨지 않는다(tolerate-missing-host).
+      # secrets 컨텍스트는 스텝 if: 에서 못 쓴다. env 로 한 번 받아 출력으로 넘긴다.
+      - id: sshgate
+        env:
+          OK: ${{ secrets.DEPLOY_HOST != '' && secrets.SSH_PRIVATE_KEY != '' && secrets.SSH_KNOWN_HOSTS != '' }}
+        run: echo "ok=${OK}" >> "$GITHUB_OUTPUT"
+
       - name: 서버에 설정 재동기화 (설정 전용 배포)
-        continue-on-error: true
-        run: |
-          set -uo pipefail
-          id="$(aws ssm send-command \
-            --document-name AWS-RunShellScript \
-            --targets "Key=tag:Project,Values=2jo" \
-            --comment "config sync after apply" \
-            --timeout-seconds 600 \
-            --parameters 'commands=["/opt/2jo/scripts/deploy.sh"],executionTimeout=["600"]' \
-            --region ap-northeast-2 \
-            --query 'Command.CommandId' --output text)" || {
-            echo "::notice::대상 인스턴스가 없거나 SSM 호출이 실패했다 — 서버가 아직 없으면 정상이다"
-            exit 0
-          }
-          echo "명령 ID: ${id}"
+        if: steps.sshgate.outputs.ok == 'true'
+        uses: ./.github/actions/remote-deploy
+        with:
+          aws-region: ap-northeast-2
+          security-group-name: 2jo-web
+          host: ${{ secrets.DEPLOY_HOST }}
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          tolerate-missing-host: 'true'

@@ -21,18 +21,13 @@ output "tf_apply_role_arn" {
 }
 
 output "tf_apply_role_name" {
-  description = "cost-guard 모듈의 terraform_exec_role_name — Deny 가드레일이 붙을 대상"
+  description = "인프라 apply 역할 이름"
   value       = aws_iam_role.tf_apply.name
 }
 
 output "gha_deploy_role_arn" {
   description = ".github/workflows/deploy.yml"
   value       = aws_iam_role.gha_deploy.arn
-}
-
-output "gha_cost_role_arn" {
-  description = ".github/workflows/cost-report.yml"
-  value       = aws_iam_role.gha_cost.arn
 }
 
 output "account_id" {

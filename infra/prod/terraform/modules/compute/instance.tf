@@ -5,13 +5,15 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 # AMI 를 하드코딩하지 않는다. 하드코딩하면 보안 패치를 추적할 수 없다.
-data "aws_ssm_parameter" "al2023_arm64" {
-  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-arm64"
+data "aws_ssm_parameter" "al2023_x86_64" {
+  name = "/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64"
 }
 
 resource "aws_instance" "main" {
-  ami           = data.aws_ssm_parameter.al2023_arm64.value
+  ami           = data.aws_ssm_parameter.al2023_x86_64.value
   instance_type = var.instance_type
+
+  key_name = var.key_name
 
   subnet_id              = var.subnet_id
   vpc_security_group_ids = [var.security_group_id]
@@ -45,15 +47,15 @@ resource "aws_instance" "main" {
   }
 
   user_data = templatefile("${path.module}/user_data.sh", {
-    app_dir              = var.app_dir
-    config_bucket        = var.config_bucket
-    ssm_parameter_prefix = var.ssm_parameter_prefix
-    aws_region           = var.aws_region
-    swap_size_gb         = var.swap_size_gb
+    app_dir           = var.app_dir
+    config_bucket     = var.config_bucket
+    aws_region        = var.aws_region
+    swap_size_gb      = var.swap_size_gb
+    deploy_public_key = var.deploy_public_key
   })
 
   # user_data 를 고쳐도 인스턴스를 재생성하지 않는다(기본값 false).
-  # 설정 변경은 S3 재동기화 + SSM 으로 반영한다 — 서버를 갈아엎을 일이 아니다.
+  # 설정 변경은 S3 재동기화 + 배포 스크립트로 반영한다 — 서버를 갈아엎을 일이 아니다.
 
   lifecycle {
     # SSM 파라미터가 최신 AMI 를 가리키므로, AWS 가 새 AMI 를 낼 때마다
@@ -66,8 +68,8 @@ resource "aws_instance" "main" {
     # 컴포넌트는 역할로 적는다. "prod" 는 환경이지 컴포넌트가 아니다 —
     # 계정을 여러 팀이 공유하므로 콘솔에서 무엇을 하는 서버인지 보여야 한다.
     Name = "${var.project}-api"
-    # cost-guard 의 일일 잡이 이 태그로 정지 대상을 찾는다.
-    # 이름을 바꾸면 백스톱이 조용히 아무것도 못 멈추게 된다.
+    # 계정을 여러 팀이 공유한다. 이 태그로 Cost Explorer 에서 팀별 비용이
+    # 분해되고 콘솔 필터링이 된다.
     Project = var.project
   }
 }

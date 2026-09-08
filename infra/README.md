@@ -40,26 +40,24 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | `prod/compose/` | EC2 위 스택 — Caddy · backend · PostgreSQL · 모니터링 |
 | `prod/caddy/` | `Caddyfile` — TLS 종단 · `/actuator` 차단 · 재시도 버퍼 |
 | `prod/monitoring/` | Prometheus · Loki · Promtail · Grafana 설정과 대시보드 |
-| `prod/scripts/` | `cost_report.py` · `deploy.sh` · `fetch-secrets.sh` · `backup.sh` · `tunnel.sh` |
+| `prod/scripts/` | `deploy.sh` · `backup.sh` |
 
 ### terraform 모듈
 
 | 모듈 | 만드는 것 |
 | --- | --- |
-| `network/` | VPC · 퍼블릭 서브넷 · IGW · 보안그룹(80/443만) — NAT Gateway 없음 |
-| `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(SSM) · cloud-init |
+| `network/` | VPC · 퍼블릭 서브넷 · IGW · 보안그룹(상시 80/443만) — NAT Gateway 없음 |
+| `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(ECR·S3만) · 키페어 · cloud-init |
 | `storage/` | ECR(수명주기 10개) · S3 백업 버킷(수명주기 7일) |
 | `mail/` | SES 도메인 인증 · DKIM · 발송 IAM |
-| `cost-guard/` | IAM Deny 가드레일 · Budgets · Budget Action 2종 · SNS → Discord Lambda |
 
 ### 최초 실행 순서
 
 | # | 명령 | 비고 |
 | --- | --- | --- |
 | 1 | `cd prod/terraform/bootstrap && terraform apply` | 로컬 state → 생성된 S3로 이관 |
-| 2 | `cd prod/terraform && terraform apply -target=module.cost_guard` | **다른 리소스보다 먼저** |
-| 3 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
-| 4 | `cd prod/terraform && terraform apply` | 전체 |
+| 2 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
+| 3 | `cd prod/terraform && terraform apply` | 전체 |
 
 ### 이미지 빌드
 
@@ -76,7 +74,7 @@ docker build -f infra/prod/docker/backend.Dockerfile backend/
 
 - **AWS 환경은 prod 하나뿐이다.** 예산 ₩80,000 안에서 두 번째 상시 환경이 불가능하다 → terraform에 `envs/` 계층을 두지 않았다.
 - 그래서 **인프라 변경을 미리 시험할 AWS 환경이 없다.** `terraform plan` PR 코멘트 · Infracost 비용 게이트 · GitHub Environment 승인으로 대신한다.
-- 시크릿은 저장소에 두지 않는다. SSM Parameter Store → `scripts/fetch-secrets.sh` → `/opt/2jo/.env`.
+- 시크릿은 저장소에 두지 않는다. GitHub Secrets → 배포 워크플로가 SSH stdin 으로 → `/opt/2jo/.env` (600).
 
 ## 이 디렉터리 밖 관련 파일
 

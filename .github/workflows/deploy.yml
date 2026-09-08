@@ -1,7 +1,8 @@
 # 백엔드 배포 (이슈 #93)
 #
-# 원칙: Actions 는 EC2 에 직접 붙지 않는다.
-#   이미지는 ECR 로, 명령은 SSM 으로 간다. SSH 키도 인바운드 22번도 없다.
+# 원칙: 22번을 상시 열지 않는다.
+#   이미지는 ECR 로 가고, 명령은 SSH 로 간다. 22번은 배포하는 동안만
+#   러너 공인 IP /32 로 열렸다가 회수된다 (.github/actions/remote-deploy).
 #
 # 승인 게이트가 보안 장치이기도 하다. 배포 역할의 신뢰 조건이
 # repo:<org>/<repo>:environment:prod 라서, 승인 전에는 OIDC 토큰 자체가
@@ -18,6 +19,7 @@ on:
       - 'backend/**'
       - 'infra/prod/docker/**'
       - '.github/workflows/deploy.yml'
+      - '.github/actions/remote-deploy/**'
   workflow_dispatch:
     inputs:
       config_only:
@@ -38,11 +40,7 @@ permissions:
 env:
   AWS_REGION: ap-northeast-2
   ECR_REPOSITORY: 2jo-backend
-  PROJECT_TAG: '2jo'
-  POLL_INTERVAL: '5'
-  # 최악 케이스 230초(pull 30 + up 10 + health 90 + 롤백 10 + health 90)에
-  # 여유 70초. aws ssm wait 는 기본 100초라 부족해서 직접 돈다.
-  POLL_TIMEOUT: '300'
+  SECURITY_GROUP_NAME: 2jo-web
 
 jobs:
   preflight:
@@ -53,23 +51,35 @@ jobs:
     steps:
       # 시크릿이 없으면 조용히 스킵한다. bootstrap apply 전에 develop 에
       # 백엔드 커밋이 들어올 때마다 빨간불이 뜨면 안 된다.
+      #
+      # SSH 로 바뀌면서 필요한 시크릿이 늘었다. 하나라도 없으면 배포가
+      # 중간에 죽는데, 그때는 이미 ECR 에 이미지가 올라간 뒤다.
       - id: gate
         env:
-          HAS_ROLE: ${{ secrets.AWS_GHA_DEPLOY_ROLE_ARN != '' }}
-        run: echo "ready=${HAS_ROLE}" >> "$GITHUB_OUTPUT"
+          HAS_ALL: ${{ secrets.AWS_GHA_DEPLOY_ROLE_ARN != ''
+            && secrets.DEPLOY_HOST != ''
+            && secrets.SSH_PRIVATE_KEY != ''
+            && secrets.SSH_KNOWN_HOSTS != ''
+            && secrets.PROD_ENV_FILE != '' }}
+        run: echo "ready=${HAS_ALL}" >> "$GITHUB_OUTPUT"
 
   deploy:
     name: deploy
     needs: preflight
     if: needs.preflight.outputs.ready == 'true'
 
-    # 이미지가 arm64(t4g Graviton)다. 이 레포는 퍼블릭이라 GitHub arm64
-    # 러너를 무료로 쓸 수 있다 — QEMU 에뮬레이션보다 훨씬 빠르다.
-    # 러너를 못 쓰게 되면 ubuntu-latest + docker/setup-qemu-action 으로 되돌린다.
-    runs-on: ubuntu-24.04-arm
+    # 인스턴스가 t3.medium(x86_64)이라 러너와 아키텍처가 같다.
+    # 에뮬레이션이 필요 없어 그냥 빌드하면 된다.
+    runs-on: ubuntu-latest
 
     # 승인 게이트. 승인 전에는 job 이 시작되지 않고 토큰도 발급되지 않는다.
+    # SSH 로 바뀐 뒤에도 그대로다 — 22번을 여는 것도 승인 후에만 일어난다.
     environment: prod
+
+    # SSH 가 종료 코드를 직접 돌려주므로 폴링 상한 대신 job 타임아웃으로 막는다.
+    # 최악 케이스 230초(pull 30 + up 10 + health 90 + 롤백 10 + health 90)에
+    # 빌드·push 를 더해도 넉넉하다.
+    timeout-minutes: 15
 
     permissions:
       contents: read
@@ -118,78 +128,31 @@ jobs:
             backend/
           docker push "${{ steps.ecr.outputs.image }}"
 
-      - id: send
-        name: SSM 으로 deploy.sh 실행
-        run: |
-          set -euo pipefail
-          if [ "${{ inputs.config_only }}" = "true" ]; then
-            cmd="/opt/2jo/scripts/deploy.sh"
-          else
-            cmd="/opt/2jo/scripts/deploy.sh '${{ steps.ecr.outputs.image }}'"
-          fi
-
-          # 인스턴스 ID 를 몰라도 된다. 태그로 대상을 지정하면 배포 역할에
-          # ec2:DescribeInstances 를 주지 않아도 된다.
-          id="$(aws ssm send-command \
-            --document-name AWS-RunShellScript \
-            --targets "Key=tag:Project,Values=${PROJECT_TAG}" \
-            --comment "deploy ${GITHUB_SHA:0:7}" \
-            --timeout-seconds 600 \
-            --parameters "commands=[\"$cmd\"],executionTimeout=[\"600\"]" \
-            --region "$AWS_REGION" \
-            --query 'Command.CommandId' --output text)"
-          echo "command_id=${id}" >> "$GITHUB_OUTPUT"
-          echo "명령 ID: ${id}"
-
-      - id: poll
-        name: 결과 폴링
-        run: |
-          set -euo pipefail
-          elapsed=0
-          status="Pending"
-          rc="-1"
-
-          while [ "$elapsed" -lt "$POLL_TIMEOUT" ]; do
-            read -r status rc < <(
-              aws ssm list-command-invocations \
-                --command-id "${{ steps.send.outputs.command_id }}" \
-                --details --region "$AWS_REGION" \
-                --query 'CommandInvocations[0].[Status,ResponseCode]' \
-                --output text
-            ) || true
-
-            case "$status" in
-              Success|Failed|Cancelled|TimedOut) break ;;
-            esac
-
-            sleep "$POLL_INTERVAL"
-            elapsed=$((elapsed + POLL_INTERVAL))
-          done
-
-          echo "--- 서버 출력 ---"
-          aws ssm list-command-invocations \
-            --command-id "${{ steps.send.outputs.command_id }}" \
-            --details --region "$AWS_REGION" \
-            --query 'CommandInvocations[0].CommandPlugins[0].Output' \
-            --output text || true
-
-          echo "status=${status}" >> "$GITHUB_OUTPUT"
-          echo "rc=${rc}" >> "$GITHUB_OUTPUT"
-
-          # 타임아웃이면 추가 명령을 보내지 않는다. EC2 가 아직 롤백 중일 수
-          # 있고, 거기에 새 명령을 얹으면 상태가 더 꼬인다.
-          if [ "$elapsed" -ge "$POLL_TIMEOUT" ]; then
-            echo "::error::${POLL_TIMEOUT}초 안에 끝나지 않았다. SSM 으로 서버 상태를 확인할 것 (추가 명령은 보내지 않았다)"
-            exit 1
-          fi
+      # 여기서 22번이 열리고, deploy.sh 가 돌고, 규칙이 회수된다.
+      # 종료 코드는 SSH 가 그대로 돌려준다 — 결과 폴링이 필요 없다.
+      #
+      # continue-on-error 인 이유: 실패해도 Discord 통보까지는 가야 한다.
+      # job 성패는 맨 아래에서 종료 코드로 다시 판정한다.
+      - id: deploy
+        name: 배포 (SSH)
+        continue-on-error: true
+        uses: ./.github/actions/remote-deploy
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          security-group-name: ${{ env.SECURITY_GROUP_NAME }}
+          host: ${{ secrets.DEPLOY_HOST }}
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          env-file: ${{ secrets.PROD_ENV_FILE }}
+          image: ${{ inputs.config_only && '' || steps.ecr.outputs.image }}
 
       # deploy.sh 의 종료 코드가 그대로 메시지가 된다.
       # 분기 로직을 워크플로에 다시 쓰지 않는다.
       - name: Discord 통보
-        if: always() && steps.send.outputs.command_id != ''
+        if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
-          RC: ${{ steps.poll.outputs.rc }}
+          RC: ${{ steps.deploy.outputs.rc }}
           SHA: ${{ github.sha }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
@@ -203,6 +166,8 @@ jobs:
             1) title="배포 실패"        ; desc="${short} 실패. 롤백 대상이 없다(최초 배포). 수동 확인 필요." ; color=15548997 ;;
             3) title="배포 실패 + 롤백 실패"; desc="서비스가 정상이 아니다. 즉시 확인 필요. 시도: ${short}"  ; color=10038562 ;;
             75) echo "다른 배포가 진행 중이었다 — 알림 생략"; exit 0 ;;
+            # deploy.sh 에 도달조차 못한 경우다 — 보안그룹 개방이나 SSH 접속에서 죽었다.
+            '') title="배포 실패 — 서버에 도달 못함"; desc="보안그룹 개방 또는 SSH 접속 단계에서 실패했다. 시도: ${short}" ; color=10038562 ;;
             *) title="배포 결과 불명"   ; desc="종료 코드 ${RC}. 로그를 확인할 것."                    ; color=10038562 ;;
           esac
 
@@ -211,3 +176,24 @@ jobs:
             '{embeds:[{title:$t,description:$d,color:$c}]}' \
             | curl -sS -X POST "$DISCORD_WEBHOOK_URL" \
                 -H "Content-Type: application/json" -d @-
+
+      # continue-on-error 로 넘어온 실패를 여기서 job 실패로 되돌린다.
+      # 75(다른 배포 진행 중)는 실패가 아니다 — 줄 서서 기다렸을 뿐이다.
+      - name: 배포 결과 판정
+        if: always()
+        env:
+          RC: ${{ steps.deploy.outputs.rc }}
+          OUTCOME: ${{ steps.deploy.outcome }}
+        run: |
+          set -uo pipefail
+          if [ "$OUTCOME" != "success" ] && [ -z "${RC:-}" ]; then
+            echo "::error::deploy.sh 에 도달하지 못했다 (접속 또는 보안그룹 단계 실패)"
+            exit 1
+          fi
+          case "$RC" in
+            0 | 75) exit 0 ;;
+            *)
+              echo "::error::deploy.sh 종료 코드 ${RC}"
+              exit 1
+              ;;
+          esac
