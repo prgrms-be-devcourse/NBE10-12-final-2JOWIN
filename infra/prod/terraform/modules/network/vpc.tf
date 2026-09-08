@@ -51,7 +51,7 @@ resource "aws_internet_gateway" "main" {
 }
 
 # 라우팅 테이블은 하나로 둘 서브넷이 공유한다. 둘 다 퍼블릭이라 경로가 같다.
-# 10.0.0.0/16 -> local 경로는 AWS 가 자동으로 넣으므로 여기 쓰지 않는다.
+# VPC 대역 -> local 경로는 AWS 가 자동으로 넣으므로 여기 쓰지 않는다.
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.main.id
 
