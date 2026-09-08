@@ -13,13 +13,13 @@ variable "aws_region" {
 }
 
 variable "instance_type" {
-  description = "EC2 인스턴스 타입. cost-guard 의 allowed_instance_types 안에 있어야 한다"
+  description = "EC2 인스턴스 타입"
   type        = string
-  default     = "t4g.medium" # 2 vCPU · 4 GiB · arm64(Graviton)
+  default     = "t3.medium" # 2 vCPU · 4 GiB · x86_64
 }
 
 variable "root_volume_size_gb" {
-  description = "루트 EBS 크기(GB). cost-guard 의 max_volume_size_gb 이하여야 한다"
+  description = "루트 EBS 크기(GB)"
   type        = number
   default     = 40
 
@@ -55,10 +55,22 @@ variable "storage_policy_arn" {
   type        = string
 }
 
-variable "ssm_parameter_prefix" {
-  description = "인스턴스가 읽을 수 있는 SSM 파라미터 경로. 값은 수동 주입한다"
+# 키를 두 개로 나눈다. 한쪽이 유출돼도 한쪽만 교체하면 되기 때문이다.
+#   배포용 — 개인키는 GitHub Secrets. deploy.sh 를 실행한다
+#   사람용 — 개인키는 인프라 담당 로컬. 장애 조사용
+variable "key_name" {
+  description = "사람 접속용 AWS 키페어 이름. 공개키는 콘솔/CLI 로 미리 import 해 둔다"
   type        = string
-  default     = "/2jo/prod"
+}
+
+variable "deploy_public_key" {
+  description = "배포용 SSH 공개키. cloud-init 이 ec2-user 의 authorized_keys 에 넣는다"
+  type        = string
+
+  validation {
+    condition     = can(regex("^(ssh-ed25519|ssh-rsa|ecdsa-sha2-) ", var.deploy_public_key))
+    error_message = "OpenSSH 공개키 형식이어야 한다. 개인키를 잘못 넣는 사고를 여기서 막는다."
+  }
 }
 
 variable "app_dir" {

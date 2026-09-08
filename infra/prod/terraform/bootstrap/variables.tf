@@ -5,7 +5,7 @@ variable "aws_region" {
 }
 
 variable "project" {
-  description = "리소스 이름·태그 접두사. cost-guard 의 태그 조건과 반드시 같은 값"
+  description = "리소스 이름·태그 접두사. 회사 계정 공유 규칙상 모든 리소스가 이 값으로 시작한다"
   type        = string
   default     = "2jo"
 }
@@ -27,16 +27,10 @@ variable "prod_environment" {
   default     = "prod"
 }
 
-variable "cost_environment" {
-  description = "일일 비용 잡이 쓰는 GitHub Environment 이름"
-  type        = string
-  default     = "cost-guard"
-}
-
 variable "ecr_repository_name" {
   description = "배포 역할이 push 할 수 있는 유일한 ECR 리포지토리. storage 모듈이 실제로 만든다"
   type        = string
-  default     = "2jo/backend"
+  default     = "2jo-backend"
 }
 
 variable "state_version_retention_days" {

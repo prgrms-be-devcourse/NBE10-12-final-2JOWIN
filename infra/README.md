@@ -40,26 +40,25 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | `prod/compose/` | EC2 위 스택 — Caddy · backend · PostgreSQL · 모니터링 |
 | `prod/caddy/` | `Caddyfile` — TLS 종단 · `/actuator` 차단 · 재시도 버퍼 |
 | `prod/monitoring/` | Prometheus · Loki · Promtail · Grafana 설정과 대시보드 |
-| `prod/scripts/` | `cost_report.py` · `deploy.sh` · `fetch-secrets.sh` · `backup.sh` · `tunnel.sh` |
+| `prod/scripts/` | `deploy.sh` · `backup.sh` |
+| `prod/systemd/` | 백업 타이머 (systemd **user** unit — `deploy.sh` 가 설치한다) |
 
 ### terraform 모듈
 
 | 모듈 | 만드는 것 |
 | --- | --- |
-| `network/` | VPC · 퍼블릭 서브넷 · IGW · 보안그룹(80/443만) — NAT Gateway 없음 |
-| `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(SSM) · cloud-init |
+| `network/` | VPC · 퍼블릭 서브넷 · IGW · 보안그룹(상시 80/443만) — NAT Gateway 없음 |
+| `compute/` | EC2 · Elastic IP · 인스턴스 프로파일(ECR·S3만) · 키페어 · cloud-init |
 | `storage/` | ECR(수명주기 10개) · S3 백업 버킷(수명주기 7일) |
 | `mail/` | SES 도메인 인증 · DKIM · 발송 IAM |
-| `cost-guard/` | IAM Deny 가드레일 · Budgets · Budget Action 2종 · SNS → Discord Lambda |
 
 ### 최초 실행 순서
 
 | # | 명령 | 비고 |
 | --- | --- | --- |
 | 1 | `cd prod/terraform/bootstrap && terraform apply` | 로컬 state → 생성된 S3로 이관 |
-| 2 | `cd prod/terraform && terraform apply -target=module.cost_guard` | **다른 리소스보다 먼저** |
-| 3 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
-| 4 | `cd prod/terraform && terraform apply` | 전체 |
+| 2 | dnszi에 A 레코드 등록 (`api` → EIP) | Let's Encrypt 발급 전제 |
+| 3 | `cd prod/terraform && terraform apply` | 전체 |
 
 ### 이미지 빌드
 
@@ -76,7 +75,32 @@ docker build -f infra/prod/docker/backend.Dockerfile backend/
 
 - **AWS 환경은 prod 하나뿐이다.** 예산 ₩80,000 안에서 두 번째 상시 환경이 불가능하다 → terraform에 `envs/` 계층을 두지 않았다.
 - 그래서 **인프라 변경을 미리 시험할 AWS 환경이 없다.** `terraform plan` PR 코멘트 · Infracost 비용 게이트 · GitHub Environment 승인으로 대신한다.
-- 시크릿은 저장소에 두지 않는다. SSM Parameter Store → `scripts/fetch-secrets.sh` → `/opt/2jo/.env`.
+- 시크릿은 저장소에 두지 않는다. GitHub Secrets → 배포 워크플로가 SSH stdin 으로 → `/opt/2jo/.env` (600).
+- **예약 작업은 cron 이 아니라 systemd user timer 다.** AL2023 에는 cronie 가 기본 설치되지 않고, `deploy.sh` 를 sudo 없이 돌리기로 한 결정과도 맞는다. cloud-init 은 `enable-linger` 만 켜고, 유닛 설치는 배포가 한다 — `user_data` 는 고쳐도 다시 실행되지 않아 스케줄을 바꿀 수 없다.
+
+### 백업 복원
+
+> 서버는 자기 백업을 읽지 못한다. 인스턴스 프로파일에 `backup/*` **PutObject 만** 있고 `GetObject` 는 없다 — 서버가 침해돼도 과거 백업이 남게 한 의도적 설계다. 그래서 복원은 **사람이 별도 자격증명으로** 한다.
+
+| # | 단계 |
+| --- | --- |
+| 1 | `aws s3 ls s3://<버킷>/backup/` 으로 대상 확인 |
+| 2 | `aws s3 cp s3://<버킷>/backup/<파일> - \| gunzip > dump.sql` 로 로컬에 받는다 |
+| 3 | `head -50 dump.sql` — 스키마 헤더가 보이는지 눈으로 확인 |
+| 4 | 빈 DB 에 넣어본다: `docker compose exec -T postgres psql -U "$DB_USERNAME" -d <임시DB> < dump.sql` |
+| 5 | 운영 DB 로 복원할 때만 기존 DB 를 내리고 진행한다 |
+
+**한 번은 실제로 해봐야 한다.** 검증하지 않은 백업은 백업이 아니다 — 필요해지는 순간이 처음 시도하는 순간이면 안 된다.
+
+### 백업이 도는지 확인
+
+| 확인 | 명령 |
+| --- | --- |
+| 타이머가 붙어 있나 | `systemctl --user list-timers backup.timer` |
+| 마지막 실행 결과 | `journalctl --user -u backup.service -n 50` |
+| 지표가 올라갔나 | Prometheus 에서 `twojo_backup_last_success_timestamp_seconds` |
+
+마지막 성공이 25시간을 넘으면 Grafana 알람이 발화한다. **지표가 아예 없어도 발화한다** — 타이머가 설치되지 않은 상태가 가장 위험한데 그때가 가장 조용하기 때문이다.
 
 ## 이 디렉터리 밖 관련 파일
 

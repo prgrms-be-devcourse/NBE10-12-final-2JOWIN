@@ -19,10 +19,7 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | GitHub OIDC provider | `token.actions.githubusercontent.com` | 계정당 1개 |
 | IAM 역할 | `2jo-tf-plan` | PR · `ReadOnlyAccess` + `.tflock` 쓰기 |
 | IAM 역할 | `2jo-tf-apply` | `environment:prod` · `AdministratorAccess` |
-| IAM 역할 | `2jo-gha-deploy` | `environment:prod` · ECR push + SSM 실행 |
-| IAM 역할 | `2jo-gha-cost` | `environment:cost-guard` · 비용 조회 + 인스턴스 정지 |
-
-> 비용 Deny 가드레일은 여기 없다. `modules/cost-guard` 가 `2jo-tf-apply` 에 붙인다.
+| IAM 역할 | `2jo-gha-deploy` | `environment:prod` · ECR push + 배포 중 22번 임시 개방 |
 
 ## 실행 순서
 
@@ -81,6 +78,6 @@ aws iam list-attached-user-policies --user-name <사용자명>
 
 | 규칙 | 이유 |
 | --- | --- |
-| **시크릿을 terraform 으로 만들지 않는다** | tfstate 는 평문이고 `tf-plan` 역할이 읽을 수 있다. DB 비밀번호·JWT 키는 `aws ssm put-parameter` 로 수동 주입 |
+| **시크릿을 terraform 으로 만들지 않는다** | tfstate 는 평문이고 `tf-plan` 역할이 읽을 수 있다. DB 비밀번호·JWT 키는 GitHub Secrets 에 두고 배포 워크플로가 `.env` 로 넣는다 |
 | 계정 ID 를 변수로 받지 않는다 | 자격증명에서 읽는다 — 잘못된 계정에 apply 하는 사고를 막는다 |
 | `.terraform.lock.hcl` 은 커밋한다 | 프로바이더 버전을 팀이 공유해야 한다 |

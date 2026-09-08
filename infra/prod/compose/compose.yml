@@ -9,10 +9,10 @@
 #     --env-file /opt/2jo/.env.image \
 #     -f /opt/2jo/compose/compose.yml up -d
 #
-#   .env        SSM 에서 온 값. fetch-secrets.sh 가 통째로 새로 쓴다
+#   .env        시크릿. 배포 워크플로가 GitHub Secrets 에서 조립해 넣는다
 #   .env.image  BACKEND_IMAGE 하나. deploy.sh 가 배포마다 쓴다
 #
-# 한 파일에 두면 시크릿을 새로 받을 때마다 배포 중인 이미지 태그가 지워진다.
+# 한 파일에 두면 시크릿을 새로 넣을 때마다 배포 중인 이미지 태그가 지워진다.
 #
 # 설계 근거: containers.md §3
 name: twojo

@@ -59,6 +59,7 @@ src/
    - 응답은 08 DTO와 1:1 · 데이터는 `fixtures.ts`에서만 · 에러는 공통 `ErrorResponse` · 실패 경로(400·404·409) 포함
 2. `handlers/index.ts`의 `BY_DOMAIN`에 등록한다.
 3. 백엔드가 준비되면 `.env.development`의 `VITE_MOCK_DOMAINS`에서 내 도메인 이름을 뺀다. 요청이 Vite 프록시를 거쳐 `localhost:8080`으로 간다. 코드는 바꾸지 않는다.
+   백엔드를 다른 포트에 띄웠으면 `BACKEND_PROXY_TARGET=http://localhost:8081 npm run dev`처럼 프록시 대상만 바꾼다 (브라우저 오리진은 그대로라 백엔드 CORS는 손대지 않는다).
 
 `auth`를 빼야 실제 로그인이 되므로, 다른 도메인보다 먼저 전환한다.
 
