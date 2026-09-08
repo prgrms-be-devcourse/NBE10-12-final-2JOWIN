@@ -3,6 +3,7 @@ package com.twojo.member.controller;
 import com.twojo.boundary.AccessContext;
 import com.twojo.global.response.PageResponse;
 import com.twojo.member.dto.ChangeRoleRequest;
+import com.twojo.member.dto.DeactivateMemberRequest;
 import com.twojo.member.dto.MemberOptionResponse;
 import com.twojo.member.dto.MemberResponse;
 import com.twojo.member.service.MemberAdminService;
@@ -15,6 +16,7 @@ import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -59,6 +61,26 @@ public class MemberController {
     public MemberResponse changeRole(AccessContext ctx, @PathVariable UUID memberId,
                                      @Valid @RequestBody ChangeRoleRequest request) {
         return memberAdminService.changeRole(ctx, memberId, request);
+    }
+
+    /**
+     * 비활성화 (MB-09·14) — 기업 관리자만.
+     *
+     * <p>진행 중 담당 Deal이 있으면 body에 이관 대상이 있어야 한다. 없으면 body 자체를 생략해도 된다.
+     */
+    @PostMapping("/{memberId}/deactivate")
+    public MemberResponse deactivate(
+            AccessContext ctx, @PathVariable UUID memberId,
+            @RequestBody(required = false) DeactivateMemberRequest request) {
+        return memberAdminService.deactivate(
+                ctx, memberId,
+                request == null ? new DeactivateMemberRequest(null) : request);
+    }
+
+    /** 재활성화 — 기업 관리자만. 다시 로그인할 수 있게 되는 것이 전부다. */
+    @PostMapping("/{memberId}/reactivate")
+    public MemberResponse reactivate(AccessContext ctx, @PathVariable UUID memberId) {
+        return memberAdminService.reactivate(ctx, memberId);
     }
 
     private static Pageable pageable(int page, int size) {
