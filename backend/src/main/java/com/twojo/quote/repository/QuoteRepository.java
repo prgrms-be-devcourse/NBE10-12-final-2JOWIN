@@ -66,6 +66,16 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
     /** {@code QuoteQuery.originsByIds} — 주문 목록·상세에 붙일 견적 출처 배치 조회 (OD-08·09) */
     List<Quote> findByCompanyIdAndIdIn(UUID companyId, Collection<UUID> ids);
 
+    /**
+     * {@code QuoteQuery.findAwaitingResponse} — 응답 대기(SENT·VIEWED) 견적 (NT-05, DB-03).
+     *
+     * <p>회사 스코프만 건다 — <b>담당 축은 거르지 않는다.</b> 배치에는 {@code AccessContext}가 없고,
+     * 대시보드는 {@code QuoteSummary.dealId}로 호출자가 직접 거른다 (계약 javadoc).
+     *
+     * <p>발송이 오래된 것부터 준다 — 리마인드는 가장 오래 답이 없는 건이 먼저다.
+     */
+    List<Quote> findByCompanyIdAndStatusInOrderBySentAtAsc(UUID companyId, Collection<Quote.Status> statuses);
+
     /** {@code QuoteQuery.quoteIdsByDeals} — 주문 목록의 SC-04 범위 필터. id만 읽는다 */
     @Query("select q.id from Quote q where q.companyId = :companyId and q.dealId in :dealIds")
     List<UUID> findIdsByDeals(UUID companyId, Collection<UUID> dealIds);
