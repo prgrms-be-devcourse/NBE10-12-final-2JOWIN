@@ -108,7 +108,7 @@ class ActivityQueryImplTest {
     }
 
     @Test
-    @DisplayName("summary는 80자를 넘지 않는다 — 80자까지는 그대로, 넘으면 자르고 …를 붙인다")
+    @DisplayName("내용은 80자까지 그대로, 넘으면 80자에서 자르고 …를 붙인다")
     void recent_longContent_truncated() {
         String 여든자 = "가".repeat(80);
         String 여든한자 = "가".repeat(81);

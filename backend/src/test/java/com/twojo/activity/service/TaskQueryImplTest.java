@@ -16,6 +16,7 @@ import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.Role;
 import com.twojo.boundary.TaskQuery;
 import com.twojo.boundary.TaskQuery.FollowUpSummary;
+import java.lang.reflect.Field;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -38,6 +39,7 @@ class TaskQueryImplTest {
     private static final UUID COMPANY_ID = UUID.randomUUID();
     private static final UUID MEMBER_ID = UUID.randomUUID();
     private static final UUID DEAL_ID = UUID.randomUUID();
+    private static final UUID TASK_ID = UUID.randomUUID();
 
     private static final AccessContext ADMIN =
             new AccessContext(COMPANY_ID, MEMBER_ID, Role.COMPANY_ADMIN, AccessScope.COMPANY_ALL);
@@ -49,20 +51,38 @@ class TaskQueryImplTest {
     @InjectMocks private TaskQueryImpl taskQuery;
 
     private static Task 할일(String content) {
-        return Task.create(COMPANY_ID, DEAL_ID, content, LocalDate.of(2026, 8, 26));
+        return 할일(content, UUID.randomUUID());
+    }
+
+    /**
+     * id는 저장될 때 생기므로 목 테스트에서는 비어 있다. {@code taskId}·{@code dealId}가 뒤바뀌어도
+     * 둘 다 UUID라 컴파일이 되므로, 그 실수를 잡으려면 서로 다른 값을 심어야 한다.
+     */
+    private static Task 할일(String content, UUID id) {
+        Task task = Task.create(COMPANY_ID, DEAL_ID, content, LocalDate.of(2026, 8, 26));
+        try {
+            Field field = Task.class.getDeclaredField("id");
+            field.setAccessible(true);
+            field.set(task, id);
+        } catch (ReflectiveOperationException e) {
+            throw new IllegalStateException(e);
+        }
+        return task;
     }
 
     @Test
     @DisplayName("기업 관리자는 회사 전체 할 일을 받는다 — 담당 딜을 묻지 않는다 (SC-05)")
     void followUps_admin_seesWholeCompany() {
         given(taskRepository.findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(eq(COMPANY_ID), any()))
-                .willReturn(List.of(할일("성원산업 재방문 일정 조율"), 할일("대한물산 재검토 회신 확인")));
+                .willReturn(List.of(할일("성원산업 재방문 일정 조율", TASK_ID), 할일("대한물산 재검토 회신 확인")));
 
         List<FollowUpSummary> result = taskQuery.followUps(ADMIN, 10);
 
         assertThat(result).hasSize(2);
         assertThat(result.get(0).content()).isEqualTo("성원산업 재방문 일정 조율");
         assertThat(result.get(0).dueDate()).isEqualTo(LocalDate.of(2026, 8, 26));
+        assertThat(result.get(0).taskId()).isEqualTo(TASK_ID);
+        assertThat(result.get(0).dealId()).isEqualTo(DEAL_ID);
         then(dealQuery).should(never()).assignedDealIds(any(), any());
     }
 
