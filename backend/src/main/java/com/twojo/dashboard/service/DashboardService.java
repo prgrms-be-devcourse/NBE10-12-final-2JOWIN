@@ -5,10 +5,16 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.ActivityQuery;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.QuoteQuery;
+import com.twojo.boundary.Role;
 import com.twojo.boundary.SalesStatsQuery;
 import com.twojo.boundary.TaskQuery;
+import com.twojo.dashboard.dto.DashboardPerformanceResponse;
 import com.twojo.dashboard.dto.DashboardSummaryResponse;
+import com.twojo.global.error.BusinessException;
+import com.twojo.global.error.ErrorCode;
+import java.time.LocalDate;
 import java.time.YearMonth;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
@@ -27,8 +33,8 @@ import org.springframework.stereotype.Service;
  * <p><b>무트랜잭션</b> — 각 boundary 구현이 자기 readOnly 트랜잭션을 잡는다. 커넥션 하나를
  * 조립 내내 붙들지 않기 위함이며 {@code PublicQuoteAssembler}·{@code CustomerQuoteService}와 같은 방침이다.
  *
- * <p><b>C 미구현부 우회(degrade)</b> — C의 {@link SalesStatsQuery} 4종과
- * {@link QuoteQuery#findAwaitingResponse}가 아직 {@code UnsupportedOperationException}을 던진다.
+ * <p><b>C 미구현부 우회(degrade)</b> — C의 {@link SalesStatsQuery} 일부와
+ * {@link QuoteQuery#findAwaitingResponse}가 {@code UnsupportedOperationException}을 던지면
  * 그 예외만 잡아 해당 섹션을 빈 값으로 채우고 200을 유지한다 — 다른 예외는 전파한다.
  * C 실구현이 머지되면 이 방어는 죽은 코드가 되어 제거한다 (issue #202).
  * B의 {@link ActivityQuery}·{@link TaskQuery}는 실 빈이 있어(#178) 그대로 호출한다.
@@ -44,6 +50,9 @@ public class DashboardService {
     /** 대시보드 카드 노출 건수 — 계약 상한(50) 이하. 프론트 목 기준 10. */
     private static final int RECENT_LIMIT = 10;
     private static final int FOLLOWUP_LIMIT = 10;
+
+    /** 실적 조회 기간 상한 — 366일(윤년 1년). 넘으면 400. */
+    private static final int MAX_RANGE_DAYS = 366;
 
     private final SalesStatsQuery salesStatsQuery;
     private final QuoteQuery quoteQuery;
@@ -96,6 +105,35 @@ public class DashboardService {
     }
 
     /**
+     * 실적 분석 (DB-06~08) — <b>기업 관리자 전용</b>. 역할 자체로 갈리는 행위라 위반은 403
+     * {@code FORBIDDEN}이다 (Q-43). 기간은 {@code from ≤ to}이고 {@link #MAX_RANGE_DAYS}일 이하여야
+     * 하며, 벗어나면 400 {@code VALIDATION_FAILED}.
+     *
+     * <p>{@link SalesStatsQuery#performance}·{@link SalesStatsQuery#conversions}는 아직 자리표시자라
+     * 빈 목록으로 나갈 수 있다 — 화면은 "0"이 아니라 "집계 준비 중"으로 표시한다 (C·D 협의 2026-09-08).
+     */
+    public DashboardPerformanceResponse performance(AccessContext ctx, LocalDate from, LocalDate to) {
+        if (ctx.role() != Role.COMPANY_ADMIN) {
+            throw new BusinessException(ErrorCode.FORBIDDEN);
+        }
+        if (from.isAfter(to) || ChronoUnit.DAYS.between(from, to) > MAX_RANGE_DAYS) {
+            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+        }
+
+        List<DashboardPerformanceResponse.MemberPerformance> members =
+                orEmptyList("performance", () -> salesStatsQuery.performance(ctx.companyId(), from, to)).stream()
+                        .map(DashboardService::toMemberPerformance)
+                        .toList();
+
+        List<DashboardPerformanceResponse.StageConversion> conversions =
+                orEmptyList("conversions", () -> salesStatsQuery.conversions(ctx.companyId(), from, to)).stream()
+                        .map(DashboardService::toStageConversion)
+                        .toList();
+
+        return new DashboardPerformanceResponse(members, conversions);
+    }
+
+    /**
      * DB-04·05 줄마다 붙는 딜 제목 — 두 목록의 {@code dealId}를 합쳐 한 번에 조회한다.
      * 소프트 삭제된 딜은 {@link DealQuery#summariesByIds} 결과에서 빠지므로 호출부가 그 줄을 제외한다.
      */
@@ -140,5 +178,16 @@ public class DashboardService {
     private static DashboardSummaryResponse.WaitingQuote toWaitingQuote(QuoteQuery.QuoteSummary q) {
         return new DashboardSummaryResponse.WaitingQuote(
                 q.id(), q.quoteNo(), q.customerName(), q.sentAt(), q.firstViewedAt(), q.validUntil());
+    }
+
+    private static DashboardPerformanceResponse.MemberPerformance toMemberPerformance(
+            SalesStatsQuery.MemberPerformance m) {
+        return new DashboardPerformanceResponse.MemberPerformance(
+                m.memberId(), m.name(), m.wonCount(), m.wonAmount(), m.activeDealCount());
+    }
+
+    private static DashboardPerformanceResponse.StageConversion toStageConversion(
+            SalesStatsQuery.StageConversion c) {
+        return new DashboardPerformanceResponse.StageConversion(c.fromStage(), c.toStage(), c.rate());
     }
 }

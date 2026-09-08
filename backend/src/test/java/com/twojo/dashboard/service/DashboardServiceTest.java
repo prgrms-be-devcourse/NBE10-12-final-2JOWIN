@@ -1,6 +1,7 @@
 package com.twojo.dashboard.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.argThat;
 import static org.mockito.ArgumentMatchers.eq;
@@ -16,7 +17,10 @@ import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.boundary.SalesStatsQuery;
 import com.twojo.boundary.TaskQuery;
+import com.twojo.dashboard.dto.DashboardPerformanceResponse;
 import com.twojo.dashboard.dto.DashboardSummaryResponse;
+import com.twojo.global.error.BusinessException;
+import com.twojo.global.error.ErrorCode;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.YearMonth;
@@ -45,6 +49,8 @@ class DashboardServiceTest {
     private static final UUID DEAL_B = UUID.fromString("5d000000-0000-4000-8000-00000000000b");
     private static final UUID DEAL_GONE = UUID.fromString("5d000000-0000-4000-8000-0000000000ff");
     private static final YearMonth MONTH = YearMonth.of(2026, 9);
+    private static final LocalDate FROM = LocalDate.of(2026, 8, 1);
+    private static final LocalDate TO = LocalDate.of(2026, 8, 31);
 
     @Mock
     private SalesStatsQuery salesStatsQuery;
@@ -83,6 +89,14 @@ class DashboardServiceTest {
 
     private static DealQuery.DealSummary deal(UUID id, String title) {
         return new DealQuery.DealSummary(id, title, "QUOTE", 1_000_000L, null, Instant.parse("2026-08-01T00:00:00Z"));
+    }
+
+    private static SalesStatsQuery.MemberPerformance perf(String name, long wonAmount) {
+        return new SalesStatsQuery.MemberPerformance(UUID.randomUUID(), name, 2, wonAmount, 3);
+    }
+
+    private static SalesStatsQuery.StageConversion conv(String from, String to, double rate) {
+        return new SalesStatsQuery.StageConversion(from, to, rate);
     }
 
     /** DB-01·02·03 섹션을 빈 값으로 stub — DB-04·05만 보는 테스트용. */
@@ -241,5 +255,64 @@ class DashboardServiceTest {
         dashboardService.summary(ctx(AccessScope.COMPANY_ALL), MONTH);
 
         verify(dealQuery, never()).summariesByIds(any(), any());
+    }
+
+    @Test
+    @DisplayName("performance는 관리자에게 members·conversions를 계약 결과로 매핑한다")
+    void performance는_관리자에게_두_섹션을_매핑한다() {
+        given(salesStatsQuery.performance(eq(COMPANY_ID), any(), any()))
+                .willReturn(List.of(perf("박지훈", 4_000_000L)));
+        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any()))
+                .willReturn(List.of(conv("QUOTE", "NEGOTIATION", 0.5)));
+
+        DashboardPerformanceResponse res =
+                dashboardService.performance(ctx(AccessScope.COMPANY_ALL), FROM, TO);
+
+        assertThat(res.members())
+                .extracting(DashboardPerformanceResponse.MemberPerformance::name)
+                .containsExactly("박지훈");
+        assertThat(res.conversions())
+                .singleElement()
+                .satisfies(c -> assertThat(c.rate()).isEqualTo(0.5));
+    }
+
+    @Test
+    @DisplayName("영업 담당자가 performance를 부르면 403 FORBIDDEN이다")
+    void 영업담당자의_performance는_FORBIDDEN이다() {
+        assertThatThrownBy(() -> dashboardService.performance(ctx(AccessScope.OWNED_ONLY), FROM, TO))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
+    }
+
+    @Test
+    @DisplayName("from이 to보다 뒤면 400 VALIDATION_FAILED다")
+    void 기간_역전이면_VALIDATION_FAILED다() {
+        assertThatThrownBy(() -> dashboardService.performance(ctx(AccessScope.COMPANY_ALL), TO, FROM))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    @Test
+    @DisplayName("기간이 366일을 넘으면 400 VALIDATION_FAILED다")
+    void 기간이_상한을_넘으면_VALIDATION_FAILED다() {
+        assertThatThrownBy(() -> dashboardService.performance(
+                ctx(AccessScope.COMPANY_ALL), LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 3)))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
+    }
+
+    @Test
+    @DisplayName("performance 계약이 미구현이면 members·conversions는 빈 목록이다")
+    void performance_스텁이면_빈_목록으로_degrade한다() {
+        given(salesStatsQuery.performance(eq(COMPANY_ID), any(), any()))
+                .willThrow(new UnsupportedOperationException("SalesStatsQuery.performance - 자리표시자"));
+        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any()))
+                .willThrow(new UnsupportedOperationException("SalesStatsQuery.conversions - 자리표시자"));
+
+        DashboardPerformanceResponse res =
+                dashboardService.performance(ctx(AccessScope.COMPANY_ALL), FROM, TO);
+
+        assertThat(res.members()).isEmpty();
+        assertThat(res.conversions()).isEmpty();
     }
 }
