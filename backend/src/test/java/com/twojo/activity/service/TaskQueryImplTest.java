@@ -72,7 +72,6 @@ class TaskQueryImplTest {
 
         List<FollowUpSummary> result = taskQuery.followUps(ADMIN, 10);
 
-        assertThat(result).hasSize(2);
         assertThat(result.get(0).content()).isEqualTo("성원산업 재방문 일정 조율");
         assertThat(result.get(0).taskId()).isEqualTo(TASK_ID);
         assertThat(result.get(0).dealId()).isEqualTo(DEAL_ID);
@@ -102,6 +101,8 @@ class TaskQueryImplTest {
 
         List<FollowUpSummary> result = taskQuery.followUps(SALES, 10);
 
+        // 목을 부르지 않는 경로다 — 스텁이 준 값이 아니라 구현이 만든 빈 목록을 확인한다
+        assertThat(result).isEmpty();
         then(taskRepository).shouldHaveNoInteractions();
     }
 

@@ -63,8 +63,10 @@ class ActivityQueryImplTest {
 
         List<RecentActivitySummary> result = activityQuery.recent(ADMIN, 10);
 
-        assertThat(result).hasSize(2);
         assertThat(result.get(0).summary()).isEqualTo("리모델링 일정 확인");
+        assertThat(result.get(0).dealId()).isEqualTo(DEAL_ID);
+        // 기록 시각이 아니라 활동 발생 시각이다 (AC-01) — createdAt과 뒤바뀌면 여기서 잡힌다
+        assertThat(result.get(0).occurredAt()).isEqualTo(Instant.parse("2026-08-25T02:00:00Z"));
         then(dealQuery).should(never()).assignedDealIds(any(), any());
     }
 
@@ -91,6 +93,8 @@ class ActivityQueryImplTest {
 
         List<RecentActivitySummary> result = activityQuery.recent(SALES, 10);
 
+        // 목을 부르지 않는 경로다 — 스텁이 준 값이 아니라 구현이 만든 빈 목록을 확인한다
+        assertThat(result).isEmpty();
         then(activityRepository).shouldHaveNoInteractions();
     }
 
