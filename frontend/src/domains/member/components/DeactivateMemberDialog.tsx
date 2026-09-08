@@ -24,15 +24,20 @@ interface Props {
  * 먼저 이관 대상 없이 호출하고, 서버가 422 MEMBER_INACTIVE_TRANSFER_REQUIRED를 돌려주면
  * 그때 이관 대상 Select를 펼친다. 담당 Deal이 0건이면 첫 호출로 끝난다 (MB-14).
  *
- * 422를 한 번 받으면 다이얼로그가 닫힐 때까지 이관 단계로 고정한다 — 2차 호출이 시작되는 순간 mutation error가
- * 비워지므로 error에서 바로 파생하면 로딩 중에 Select가 사라지고, 2차가 다른 이유로 실패하면 1단계로 되돌아간다.
+ * 422를 한 번 받으면 이관 단계로 고정한다 — 2차 호출이 시작되는 순간 mutation error가 비워지므로 error에서 바로
+ * 파생하면 로딩 중에 Select가 사라지고, 2차가 다른 이유로 실패하면 1단계로 되돌아간다.
+ * 래치는 <b>구성원 id로 건다</b> — 성공 후 부모가 `member`를 null로 만들어 닫는 경로에서는 Radix가 onOpenChange를
+ * 부르지 않으므로, 닫힘에만 기대면 다음 구성원의 모달이 남의 이관 단계로 열린다.
  */
 export function DeactivateMemberDialog({ member, onOpenChange, options, loading, error, onConfirm }: Props) {
   const [transferTo, setTransferTo] = useState<string>('')
-  const [transferStep, setTransferStep] = useState(false)
+  const [latchedFor, setLatchedFor] = useState<string | null>(null)
   const apiError = error instanceof ApiError ? error : null
-  if (apiError?.code === 'MEMBER_INACTIVE_TRANSFER_REQUIRED' && !transferStep) setTransferStep(true)
-  const needsTransfer = transferStep
+  if (apiError?.code === 'MEMBER_INACTIVE_TRANSFER_REQUIRED' && member && latchedFor !== member.id) {
+    setLatchedFor(member.id)
+    setTransferTo('')   // 다른 구성원의 선택이 남지 않게
+  }
+  const needsTransfer = member !== null && latchedFor === member.id
   const candidates = options.filter((o) => o.id !== member?.id)
 
   return (
@@ -41,7 +46,7 @@ export function DeactivateMemberDialog({ member, onOpenChange, options, loading,
       onOpenChange={(open) => {
         if (!open) {
           setTransferTo('')
-          setTransferStep(false)
+          setLatchedFor(null)
         }
         onOpenChange(open)
       }}

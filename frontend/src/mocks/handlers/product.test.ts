@@ -87,8 +87,9 @@ describe('PATCH /api/v1/products/{id} — 수정 (PR-04)', () => {
     }))
     expect((await patch({ name: null, unit: null, unitPrice: null, description: null })).status).toBe(200)
     expect({ name: product.name, unit: product.unit, unitPrice: product.unitPrice }).toEqual(before)
-    expect(product.description).not.toBeNull()
+    expect(product.description).toBeTruthy()
+    // 서버 Product.update는 ''를 그대로 저장한다 — null로 바꾸지 않는다. 화면이 빈 값을 '—'로 거른다
     expect((await patch({ description: '' })).status).toBe(200)
-    expect(product.description).toBeNull()
+    expect(product.description).toBe('')
   })
 })

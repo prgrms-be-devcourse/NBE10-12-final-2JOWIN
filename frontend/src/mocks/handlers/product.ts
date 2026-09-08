@@ -59,7 +59,7 @@ export const productHandlers = [
     if (body.name != null) product.name = body.name.trim()
     if (body.unit != null) product.unit = body.unit.trim()
     if (body.unitPrice != null) product.unitPrice = body.unitPrice
-    if (body.description != null) product.description = body.description.trim() || null
+    if (body.description != null) product.description = body.description   // 서버는 ''도 그대로 저장한다 (Product.update) — 표시에서 '—'로 거른다
     if (Object.keys(changes).length) recordAudit({ entityType: 'PRODUCT', entityId: product.id, eventType: 'UPDATED', actorType: 'MEMBER', actorId: currentMember(request).id, changes })
     return HttpResponse.json(product)
   }),
