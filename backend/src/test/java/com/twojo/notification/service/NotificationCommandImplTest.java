@@ -159,12 +159,33 @@ class NotificationCommandImplTest {
     }
 
     @Test
-    @DisplayName("notifyForDeal에 EMAIL_FAILED를 넘기면 예외 (Deal 컨텍스트가 아님)")
-    void notifyForDeal_EMAIL_FAILED는_거부() {
-        assertThatThrownBy(() -> command.notifyForDeal(
-                NotificationType.EMAIL_FAILED, COMPANY, DEAL, "메일 실패", QUOTE))
-                .isInstanceOf(IllegalArgumentException.class);
-        verify(notificationRepository, never()).save(any());
+    @DisplayName("notifyForDeal에 EMAIL_FAILED - Deal 컨텍스트가 있으면 담당자 규칙으로 저장한다 (NT-12)")
+    void notifyForDeal_EMAIL_FAILED도_Deal_컨텍스트가_있으면_허용() {
+        given(dealQuery.assigneeIdOf(DEAL)).willReturn(ASSIGNEE);
+        given(memberQuery.isActive(ASSIGNEE)).willReturn(true);
+
+        command.notifyForDeal(NotificationType.EMAIL_FAILED, COMPANY, DEAL,
+                "[Q-1] 견적서 발송 메일이 전송되지 않았습니다", QUOTE);
+
+        Notification n = saved();
+        assertThat(n.getType()).isEqualTo(Notification.Type.EMAIL_FAILED);
+        assertThat(n.getRecipientMemberId()).isEqualTo(ASSIGNEE);
+        assertThat(n.getRefType()).isEqualTo("QUOTE");
+        assertThat(n.getRefId()).isEqualTo(QUOTE);
+    }
+
+    @Test
+    @DisplayName("notifyForDeal에 EMAIL_FAILED - 담당자가 비활성이면 기업 관리자 전원에게 (Q-26 폴백)")
+    void notifyForDeal_EMAIL_FAILED_비활성_담당자면_관리자_폴백() {
+        given(dealQuery.assigneeIdOf(DEAL)).willReturn(ASSIGNEE);
+        given(memberQuery.isActive(ASSIGNEE)).willReturn(false);
+        given(memberQuery.findAdminIds(COMPANY)).willReturn(List.of(ADMIN_1, ADMIN_2));
+
+        command.notifyForDeal(NotificationType.EMAIL_FAILED, COMPANY, DEAL,
+                "[Q-1] 견적서 발송 메일이 전송되지 않았습니다", QUOTE);
+
+        assertThat(savedAll(2)).extracting(Notification::getRecipientMemberId)
+                .containsExactly(ADMIN_1, ADMIN_2);
     }
 
     @Test
