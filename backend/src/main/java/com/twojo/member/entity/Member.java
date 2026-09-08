@@ -95,6 +95,22 @@ public class Member extends BaseTimeEntity {
     }
 
     /**
+     * 비활성화 (MB-09) — 즉시 이용이 끊긴다.
+     *
+     * <p>이미 비활성이어도 막지 않는다. 되돌아갈 상태가 없고, 세션 폐기는 몇 번을 해도 결과가 같다.
+     *
+     * <p>작성 이력과 종결된 담당 Deal은 그대로 남는다 — 지우면 누가 무엇을 했는지가 사라진다.
+     */
+    public void deactivate() {
+        this.status = Status.INACTIVE;
+    }
+
+    /** 재활성화 — 다시 로그인할 수 있게 되는 것이 전부다. 담당 Deal이 돌아오지는 않는다. */
+    public void reactivate() {
+        this.status = Status.ACTIVE;
+    }
+
+    /**
      * 비밀번호가 설정돼 있는가 — 가입 승인 직후 계정은 password_hash가 NULL이다 (Q-33).
      * 미설정 계정에 별도 상태를 두지 않으므로 로그인 시도는 자연히 LOGIN_FAILED로 떨어진다 (SC-09).
      */
