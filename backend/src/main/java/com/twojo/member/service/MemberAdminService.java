@@ -88,12 +88,14 @@ public class MemberAdminService {
     /**
      * 문자열을 역할로 바꾼다. 요청 필드가 String이라 오타가 검증을 통과해 여기까지 온다 —
      * 감싸지 않으면 변환 실패가 폴백 핸들러에 잡혀 500이 된다.
+     *
+     * <p>어느 필드가 틀렸는지 응답에 실어야 프론트가 고칠 자리를 안다 (07 부록).
      */
     private Role parseRole(String raw) {
         try {
             return Role.valueOf(raw);
         } catch (IllegalArgumentException e) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            throw BusinessException.invalidEnumField("role", Role.class);
         }
     }
 

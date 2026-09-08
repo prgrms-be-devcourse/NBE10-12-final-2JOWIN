@@ -238,11 +238,15 @@ public class InvitationService {
         return email.trim().toLowerCase(Locale.ROOT);
     }
 
+    /**
+     * 요청 필드가 String이라 오타가 @NotBlank를 통과해 여기까지 온다 (08 §A).
+     * 어느 필드가 틀렸는지 응답에 실어야 프론트가 고칠 자리를 안다 (07 부록).
+     */
     private Role parseRole(String raw) {
         try {
             return Role.valueOf(raw);
         } catch (IllegalArgumentException e) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
+            throw BusinessException.invalidEnumField("role", Role.class);
         }
     }
 }

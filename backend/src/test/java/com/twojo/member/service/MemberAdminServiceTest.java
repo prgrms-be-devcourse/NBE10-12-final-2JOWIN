@@ -6,6 +6,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.lenient;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 
 import com.twojo.boundary.AccessContext;
@@ -13,12 +14,14 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.ErrorResponse;
 import com.twojo.member.dto.ChangeRoleRequest;
 import com.twojo.member.entity.Member;
 import com.twojo.member.repository.MemberRepository;
 import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
+import org.assertj.core.api.InstanceOfAssertFactories;
 import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
@@ -146,6 +149,44 @@ class MemberAdminServiceTest {
             assertThat(비활성_관리자.getRole()).isEqualTo(Role.SALES_REP);
             then(memberRepository).should(never())
                     .countByCompanyIdAndRoleAndStatus(any(), any(), any());
+        }
+
+        /**
+         * 요청 필드가 String이라 오타가 @NotBlank를 통과해 서비스까지 온다 (08 §A).
+         * 07 부록이 VALIDATION_FAILED에 "fieldErrors 참조"라고 적으므로 빈 배열로 나가면 안 된다.
+         */
+        @Test
+        void 없는_역할_값은_어느_필드가_틀렸는지_알려준다() {
+            given(memberRepository.findByIdAndCompanyId(박지훈, 한빛오피스))
+                    .willReturn(Optional.of(mock(Member.class)));
+
+            assertThatThrownBy(() -> memberAdminService.changeRole(
+                    김서연_관리자, 박지훈, new ChangeRoleRequest("BAD_ROLE")))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getFieldErrors())
+                    .asInstanceOf(InstanceOfAssertFactories.list(ErrorResponse.FieldError.class))
+                    .singleElement()
+                    .satisfies(fe -> {
+                        assertThat(fe.field()).isEqualTo("role");
+                        // 허용 목록은 enum에서 만든다 — 역할이 늘면 문구도 따라 는다
+                        assertThat(fe.reason())
+                                .contains("COMPANY_ADMIN")
+                                .contains("SALES_REP");
+                    });
+        }
+
+        /** 보낸 값을 응답에 되돌려주지 않는다 — 반사형 XSS 표면을 만들지 않는다. */
+        @Test
+        void 사유_문구에_보낸_값을_싣지_않는다() {
+            given(memberRepository.findByIdAndCompanyId(박지훈, 한빛오피스))
+                    .willReturn(Optional.of(mock(Member.class)));
+
+            assertThatThrownBy(() -> memberAdminService.changeRole(
+                    김서연_관리자, 박지훈, new ChangeRoleRequest("<script>")))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getFieldErrors().getFirst().reason())
+                    .asString()
+                    .doesNotContain("script");
         }
     }
 
