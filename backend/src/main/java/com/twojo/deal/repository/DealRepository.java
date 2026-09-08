@@ -75,4 +75,12 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
      */
     long countByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
             UUID companyId, UUID assigneeMemberId, Collection<Deal.Stage> stages);
+
+    /**
+     * A의 MB-14 — 이관할 진행 중 담당 Deal 엔티티. 위 count와 <b>같은 조건</b>이라 사전 판정 건수와 옮긴 건수가 일치한다.
+     * 엔티티로 읽는 이유는 {@code DealCommand.reassignOpenDeals}의 규약이다 — JPQL 일괄 update는
+     * {@code @Version}·{@code updated_at}을 건드리지 않아 열어 둔 딜 상세의 낙관적 락(DL-05)이 이관을 알아채지 못한다.
+     */
+    List<Deal> findByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
+            UUID companyId, UUID assigneeMemberId, Collection<Deal.Stage> stages);
 }
