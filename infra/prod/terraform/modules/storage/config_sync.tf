@@ -1,7 +1,7 @@
 # ─────────────────────────────────────────────────────────────────────────────
 # 설정 번들 업로드
 #
-# compose · Caddyfile · scripts · monitoring 을 S3 config/ 로 그대로 올린다.
+# compose · Caddyfile · scripts · monitoring · systemd 를 S3 config/ 로 그대로 올린다.
 # 서버의 cloud-init 과 deploy.sh 가 여기서 받아간다.
 #
 # etag 가 바뀌면 terraform 이 그 파일만 다시 올린다. 설정만 고치고 apply 하면

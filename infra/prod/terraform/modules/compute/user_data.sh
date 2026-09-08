@@ -73,6 +73,13 @@ chmod +x /usr/libexec/docker/cli-plugins/docker-compose
 log "$SSH_USER 를 docker 그룹에 추가"
 usermod -aG docker "$SSH_USER" || fail "docker 그룹 추가"
 
+# systemd user unit 을 로그인 세션 없이 돌리려면 linger 가 필요하다.
+# 백업 타이머가 이 위에서 돈다(이슈 #159). 유닛 파일 자체는 여기서 만들지
+# 않는다 — user_data 는 고쳐도 다시 실행되지 않아 스케줄을 바꿀 수 없다.
+# 설치는 deploy.sh 가 S3 설정 번들에서 받아서 한다.
+log "$SSH_USER linger 활성화 (user timer 용)"
+loginctl enable-linger "$SSH_USER" || fail "enable-linger"
+
 # ── 3. 스왑 ──────────────────────────────────────────────────────────────
 # 4 GiB 에 컨테이너 9종(~2.9 GiB)이 올라간다. 여유가 크지 않아 안전망을 둔다.
 # 추가 비용은 없다 — 루트 EBS 안의 파일이다.
@@ -95,6 +102,9 @@ log "설정 번들 동기화: s3://$CONFIG_BUCKET/config/"
 # 소유자를 ec2-user 로 준다. deploy.sh 가 이 아래에 .env 를 쓰고
 # .deploy.lock 을 잡아야 하는데, 그게 sudo 없이 되려면 소유권이 필요하다.
 install -d -o "$SSH_USER" -g "$SSH_USER" "$APP_DIR"
+# node_exporter 가 여기를 바인드 마운트한다. 미리 만들지 않으면 도커가
+# root 소유로 만들어버리고, ec2-user 로 도는 backup.sh 가 쓰지 못한다.
+install -d -m 755 -o "$SSH_USER" -g "$SSH_USER" "$APP_DIR/metrics"
 # .env 계열은 S3 에 없다. --delete 대상에서 빼지 않으면 재동기화할 때마다
 # 시크릿과 이미지 태그가 지워진다.
 aws s3 sync "s3://$CONFIG_BUCKET/config/" "$APP_DIR/" \
