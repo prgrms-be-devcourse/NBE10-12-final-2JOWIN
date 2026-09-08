@@ -9,7 +9,7 @@ import { quoteHandlers } from './quote'
 import { orderHandlers } from './order'
 import { activityHandlers } from './activity'
 import { auditHandlers } from './audit'
-import { notificationHandlers } from './notification'
+import { notificationHandlers, notificationSettingHandlers } from './notification'
 import { dashboardHandlers } from './dashboard'
 import { adminHandlers } from './admin'
 
@@ -35,6 +35,8 @@ const BY_DOMAIN: Record<string, RequestHandler[]> = {
   order: orderHandlers,
   activity: [...activityHandlers, ...auditHandlers],
   notification: notificationHandlers,
+  // 알림 수신 설정(/me/notification-settings)만 따로 — 인앱 알림 API는 있지만 이 엔드포인트는 아직 없다(A 몫, 11 §2)
+  notificationSettings: notificationSettingHandlers,
   dashboard: dashboardHandlers,
   // 플랫폼 관리자 (/admin/api/v1) — 별도 세션 (AU-08)
   admin: adminHandlers,

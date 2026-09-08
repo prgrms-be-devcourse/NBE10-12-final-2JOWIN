@@ -41,8 +41,15 @@ export const notificationHandlers = [
     for (const n of mine(member.id)) n.readAt ??= at
     return noContent()
   }),
+]
 
-  // ── 알림 수신 설정 (NT-07, Q-23 메일 채널만) — 백엔드 #127 전까지 목
+/**
+ * 알림 수신 설정 (NT-07, Q-23 메일 채널만) — 인앱 알림과 별도 키 `notificationSettings`로 켜고 끈다.
+ *
+ * 인앱 알림 API(NotificationController)는 develop에 있어 실 API로 갔지만, `/me/notification-settings`는
+ * D의 #132가 경계 계약·서비스만 넣었고 HTTP 엔드포인트는 A 몫(11 §2)이라 아직 없다. 그때까지 이 둘만 목이다.
+ */
+export const notificationSettingHandlers = [
   http.get('/api/v1/me/notification-settings', ({ request }) => {
     const member = currentMember(request)
     const saved = db.notificationSettings.get(member.id)
