@@ -1,5 +1,4 @@
 package com.twojo.activity.service;
-
 import com.twojo.activity.entity.Activity;
 import com.twojo.activity.repository.ActivityRepository;
 import com.twojo.boundary.AccessContext;
@@ -23,9 +22,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 class ActivityQueryImpl implements ActivityQuery {
-
-    /** 카드 한 줄 상한. 시드 활동 최장 30자 기준 두 배 이상 여유 — 정상 입력은 잘리지 않는다 */
-    private static final int SUMMARY_MAX = 80;
 
     private final ActivityRepository activityRepository;
     private final DealQuery dealQuery;
@@ -69,10 +65,10 @@ class ActivityQueryImpl implements ActivityQuery {
      */
     private static String toSummary(String content) {
         String flat = content.replaceAll("\\s+", " ").trim();
-        if (flat.length() <= SUMMARY_MAX) {
+        if (flat.length() <= SUMMARY_MAX_LENGTH) {
             return flat;
         }
-        int end = SUMMARY_MAX;
+        int end = SUMMARY_MAX_LENGTH;
         if (Character.isHighSurrogate(flat.charAt(end - 1))) {
             end--;
         }
