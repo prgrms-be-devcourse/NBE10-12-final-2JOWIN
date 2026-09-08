@@ -15,7 +15,6 @@ import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.twojo.approval.dto.ApproveQuoteRequest;
 import com.twojo.approval.dto.CreateInquiryRequest;
-import com.twojo.approval.dto.PublicQuoteResponse;
 import com.twojo.approval.dto.RejectQuoteRequest;
 import com.twojo.approval.entity.CustomerInquiry;
 import com.twojo.approval.entity.QuoteViewToken;
@@ -27,6 +26,7 @@ import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.NotificationCommand;
 import com.twojo.boundary.NotificationCommand.NotificationType;
+import com.twojo.boundary.PublicQuoteResponse;
 import com.twojo.boundary.QuoteCommand;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.global.error.BusinessException;
