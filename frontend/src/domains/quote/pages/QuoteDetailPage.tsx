@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { Badge, Box, Button, Callout, Card, DropdownMenu, Flex, Grid, Skeleton, Table, Text } from '@radix-ui/themes'
 import { ArrowRightIcon, CopyIcon, DotsHorizontalIcon, EyeOpenIcon, Link2Icon, PaperPlaneIcon, ResetIcon } from '@radix-ui/react-icons'
 import { BackLink, ErrorCallout, Money, NotFound, PageHeader, QuoteStatusBadge, RemainingBadge, ViewedBadge } from '../../../shared/ui'
-import { VAT_MODE_LABEL } from '../../../shared/ui/status'
+import { DEAL_STAGE_LABEL, VAT_MODE_LABEL } from '../../../shared/ui/status'
 import { codeOf } from '../../../shared/api/client'
 import { date, dateTime } from '../../../shared/lib/format'
 import type { QuoteDetailResponse } from '../../../shared/api/types'
@@ -115,7 +115,7 @@ export function QuoteDetailPage() {
       {actions.send.isSuccess && actions.send.data && (
         <Callout.Root color="green" mb="4" className="enter">
           <Callout.Text>
-            발송했습니다. 고객에게 열람 링크가 담긴 메일이 갑니다. 딜 단계: {actions.send.data.dealStage}
+            발송했습니다. 고객에게 열람 링크가 담긴 메일이 갑니다. 딜 단계: {DEAL_STAGE_LABEL[actions.send.data.dealStage]}
           </Callout.Text>
         </Callout.Root>
       )}

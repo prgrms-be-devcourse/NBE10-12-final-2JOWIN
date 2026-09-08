@@ -38,6 +38,27 @@ type Token = NonNullable<ReturnType<typeof tokenOf>>
 /** 열람 가능 — EXPIRED가 아니고 유효기간 안 (QuoteViewToken.isViewable). RESPONDED도 열람은 된다 (전이표 §7, v1.6.1) */
 const viewable = (token: Token) => token.status !== 'EXPIRED' && token.expiresAt > now()
 
+/** 서버 loadView — 작성 중·회수된 견적의 링크는 존재를 숨긴다(404, SC-09). 4개 엔드포인트 공통 */
+const hiddenQuote = (token: Token) => {
+  const status = findQuote(token.quoteId)?.status
+  return status === undefined || status === 'DRAFT' || status === 'WITHDRAWN'
+}
+
+/**
+ * 첫 열람 (AP-02·07) — 발송됨이면 열람됨으로 올리고 기록·알림을 남긴다 (NT-03). 그 밖의 상태는 무동작 (Quote.markViewed).
+ * 열람(GET)과 승인·반려 전처리가 함께 쓴다 — 서버도 두 경로 모두 markViewed를 부른다 (CustomerQuoteService.preRespond).
+ */
+function markViewed(quote: NonNullable<ReturnType<typeof findQuote>>) {
+  if (quote.status !== 'SENT') return
+  quote.status = 'VIEWED'
+  quote.firstViewedAt = now()
+  quote.version += 1
+  recordAudit({ entityType: 'QUOTE', entityId: quote.id, eventType: 'QUOTE_VIEWED', actorType: 'CUSTOMER_LINK', actorId: null, changes: { status: { before: 'SENT', after: 'VIEWED' } } })
+  recordAuto(quote.dealId, `고객이 견적을 열람했습니다 — ${quote.quoteNo}`)
+  const deal = findDeal(quote.dealId)
+  notify(quote.dealId, 'QUOTE_VIEWED', `${deal?.customerName ?? ''} 담당자가 견적을 열람했습니다 (${quote.quoteNo})`, quote.id)
+}
+
 /** PublicQuoteResponse 조립 — 담당자는 Deal의 현재 담당자 (AP-18) */
 export function buildPublicQuote(quoteId: string, respondable: boolean): PublicQuoteResponse | null {
   const quote = findQuote(quoteId)
@@ -79,13 +100,10 @@ const respondable = (token: Token) => {
 function preRespond(token: Token) {
   if (!viewable(token)) return error('LINK_EXPIRED')
   if (token.status === 'RESPONDED') return error('LINK_ALREADY_RESPONDED')
+  if (hiddenQuote(token)) return notFound()
   if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
   const quote = findQuote(token.quoteId)!
-  if (quote.status === 'SENT') {
-    quote.status = 'VIEWED'
-    quote.firstViewedAt = now()
-    quote.version += 1
-  }
+  markViewed(quote)   // 서버 preRespond와 같은 순서 — 응답은 열람됨에서만 열린다 (Quote.requireRespondable)
   if (quote.status !== 'VIEWED') return error('QUOTE_NOT_RESPONDABLE')
   return null
 }
@@ -96,17 +114,10 @@ export const publicQuoteHandlers = [
     if (!token) return notFound()
     // 410은 만료 링크만 — 응답 완료(RESPONDED) 링크도 열람은 허용 (전이표 §7, v1.6.1)
     if (!viewable(token)) return error('LINK_EXPIRED')
+    if (hiddenQuote(token)) return notFound()
     const quote = findQuote(token.quoteId)!
     // 첫 열람 시각 기록 + SENT → VIEWED (AP-02·07) + 담당자 알림 (NT-03)
-    if (quote.status === 'SENT' && token.status === 'ACTIVE') {
-      quote.status = 'VIEWED'
-      quote.firstViewedAt = now()
-      quote.version += 1
-      recordAudit({ entityType: 'QUOTE', entityId: quote.id, eventType: 'QUOTE_VIEWED', actorType: 'CUSTOMER_LINK', actorId: null, changes: { status: { before: 'SENT', after: 'VIEWED' } } })
-      recordAuto(quote.dealId, `고객이 견적을 열람했습니다 — ${quote.quoteNo}`)
-      const deal = findDeal(quote.dealId)
-      notify(quote.dealId, 'QUOTE_VIEWED', `${deal?.customerName ?? ''} 담당자가 견적을 열람했습니다 (${quote.quoteNo})`, quote.id)
-    }
+    if (token.status === 'ACTIVE') markViewed(quote)
     const body = buildPublicQuote(token.quoteId, respondable(token))
     return body ? HttpResponse.json(body) : notFound()
   }),
@@ -174,6 +185,7 @@ export const publicQuoteHandlers = [
     const token = tokenOf(String(params.token))
     if (!token) return notFound()
     if (!viewable(token)) return error('LINK_EXPIRED')
+    if (hiddenQuote(token)) return notFound()
     if (db.companies[0].status !== 'ACTIVE') return error('COMPANY_SUSPENDED')
     const quote = findQuote(token.quoteId)!
     db.inquiries.push({ id: crypto.randomUUID(), quoteId: quote.id, content: body.content.trim(), createdAt: now() })
