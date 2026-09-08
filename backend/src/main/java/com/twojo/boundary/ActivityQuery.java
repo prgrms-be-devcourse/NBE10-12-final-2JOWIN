@@ -16,12 +16,15 @@ import java.util.UUID;
  * 08-dto.md의 {@code DashboardSummaryResponse.RecentActivity}에는 {@code dealTitle}이 있으므로
  * <b>제목 조달은 소비자(D)의 조립 책임</b>이다 — C의 {@code DealQuery}를 거친다.
  *
- * <p><b>{@link AccessScope#OWNED_ONLY} 구현에는 선행 계약이 필요하다.</b> 그 판정은
- * "이 구성원이 담당하는 Deal 집합"을 알아야 하는데, 현재 {@code DealQuery}에는 그것을 주는
- * 조회가 없다 — {@code assigneeIdOf}는 Deal 하나의 담당자를 되돌려줄 뿐이다.
- * {@code activity.author_member_id}로 대신할 수도 없다: 담당이 바뀌어도 이전 담당자가 남긴
+ * <p><b>{@link AccessScope#OWNED_ONLY} 범위는 {@code DealQuery.assignedDealIds(companyId, memberId)}로
+ * 판정한다.</b> 그 조회가 "이 구성원이 담당하는 Deal 집합"을 주고, 구현은 그 목록으로 활동을 거른다.
+ * 담당 Deal이 0건이면 조회하지 않고 빈 목록을 돌려준다.
+ * {@code activity.author_member_id}로 대신하지 않는다: 담당이 바뀌어도 이전 담당자가 남긴
  * 상담 기록은 계속 보여야 하므로(AC-08 · PB-05) 작성자는 조회 축이 아니다.
- * 이 계약이 생기기 전에는 {@code OWNED_ONLY} 범위를 만족하는 구현이 나오지 않는다.
+ *
+ * <p><b>자동 기록({@code audit_log} 원천)은 포함하지 않는다</b> — 이 계약은 {@code activity}
+ * 단일 원천이다. 열람·발송 같은 이벤트를 최근 활동에 섞으려면 별도 통로를 신설하고 소비자(D)가
+ * 두 목록을 합친다 — 이 계약은 그때도 바뀌지 않는다 (PR #178 합의).
  */
 public interface ActivityQuery {
 
@@ -30,6 +33,12 @@ public interface ActivityQuery {
      * 무제한 목록 반환은 계약으로 막는다(§7.3).
      */
     int MAX_LIMIT = 50;
+
+    /**
+     * {@code summary}의 길이 상한 — 이 길이를 넘는 {@code content}는 여기서 자르고 {@code "…"}를 붙인다.
+     * 소비자가 카드 폭을 잡는 기준이라 계약에 둔다. 실제 카드 폭에 맞지 않으면 이 값만 조정한다 (PR #178 합의).
+     */
+    int SUMMARY_MAX_LENGTH = 80;
 
     /**
      * DB-04 — 최근 활동.
@@ -53,10 +62,11 @@ public interface ActivityQuery {
      * 대시보드 최근 활동 한 줄.
      *
      * @param dealId     화면의 이동 대상 — 제목 조립은 소비자(D)가 한다
-     * @param summary    카드 한 줄에 실을 <b>표시용 요약</b> — 채널 표기 + 내용이다.
-     *                   {@code activity.content}는 길이 제한이 없는 text라 <b>원문을 그대로 싣지
-     *                   않는다.</b> 자르는 길이와 채널 표기 형식은 아직 이 계약에 없다 —
-     *                   소비자가 카드 폭을 잡으려면 필요하므로, 정해지는 대로 여기 명시한다
+     * @param summary    카드 한 줄에 실을 <b>표시용 요약</b> — {@code activity.content}를 그대로 싣되
+     *                   <b>{@link #SUMMARY_MAX_LENGTH}자를 넘으면 거기서 자르고 {@code "…"}를 붙인다</b>
+     *                   ({@code content}는 길이 제한이 없는 text라 원문을 그대로 싣지 않는다).
+     *                   줄바꿈과 연속 공백은 공백 하나로 정리한다 — 카드가 한 줄 구조다.
+     *                   채널은 붙이지 않는다 — 소비자 화면이 내용만 표시하고 채널 라벨은 프론트에 있다
      * @param occurredAt 활동 발생 시각 (기록 시각이 아니다, AC-01)
      */
     record RecentActivitySummary(UUID dealId, String summary, Instant occurredAt) {}
