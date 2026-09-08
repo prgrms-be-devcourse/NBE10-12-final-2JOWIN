@@ -1,7 +1,5 @@
 package com.twojo.onboarding.controller;
 
-import com.twojo.global.error.BusinessException;
-import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
 import com.twojo.onboarding.dto.ApplicationResponse;
 import com.twojo.onboarding.dto.RejectApplicationRequest;
@@ -40,13 +38,21 @@ public class AdminApplicationController {
 
     private final ApplicationAdminService applicationAdminService;
 
-    /** 목록 (ON-03) — status를 비우면 처리된 신청도 함께 나온다. */
+    /**
+     * 목록 (ON-03) — status를 비우면 처리된 신청도 함께 나온다.
+     *
+     * <p>enum으로 바로 받는다. 없는 상태 값은 {@code GlobalExceptionHandler}의 타입 불일치
+     * 처리가 400 {@code VALIDATION_FAILED} + fieldErrors로 바꾼다 — 빈 목록으로 답하면
+     * 오타를 "해당 신청 없음"으로 읽게 된다. 손으로 파싱하던 것을 한 곳으로 모았다.
+     *
+     * <p>파라미터를 아예 안 보낸 것과 빈 문자열은 둘 다 null이다 — 그쪽은 전체 조회다.
+     */
     @GetMapping
     public PageResponse<ApplicationResponse> list(
-            @RequestParam(required = false) String status,
+            @RequestParam(required = false) Application.Status status,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
-        return applicationAdminService.list(parseStatus(status), pageable(page, size));
+        return applicationAdminService.list(status, pageable(page, size));
     }
 
     /** 상세 */
@@ -66,22 +72,6 @@ public class AdminApplicationController {
     public ApplicationResponse reject(@PathVariable UUID applicationId,
                                       @Valid @RequestBody RejectApplicationRequest request) {
         return applicationAdminService.reject(applicationId, request);
-    }
-
-    /**
-     * 없는 상태 값은 400이다 — 빈 목록으로 답하면 오타를 "해당 신청 없음"으로 읽게 된다.
-     *
-     * <p>파라미터를 아예 안 보낸 것(null)과는 다르다. 그쪽은 전체 조회다.
-     */
-    private static Application.Status parseStatus(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        try {
-            return Application.Status.valueOf(raw);
-        } catch (IllegalArgumentException e) {
-            throw new BusinessException(ErrorCode.VALIDATION_FAILED);
-        }
     }
 
     private static Pageable pageable(int page, int size) {

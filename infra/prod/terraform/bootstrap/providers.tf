@@ -2,7 +2,7 @@ provider "aws" {
   region = var.aws_region
 
   # 이 스택이 만드는 모든 리소스에 붙는다.
-  # Project 태그는 cost-guard 의 ec2:ResourceTag/Project 조건과 같은 값이어야 한다.
+  # 계정을 여러 팀이 공유하므로 Project 태그로 우리 리소스를 식별한다.
   default_tags {
     tags = {
       Project   = var.project

@@ -17,4 +17,6 @@ infra/**/*.hcl       text eol=lf
 infra/**/*.py        text eol=lf
 infra/**/Caddyfile   text eol=lf
 infra/**/*.Dockerfile text eol=lf
+infra/**/*.service   text eol=lf
+infra/**/*.timer     text eol=lf
 .github/**/*.yml     text eol=lf

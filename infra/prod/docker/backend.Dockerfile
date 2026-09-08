@@ -1,4 +1,4 @@
-# 백엔드 런타임 이미지 (linux/arm64 · t4g Graviton)
+# 백엔드 런타임 이미지 (linux/amd64 · t3.medium)
 #
 # jar 는 CI 가 이미 만든다 — ./gradlew build 가 테스트와 함께 bootJar 를 돌린다.
 # 여기서 gradle 을 다시 돌리면 빌드 시간이 두 배가 되고 CI 5분 예산을 넘긴다.

@@ -35,6 +35,15 @@ public final class QuoteResponses {
     }
 
     /**
+     * 발송 결과 (08 `SendQuoteResponse`).
+     *
+     * @param dealStage Q-25 자동 승급이 <b>반영된</b> 값 — 화면이 딜 단계를 다시 묻지 않아도 된다
+     * @param version   Q-38 — 발송 직후 회수로 이어지는 자리라 최신 version이 필요하다
+     */
+    public record SendResult(UUID quoteId, String status, String dealStage, Integer version) {
+    }
+
+    /**
      * 상세 — 항목 포함. 정렬은 엔티티의 {@code @OrderBy("sortOrder ASC")}가 보장한다 (QT-07).
      * 필드는 08의 {@code QuoteDetailResponse}를 따른다.
      *

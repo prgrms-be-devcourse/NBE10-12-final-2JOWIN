@@ -2,9 +2,12 @@ package com.twojo.quote.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.CustomerQuery;
+import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.ProductQuery;
 import com.twojo.boundary.QuoteQuery;
+import com.twojo.boundary.ViewTokenCommand;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
@@ -15,6 +18,7 @@ import com.twojo.quote.dto.QuoteResponses;
 import com.twojo.quote.entity.Quote;
 import com.twojo.quote.entity.QuoteItem;
 import com.twojo.quote.repository.QuoteRepository;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Collection;
@@ -64,6 +68,9 @@ public class QuoteService {
 
     private final QuoteRepository quoteRepository;
     private final DealQuery dealQuery;
+    private final DealCommand dealCommand;
+    private final CustomerQuery customerQuery;
+    private final ViewTokenCommand viewTokenCommand;
     private final ProductQuery productQuery;
     private final DocumentNumberService documentNumberService;
 
@@ -108,6 +115,125 @@ public class QuoteService {
         return PageResponse.from(quoteRepository
                 .search(ctx.companyId(), status, dealId, visibleDealIds, pageable)
                 .map(QuoteResponses.QuoteItemRow::of));
+    }
+
+    /**
+     * 발송 (QT-13~16, AP-01) — <b>한 트랜잭션이다</b> (Q-40).
+     *
+     * <pre>
+     * 범위 판정 → 종결 Deal 차단 → 수신인 검증 → 발송 가능 검사
+     *          → 링크 발급(+메일 예약) → Deal 단계 자동 승급 → SENT 전이
+     * </pre>
+     *
+     * <p><b>순서에 이유가 있다.</b>
+     * <ul>
+     *   <li><b>검증이 전부 앞</b> — 링크를 발급한 뒤 실패하면 고객에게 이미 메일이 예약된
+     *       상태로 롤백된다. 되돌릴 수 없는 일을 마지막에 둔다</li>
+     *   <li><b>링크 발급이 SENT 전</b> — {@code ViewTokenCommand.issue}가 "issue 시점의
+     *       status는 아직 DRAFT"를 계약으로 둔다 (Q-40 순서 합의)</li>
+     *   <li><b>단계 승급이 마지막 직전</b> — 승급은 실패할 수 있고(종결 딜),
+     *       그때 링크까지 함께 롤백되어야 한다</li>
+     * </ul>
+     *
+     * <p>전이표 §6이 발송의 <b>효과</b>로 "열람 링크 활성 발급"을 규정하므로 링크를 비동기로
+     * 빼지 않는다 — "링크 없는 SENT 견적"은 표에 없는 상태다.
+     * <b>메일 발송만 커밋 후 비동기</b>이고, 메일 실패는 발송을 되돌리지 않는다.
+     */
+    @Transactional
+    public QuoteResponses.SendResult send(AccessContext ctx, UUID quoteId,
+                                          QuoteRequests.SendQuote request) {
+        ScopedQuote scoped = findInScope(ctx, quoteId);
+        Quote quote = scoped.quote();
+        UUID dealId = quote.getDealId();
+
+        // 종결(WON·LOST) Deal에는 발송할 수 없다 (Q-25, 전이표 §6)
+        if (!dealQuery.isOpen(dealId)) {
+            throw new BusinessException(ErrorCode.QUOTE_DEAL_CLOSED);
+        }
+        requireContactInCustomer(dealId, request.recipientContactId());
+        quote.requireSendable(LocalDate.now(SEOUL));
+
+        viewTokenCommand.issue(quoteId, request.recipientContactId());
+        dealCommand.promoteToQuoteStage(dealId);
+        quote.markSent(Instant.now());
+
+        // 승급이 반영된 단계를 다시 읽는다 — 규칙을 여기서 다시 계산하면 전이표와 두 벌이 된다.
+        // 같은 트랜잭션이라 조회가 더티 엔티티를 flush시켜 갱신된 값이 온다.
+        String dealStage = requireDealInScope(ctx, dealId).stage();
+        return new QuoteResponses.SendResult(
+                quote.getId(), quote.getStatus().name(), dealStage, quote.getVersion());
+    }
+
+    /**
+     * 회수 (QT-17) — 발송됨·열람됨 → 회수됨, <b>링크 즉시 만료</b>.
+     *
+     * <p><b>종결 Deal에서도 된다</b> — 발송과 반대다 (07 §C "정리 목적"). 그래서 여기에는
+     * {@code isOpen} 검사가 없다. 발송은 새 약속을 만드는 행위지만 회수는 이미 나간 링크를
+     * 닫는 뒷정리라, 딜이 끝난 뒤에 오히려 필요하다.
+     *
+     * <p>링크 만료는 {@code expire}가 멱등이라 활성 링크가 없어도(수동 만료 뒤 회수 등)
+     * 안전하다.
+     */
+    @Transactional
+    public QuoteResponses.QuoteDetail withdraw(AccessContext ctx, UUID quoteId) {
+        ScopedQuote scoped = findInScope(ctx, quoteId);
+        scoped.quote().withdraw();
+        viewTokenCommand.expire(quoteId, ViewTokenCommand.ExpiredReason.WITHDRAWN);
+
+        quoteRepository.flush();   // 응답에 최신 version을 싣는다 (08 검증 노트 #4)
+        return QuoteResponses.QuoteDetail.of(scoped.quote(), scoped.dealTitle());
+    }
+
+    /**
+     * 수신인 변경 재발송 (AP-13) — 기존 활성 링크를 {@code RESENT}로 닫고 새 링크를 발급한다.
+     *
+     * <p><b>견적 상태는 바뀌지 않는다.</b> 이미 발송된 견적을 다른 사람에게 다시 보내는 것이라
+     * SENT·VIEWED 그대로다. 첫 열람 시각도 그대로 둔다 — 그 값이 <b>이전 수신인</b> 기준이라는
+     * 한계는 D와 정리했다 (#54 회신).
+     *
+     * <p><b>수신인 검증은 발송과 같다</b> — 두 경로 모두 C가 맡기로 한 약속이다.
+     * 링크를 닫고 새로 여는 것은 {@code issue}가 한 번에 처리한다 (기존 ACTIVE → RESENT → 신규).
+     */
+    @Transactional
+    public void resendViewToken(AccessContext ctx, UUID quoteId,
+                                QuoteRequests.ResendViewToken request) {
+        Quote quote = findInScope(ctx, quoteId).quote();
+        quote.requireResendable();
+        requireContactInCustomer(quote.getDealId(), request.recipientContactId());
+
+        viewTokenCommand.issue(quoteId, request.recipientContactId());
+    }
+
+    /**
+     * 열람 링크 수동 만료 (AP-14) — <b>링크만 닫는다. 견적 상태는 그대로다.</b>
+     *
+     * <p>전이표 §7의 링크 전이일 뿐 §6의 견적 전이가 아니다. 견적이 SENT·VIEWED로 남아 있어야
+     * 담당자가 수신인을 바꿔 재발송할 수 있다 — 그래서 {@code requireResendable}의 판정 축이
+     * 링크가 아니라 견적 상태다.
+     *
+     * <p>{@code expire}는 멱등이라 활성 링크가 없어도 예외가 아니다 — 두 번 눌러도 안전하다.
+     */
+    @Transactional
+    public void expireViewToken(AccessContext ctx, UUID quoteId) {
+        findInScope(ctx, quoteId);   // 범위 판정만 — 없거나 범위 밖이면 404
+        viewTokenCommand.expire(quoteId, ViewTokenCommand.ExpiredReason.MANUAL);
+    }
+
+    /**
+     * 수신인이 <b>이 Deal의 고객사 소속</b>인지 (QT-13, AP-13).
+     *
+     * <p><b>C가 맡기로 한 검증이다</b> (D와 2026-09-02 합의) — {@code ViewTokenCommand.issue}
+     * 쪽에는 방어 체크를 넣지 않는다. 양쪽에 두면 책임 소재가 흐려지고 나중에 한쪽만 고쳐진다.
+     *
+     * <p><b>빠뜨리면 무관한 고객사 담당자에게 열람 링크가 나간다.</b>
+     * {@code customer_contact}에 {@code company_id}가 없어 복합 FK로 막을 수 없는 영역이고
+     * (ERD "DB로 못 막는 것"), 열람 토큰이 곧 인증이라(SC-07) 타사가 견적을 보게 된다.
+     */
+    private void requireContactInCustomer(UUID dealId, UUID recipientContactId) {
+        UUID customerId = dealQuery.customerIdOf(dealId);
+        if (!customerQuery.existsContactInCustomer(customerId, recipientContactId)) {
+            throw new BusinessException(ErrorCode.CONTACT_NOT_IN_CUSTOMER);
+        }
     }
 
     /** 상세 — 항목 포함 */
