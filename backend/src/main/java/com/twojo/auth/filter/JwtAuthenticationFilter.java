@@ -8,6 +8,7 @@ import com.twojo.boundary.CompanyQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
+import com.twojo.global.error.MissingReferenceException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -79,8 +80,16 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
             return Optional.of(new AccessContext(credential.companyId(), credential.id(),
                     credential.role(), scopeOf(credential.role())));
 
+        } catch (MissingReferenceException e) {
+            // FK가 보장하는 행이 없다. 여기서도 401을 유지한다 — 500을 내면 그 응답 자체가
+            // "이 토큰의 구성원 행이 사라졌다"는 통보가 되어 SC-09가 깨진다.
+            // 대신 로그에 남긴다. 조용히 미인증으로 넘기면 무결성 이상이 흔적 없이 묻힌다
+            logger.error("인증 중 데이터 무결성 이상", e);
+            return Optional.empty();
+
         } catch (JwtException | IllegalArgumentException | BusinessException e) {
-            // 서명·만료 실패 · claim 형식 이상 · 구성원 행 부재 — 전부 미인증이다
+            // 서명·만료 실패 · claim 형식 이상 — 전부 미인증이다.
+            // BusinessException은 경계 구현이 더는 던지지 않아 방어용으로만 남는다
             return Optional.empty();
         }
     }

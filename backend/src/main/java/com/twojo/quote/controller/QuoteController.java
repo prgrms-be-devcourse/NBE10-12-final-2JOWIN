@@ -88,6 +88,41 @@ public class QuoteController {
     }
 
     /**
+     * 발송 (QT-13~16, AP-01) — 열람 링크 발급 + 안내 메일 예약이 <b>같은 트랜잭션</b>에서 일어난다.
+     *
+     * <p>응답에 <b>자동 승급이 반영된 Deal 단계</b>가 실린다 (Q-25) — 화면이 딜을 다시 묻지 않아도 된다.
+     */
+    @PostMapping("/{quoteId}/send")
+    public QuoteResponses.SendResult send(AccessContext ctx, @PathVariable UUID quoteId,
+                                          @Valid @RequestBody QuoteRequests.SendQuote request) {
+        return quoteService.send(ctx, quoteId, request);
+    }
+
+    /** 회수 (QT-17) — 링크 즉시 만료. <b>종결 Deal에서도 된다</b> (정리 목적) */
+    @PostMapping("/{quoteId}/withdraw")
+    public QuoteResponses.QuoteDetail withdraw(AccessContext ctx, @PathVariable UUID quoteId) {
+        return quoteService.withdraw(ctx, quoteId);
+    }
+
+    /**
+     * 수신인 변경 재발송 (AP-13) — 기존 링크를 닫고 새로 발급한다. <b>견적 상태는 그대로다.</b>
+     * 바뀌는 것이 링크뿐이라 본문 없이 204로 답한다.
+     */
+    @PostMapping("/{quoteId}/view-token/resend")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void resendViewToken(AccessContext ctx, @PathVariable UUID quoteId,
+                                @Valid @RequestBody QuoteRequests.ResendViewToken request) {
+        quoteService.resendViewToken(ctx, quoteId, request);
+    }
+
+    /** 열람 링크 수동 만료 (AP-14) — 링크만 닫는다. 멱등이라 두 번 눌러도 안전하다 */
+    @PostMapping("/{quoteId}/view-token/expire")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void expireViewToken(AccessContext ctx, @PathVariable UUID quoteId) {
+        quoteService.expireViewToken(ctx, quoteId);
+    }
+
+    /**
      * 발송 전 미리보기 (QT-12) — 고객 열람 페이지와 <b>같은 데이터</b>를 돌려준다.
      * 응답 모양이 {@code PublicQuoteView}인 것은 그 때문이다 (내부 상세와 필드가 다르다).
      */

@@ -15,7 +15,13 @@
 
 기동: `docker compose -f compose.yml -f compose.monitoring.yml up -d`
 
-**공개망에 노출되지 않는다.** 호스트에 게시되는 포트는 Caddy 의 80·443 뿐이고, Grafana 를 보려면 SSM 포트 포워딩으로 터널을 뚫는다.
+**공개망에 노출되지 않는다.** 호스트에 게시되는 포트는 Caddy 의 80·443 뿐이다. Grafana 를 보려면 SSH 로컬 포워딩으로 터널을 뚫는다.
+
+```bash
+ssh -N -L 3000:localhost:3000 ec2-user@api.jomin4.cloud
+```
+
+22번은 상시 열려 있지 않다. 사람이 접속하려면 보안그룹에 자기 IP `/32` 를 직접 열고 끝나면 회수한다 — 배포 워크플로가 하는 것과 같은 일을 손으로 하는 것이다.
 
 ## 스크레이프 대상 5종
 
@@ -29,7 +35,7 @@
 
 엣지(Caddy) 지표를 따로 두는 이유 — **앱이 죽으면 `http_server_requests` 자체가 안 나온다.** "요청이 0"으로 보여 장애를 놓치는데, Caddy 는 그때도 502 를 센다.
 
-## 알람 6개
+## 알람 7개
 
 Grafana Unified Alerting 이 평가와 발송을 모두 한다. Alertmanager 를 쓰지 않아 컨테이너가 하나 줄었다.
 
@@ -41,8 +47,19 @@ Grafana Unified Alerting 이 평가와 발송을 모두 한다. Alertmanager 를
 | 4 | 5xx 급증 | Caddy 5xx > 1/s · 5분 |
 | 5 | 커넥션 풀 대기 | `hikaricp_connections_pending > 0` · 3분 |
 | 6 | 반복 재시작 | `changes(up[10m]) > 3` |
+| 7 | **백업 부재** | 마지막 성공이 25시간 초과 · 10분 |
 
-**6개를 넘기지 않는다.** 울려도 아무도 안 보게 되면 0개와 같다. ERROR 로그는 알람이 아니라 패널이다 — 개발 중에는 상시 발생해서 걸어두면 첫날부터 무시하게 된다.
+**이 숫자를 크게 넘기지 않는다.** 울려도 아무도 안 보게 되면 0개와 같다. ERROR 로그는 알람이 아니라 패널이다 — 개발 중에는 상시 발생해서 걸어두면 첫날부터 무시하게 된다.
+
+7번은 다른 여섯과 성격이 다르다. 나머지는 **무언가 잘못됐을 때** 울리지만, 7번은 **아무 일도 일어나지 않았을 때** 울린다.
+
+```promql
+time() - max(twojo_backup_last_success_timestamp_seconds or vector(0))
+```
+
+`or vector(0)` 이 핵심이다. 백업이 한 번도 성공한 적 없으면 시계열이 아예 없어서 쿼리가 빈 결과를 내고 조건이 평가되지 않는다 — 즉 **가장 위험한 상태에서 가장 조용하다.** 0 으로 대체하면 `time() - 0` 이 되어 즉시 발화한다.
+
+값은 호스트의 `backup.sh` 가 node_exporter textfile collector 로 올린다. 컨테이너 밖에서 도는 작업의 성패를 Prometheus 로 끌어오는 통로가 이것뿐이다 — promtail 은 컨테이너 로그만 보고, 호스트 journald 는 아무 데도 닿지 않는다.
 
 > Grafana 가 죽으면 알람도 죽는다. Grafana 자신의 장애는 Grafana 가 못 알린다.
 > 매일 09:00 오는 비용 리포트가 없으면 그걸 간접 신호로 쓴다.
@@ -76,14 +93,14 @@ Grafana Unified Alerting 이 평가와 발송을 모두 한다. Alertmanager 를
 | postgres_exporter | 9628 |
 | JVM (Micrometer) | 4701 |
 
-## 필요한 SSM 파라미터
+## 필요한 시크릿
 
-값은 terraform 으로 만들지 않는다. `fetch-secrets.sh` 가 파라미터 이름의 마지막 조각을 환경변수 키로 바꾼다.
+값은 terraform 으로 만들지 않는다(tfstate 가 평문이다). 배포 워크플로가 GitHub Secrets 에서 `.env` 를 조립해 넣는다.
 
-| SSM 경로 | 환경변수 | 쓰는 곳 |
-| --- | --- | --- |
-| `/2jo/prod/discord-webhook-url` | `DISCORD_WEBHOOK_URL` | Grafana 연락 지점 |
-| `/2jo/prod/grafana-admin-password` | `GRAFANA_ADMIN_PASSWORD` | Grafana 관리자 |
+| 환경변수 | 쓰는 곳 |
+| --- | --- |
+| `DISCORD_WEBHOOK_URL` | Grafana 연락 지점 |
+| `GRAFANA_ADMIN_PASSWORD` | Grafana 관리자 |
 
 ## 다음 단계 (팀 논의 후)
 

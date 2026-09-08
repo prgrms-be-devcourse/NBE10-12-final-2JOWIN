@@ -2,8 +2,7 @@ package com.twojo.member.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.CompanyQuery;
-import com.twojo.global.error.BusinessException;
-import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.member.dto.MeResponse;
 import com.twojo.member.dto.UpdateMeRequest;
 import com.twojo.member.entity.Member;
@@ -46,7 +45,7 @@ public class MeService {
     /** 조회 키가 요청이 아니라 토큰에서 온다 — 남의 id를 넣을 자리가 없다. */
     private Member findMe(AccessContext ctx) {
         return memberRepository.findById(ctx.memberId())
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new MissingReferenceException("member", ctx.memberId()));
     }
 
     private MeResponse toResponse(Member member) {
