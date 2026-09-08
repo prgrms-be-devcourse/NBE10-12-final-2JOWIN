@@ -1,4 +1,4 @@
-package com.twojo.approval.dto;
+package com.twojo.boundary;
 
 import java.time.LocalDate;
 import java.util.List;
@@ -6,6 +6,9 @@ import java.util.List;
 /**
  * 고객 열람 페이지 응답 (public — 토큰 인증, SC-07~09).
  * status·vatMode는 전이표 영문 코드 문자열, 금액 3분리는 서버 계산값 (QT-25).
+ *
+ * <p>구성원 미리보기(quote)와 고객 열람(approval)이 공유하는 응답 계약이라 boundary에 둔다
+ * (07 §C · 08 §C — "preview는 이 응답을 그대로 재사용").
  */
 public record PublicQuoteResponse(
         String quoteNo,

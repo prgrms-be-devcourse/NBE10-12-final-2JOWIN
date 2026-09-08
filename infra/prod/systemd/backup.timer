@@ -1,0 +1,26 @@
+[Unit]
+# cron 을 쓰지 않는 이유: AL2023 에는 cronie 가 기본 설치되지 않는다.
+# systemd 는 항상 있고, 마지막 실행 시각과 다음 예정 시각을
+# systemctl --user list-timers 로 바로 확인할 수 있다.
+#
+# 설계 근거: 이슈 #159
+Description=2JO 야간 백업 타이머
+Documentation=https://github.com/prgrms-be-devcourse/NBE10-12-final-2JOWIN/issues/159
+
+[Timer]
+# UTC 19:00 = KST 04:00. 트래픽이 가장 적은 시간대다.
+# 서버 시간대 설정에 의존하지 않도록 UTC 로 못박는다.
+OnCalendar=*-*-* 19:00:00 UTC
+
+# 인스턴스가 꺼져 있어서 놓친 회차를 부팅 후에 한 번 돌린다.
+# 이게 없으면 재부팅 타이밍에 따라 하루가 통째로 비어도 아무도 모른다.
+Persistent=true
+
+# 정각에 몰리지 않게 흩는다. 백업 하나뿐이라 실익은 적지만,
+# pg_dump 와 다른 정각 작업이 겹치는 것을 피한다.
+RandomizedDelaySec=5min
+
+Unit=backup.service
+
+[Install]
+WantedBy=timers.target

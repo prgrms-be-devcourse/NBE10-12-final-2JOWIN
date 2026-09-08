@@ -13,3 +13,13 @@
 
 # 콘솔에서 직접 리소스를 만드는 경로까지 막으려면 IAM 사용자명을 넣는다.
 # developer_user_names = ["jomin4"]
+
+# ── SSH ──────────────────────────────────────────────────────────────────
+# CI 는 이 파일을 쓰지 않는다(*.tfvars 는 gitignore). GitHub Actions
+# variable 로 넣으면 워크플로가 TF_VAR_ 로 넘긴다:
+#   SSH_KEY_NAME       사람 접속용 AWS 키페어 이름
+#   DEPLOY_PUBLIC_KEY  배포용 SSH 공개키 (공개키라 secret 이 아니다)
+#
+# 로컬에서 plan 을 돌려볼 때만 아래를 쓴다.
+key_name          = "2jo-admin"
+deploy_public_key = "ssh-ed25519 AAAA... 2jo-deploy"

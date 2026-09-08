@@ -1,7 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
-import { contactsOf, currentMember, db, error, memberActive, memberName, noContent, notFound, paged } from '../store'
+import { contactsOf, currentMember, db, error, memberName, noContent, notFound, paged } from '../store'
 import type {
-  ActivityResponse, ContactResponse, CreateContactRequest, CreateCustomerRequest, CustomerDetailResponse,
+  ContactResponse, CreateContactRequest, CreateCustomerRequest, CustomerDetailResponse,
   CustomerResponse, UpdateContactRequest, UpdateCustomerRequest,
 } from '../../shared/api/types'
 import { isOpenStage } from '../../shared/ui/status'
@@ -21,18 +21,6 @@ const toResponse = ({ deleted: _omit, ...customer }: (typeof db.customers)[numbe
 
 /** 담당자가 발송된 견적의 수신인이면 삭제 불가 (CU-14) — quote_view_token.recipient_contact_id 기준 */
 const hasSentQuotes = (contact: ContactResponse) => db.viewTokens.some((t) => t.recipientContactId === contact.id)
-
-/** 고객사 단위 이력 (AC-10) — 그 고객사의 모든 Deal 타임라인(수동 + 자동)을 합친다 */
-function activitiesOf(customerId: string): ActivityResponse[] {
-  const dealIds = new Set(db.deals.filter((d) => d.customerId === customerId && !d.deleted).map((d) => d.id))
-  const manual: ActivityResponse[] = db.activities
-    .filter((a) => dealIds.has(a.dealId) && !a.deleted)
-    .map((a) => ({ id: a.id, type: 'MANUAL', channel: a.channel, content: a.content, authorMemberId: a.authorMemberId, authorMemberName: memberName(a.authorMemberId), authorActive: memberActive(a.authorMemberId), occurredAt: a.occurredAt }))
-  const auto: ActivityResponse[] = db.autoActivities
-    .filter((a) => dealIds.has(a.dealId))
-    .map((a) => ({ id: a.id, type: 'AUTO', channel: null, content: a.content, authorMemberId: a.authorMemberId ?? '', authorMemberName: memberName(a.authorMemberId), authorActive: a.authorMemberId ? memberActive(a.authorMemberId) : true, occurredAt: a.occurredAt }))
-  return [...manual, ...auto].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
-}
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
@@ -149,19 +137,15 @@ export const customerHandlers = [
     return noContent()
   }),
 
-  // 대표 지정 (CU-11) — 지정 시 기존 대표 자동 해제
+  // 대표 지정 (CU-11) — 지정 시 기존 대표 자동 해제. 서버(CustomerController)는 204가 아니라 200 + ContactResponse를 돌려준다
   http.post(`${BASE}/:id/contacts/:cid/set-primary`, ({ params }) => {
     const list = contactsOf(String(params.id))
-    if (!list.some((c) => c.id === params.cid)) return notFound()
+    const target = list.find((c) => c.id === params.cid)
+    if (!target) return notFound()
     for (const c of list) c.primary = c.id === params.cid
-    return noContent()
+    return HttpResponse.json(target)
   }),
 
-  // 고객사 단위 이력 (AC-10) — 07에 응답 형태 미명시. 목록 공통 규칙(Q-39)대로 PageResponse<ActivityResponse>로 둔다
-  http.get(`${BASE}/:id/activities`, async ({ params, request }) => {
-    await delay(200)
-    const customer = findCustomer(String(params.id))
-    if (!customer) return notFound()
-    return HttpResponse.json(paged(activitiesOf(customer.id), new URL(request.url)))
-  }),
+  // 고객사 단위 이력(GET /customers/{id}/activities, AC-10)은 여기 없다 — 경로는 고객사지만 activity 조회라
+  // 백엔드도 활동이력 이슈에서 만든다(#107 「제외」). 목은 `activity` 키(handlers/activity.ts)에 둔다.
 ]

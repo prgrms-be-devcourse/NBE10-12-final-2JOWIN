@@ -10,15 +10,19 @@ import static org.mockito.Mockito.never;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.CustomerQuery;
+import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.ProductQuery;
 import com.twojo.boundary.Role;
+import com.twojo.boundary.ViewTokenCommand;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.sequence.DocumentNumberService;
 import com.twojo.global.sequence.DocumentSequence.DocType;
 import com.twojo.quote.dto.QuoteRequests;
 import com.twojo.quote.entity.Quote;
+import com.twojo.quote.entity.QuoteItem;
 import com.twojo.quote.repository.QuoteRepository;
 import java.time.Instant;
 import java.time.LocalDate;
@@ -31,6 +35,8 @@ import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
+import org.mockito.InOrder;
+import org.mockito.Mockito;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -64,6 +70,9 @@ class QuoteServiceTest {
     @Mock private DealQuery dealQuery;
     @Mock private ProductQuery productQuery;
     @Mock private DocumentNumberService documentNumberService;
+    @Mock private DealCommand dealCommand;
+    @Mock private CustomerQuery customerQuery;
+    @Mock private ViewTokenCommand viewTokenCommand;
     @InjectMocks private QuoteService quoteService;
 
     private static DealQuery.DealSummary dealSummary() {
@@ -315,6 +324,172 @@ class QuoteServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(QuoteServiceTest::errorOf)
                     .isEqualTo(ErrorCode.VALIDATION_FAILED);
+        }
+    }
+
+    @Nested
+    @DisplayName("발송 (QT-13~16)")
+    class Send {
+
+        private static final UUID CONTACT_ID = UUID.randomUUID();
+        private static final UUID DEAL_CUSTOMER_ID = UUID.randomUUID();
+
+        private Quote sendableQuote() {
+            Quote quote = draft();
+            quote.replaceItems(List.of(QuoteItem.of(null, "현장 실측", "식", 1, 300_000L, null, 0)));
+            return quote;
+        }
+
+        private void quoteExists(Quote quote) {
+            given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
+                    .willReturn(Optional.of(quote));
+            dealIsVisibleTo(SALES_ID);
+        }
+
+        @Test
+        @DisplayName("검증을 지나면 링크 발급 → 단계 승급 → SENT 순으로 진행한다")
+        void 발송_순서() {
+            Quote quote = sendableQuote();
+            quoteExists(quote);
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(true);
+            given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
+            given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(true);
+
+            var result = quoteService.send(SALES, QUOTE_ID,
+                    new QuoteRequests.SendQuote(CONTACT_ID, "확인 부탁드립니다"));
+
+            assertThat(result.status()).isEqualTo("SENT");
+            assertThat(quote.getSentAt()).isNotNull();
+
+            // 링크가 SENT 전에 발급되어야 한다 — issue()의 계약이 "issue 시점 status는 DRAFT"다 (Q-40)
+            InOrder 순서 = Mockito.inOrder(viewTokenCommand, dealCommand);
+            순서.verify(viewTokenCommand).issue(QUOTE_ID, CONTACT_ID);
+            순서.verify(dealCommand).promoteToQuoteStage(DEAL_ID);
+        }
+
+        @Test
+        @DisplayName("종결 Deal이면 링크를 발급하지 않는다 (Q-25, 전이표 §6)")
+        void 종결_Deal_차단() {
+            quoteExists(sendableQuote());
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(false);
+
+            assertThatThrownBy(() -> quoteService.send(SALES, QUOTE_ID,
+                    new QuoteRequests.SendQuote(CONTACT_ID, null)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteServiceTest::errorOf)
+                    .isEqualTo(ErrorCode.QUOTE_DEAL_CLOSED);
+
+            then(viewTokenCommand).shouldHaveNoInteractions();
+            then(dealCommand).shouldHaveNoInteractions();
+        }
+
+        /**
+         * <b>D에게 한 약속</b> — 발송·재발송 두 경로 모두 C가 수신인을 검증한다.
+         * 빠뜨리면 무관한 고객사 담당자에게 열람 링크가 나가고, 토큰이 곧 인증이라(SC-07)
+         * 타사가 견적을 본다.
+         */
+        @Test
+        @DisplayName("다른 고객사 담당자면 링크를 발급하지 않는다 — CONTACT_NOT_IN_CUSTOMER")
+        void 남의_고객사_담당자() {
+            quoteExists(sendableQuote());
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(true);
+            given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
+            given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(false);
+
+            assertThatThrownBy(() -> quoteService.send(SALES, QUOTE_ID,
+                    new QuoteRequests.SendQuote(CONTACT_ID, null)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteServiceTest::errorOf)
+                    .isEqualTo(ErrorCode.CONTACT_NOT_IN_CUSTOMER);
+
+            then(viewTokenCommand).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("항목이 없으면 링크를 발급하지 않는다 — 되돌릴 수 없는 일보다 검증이 앞이다 (QT-15)")
+        void 빈_항목이면_링크_없음() {
+            quoteExists(draft());   // 항목 없음
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(true);
+            given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
+            given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(true);
+
+            assertThatThrownBy(() -> quoteService.send(SALES, QUOTE_ID,
+                    new QuoteRequests.SendQuote(CONTACT_ID, null)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteServiceTest::errorOf)
+                    .isEqualTo(ErrorCode.QUOTE_EMPTY_ITEMS);
+
+            then(viewTokenCommand).shouldHaveNoInteractions();
+        }
+    }
+
+    @Nested
+    @DisplayName("회수·재발송·수동 만료 (QT-17, AP-13·14)")
+    class WithdrawAndLink {
+
+        private static final UUID CONTACT_ID = UUID.randomUUID();
+        private static final UUID DEAL_CUSTOMER_ID = UUID.randomUUID();
+
+        private Quote quoteAt(Quote.Status status) {
+            Quote quote = draft();
+            ReflectionTestUtils.setField(quote, "status", status);
+            given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
+                    .willReturn(Optional.of(quote));
+            dealIsVisibleTo(SALES_ID);
+            return quote;
+        }
+
+        @Test
+        @DisplayName("회수하면 링크가 WITHDRAWN 사유로 만료된다 — 종결 Deal 여부를 묻지 않는다")
+        void 회수() {
+            Quote quote = quoteAt(Quote.Status.SENT);
+
+            quoteService.withdraw(SALES, QUOTE_ID);
+
+            assertThat(quote.getStatus()).isEqualTo(Quote.Status.WITHDRAWN);
+            then(viewTokenCommand).should()
+                    .expire(QUOTE_ID, ViewTokenCommand.ExpiredReason.WITHDRAWN);
+            then(dealQuery).should(never()).isOpen(any());   // 발송과 반대 — 딜 상태를 보지 않는다
+        }
+
+        @Test
+        @DisplayName("재발송은 수신인을 검증하고 견적 상태를 바꾸지 않는다 (AP-13)")
+        void 재발송() {
+            Quote quote = quoteAt(Quote.Status.VIEWED);
+            given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
+            given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(true);
+
+            quoteService.resendViewToken(SALES, QUOTE_ID, new QuoteRequests.ResendViewToken(CONTACT_ID));
+
+            then(viewTokenCommand).should().issue(QUOTE_ID, CONTACT_ID);
+            assertThat(quote.getStatus()).isEqualTo(Quote.Status.VIEWED);   // 그대로다
+        }
+
+        @Test
+        @DisplayName("재발송도 다른 고객사 담당자면 막힌다 — 발송과 같은 약속이다")
+        void 재발송_수신인_검증() {
+            quoteAt(Quote.Status.SENT);
+            given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
+            given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(false);
+
+            assertThatThrownBy(() -> quoteService.resendViewToken(
+                    SALES, QUOTE_ID, new QuoteRequests.ResendViewToken(CONTACT_ID)))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteServiceTest::errorOf)
+                    .isEqualTo(ErrorCode.CONTACT_NOT_IN_CUSTOMER);
+
+            then(viewTokenCommand).shouldHaveNoInteractions();
+        }
+
+        @Test
+        @DisplayName("수동 만료는 링크만 닫는다 — 견적 상태는 그대로다 (AP-14)")
+        void 수동_만료() {
+            Quote quote = quoteAt(Quote.Status.SENT);
+
+            quoteService.expireViewToken(SALES, QUOTE_ID);
+
+            then(viewTokenCommand).should().expire(QUOTE_ID, ViewTokenCommand.ExpiredReason.MANUAL);
+            assertThat(quote.getStatus()).isEqualTo(Quote.Status.SENT);
         }
     }
 

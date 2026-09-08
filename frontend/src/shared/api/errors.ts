@@ -26,6 +26,7 @@ export const ERROR_MESSAGES = {
   COMPANY_BUSINESS_NO_DUPLICATED: '이미 가입된 회사입니다.',
   // ── A 구성원·초대
   INVITATION_NOT_PENDING: '이 초대는 더 이상 유효하지 않습니다. 관리자에게 재발송을 요청해 주세요.',
+  INVITATION_ALREADY_PENDING: '이미 발송된 초대가 있습니다. 취소 후 다시 발송해 주세요.',
   LAST_ADMIN_PROTECTED: '회사에는 최소 한 명의 관리자가 필요합니다.',
   MEMBER_INACTIVE_TRANSFER_REQUIRED: '담당 중인 Deal이 있습니다. 이관받을 구성원을 지정해 주세요.',
   // ── B 고객사

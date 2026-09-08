@@ -45,12 +45,16 @@ export interface LoginRequest {
   rememberMe: boolean
 }
 
-/** auth/dto/LoginResponse — refresh는 Set-Cookie로만 온다 (v1.6.4). 관리자 로그인은 companyName이 null */
+/**
+ * auth/dto/LoginResponse — refresh는 Set-Cookie로만 온다 (v1.6.4).
+ * 플랫폼 관리자 로그인(/admin/api/v1/auth/login)은 role이 `PLATFORM_ADMIN`(ActorType, Role enum 밖 — 09 v1.6.3 각주),
+ * name은 이메일(platform_admin에 이름 컬럼이 없다), companyName은 null이다.
+ */
 export interface LoginResponse {
   accessToken: string
   memberId: string
   name: string
-  role: Role
+  role: Role | 'PLATFORM_ADMIN'
   companyName: string | null
 }
 

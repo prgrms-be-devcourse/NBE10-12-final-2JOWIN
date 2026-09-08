@@ -163,6 +163,154 @@ public class Quote extends BaseTimeEntity {
     }
 
     /**
+     * 고객 첫 열람 (AP-02·07) — 발송됨(SENT) → 열람됨(VIEWED), 첫 열람 시각을 남긴다.
+     *
+     * <p><b>멱등이다.</b> SENT가 아니면 아무 일도 하지 않는다 — 예외를 던지지 않는다.
+     * <ul>
+     *   <li>이미 VIEWED — 두 번째 열람이다. {@code firstViewedAt}을 덮으면 "<b>첫</b> 열람 시각"이라는
+     *       값의 의미가 사라진다 (AP-07)</li>
+     *   <li>응답 완료(APPROVED·REJECTED) — 응답한 링크의 <b>열람은 허용</b>이다.
+     *       차단되는 것은 재응답뿐이다 (전이표 §7, v1.6.1)</li>
+     * </ul>
+     *
+     * <p>열람은 고객이 링크를 여는 것뿐이라 실패할 이유가 없다. 여기서 예외를 던지면
+     * 정상적인 재열람이 오류 화면이 된다.
+     */
+    public void markViewed(Instant viewedAt) {
+        if (status != Status.SENT) {
+            return;
+        }
+        this.status = Status.VIEWED;
+        this.firstViewedAt = viewedAt;
+    }
+
+    /**
+     * 고객 승인 (AP-08·19) — 열람됨(VIEWED) → 승인됨(APPROVED).
+     *
+     * <p>응답자 이름·직책은 <b>검증하지 않는다</b>. 계정 없는 고객이 직접 밝히는 자기 신고이고
+     * (Q-44), 시스템이 확인할 방법이 없다는 사실을 화면이 안내한다. 길이 제한은 08의
+     * {@code @Size(max = 50)}가 웹 계층에서 건다.
+     */
+    public void approve(String responderName, String responderTitle, Instant respondedAt) {
+        requireRespondable();
+        this.status = Status.APPROVED;
+        recordResponder(responderName, responderTitle, respondedAt);
+    }
+
+    /**
+     * 고객 반려 (AP-09·10·19) — 열람됨(VIEWED) → 반려됨(REJECTED). 종결이다.
+     *
+     * <p>재제안은 복제(QT-19)로 새 견적을 만든다 — 반려된 견적은 되살아나지 않는다 (전이표 §6).
+     */
+    public void reject(String reason, String responderName, String responderTitle, Instant respondedAt) {
+        requireRespondable();
+        this.status = Status.REJECTED;
+        this.rejectReason = reason;
+        recordResponder(responderName, responderTitle, respondedAt);
+    }
+
+    private void recordResponder(String responderName, String responderTitle, Instant respondedAt) {
+        this.responderName = responderName;
+        this.responderTitle = responderTitle;
+        this.respondedAt = respondedAt;
+    }
+
+    /**
+     * 승인·반려가 열리는 상태 — <b>열람됨(VIEWED)뿐이다</b> (전이표 §6).
+     *
+     * <p>SENT에서 바로 승인하는 행은 표에 없다. 고객이 링크를 열면 열람 API가
+     * {@code markViewed}를 먼저 부르므로 정상 흐름에 그 경로가 없고, 온다면 호출 순서가
+     * 뒤바뀐 것이라 드러나는 편이 낫다.
+     *
+     * <p>만료·회수·이미 응답한 견적도 여기서 막힌다. 다만 <b>링크 상태로 걸러지는 것들</b>
+     * (만료 링크 410 · 응답 완료 링크 409)은 열람 API가 먼저 잡으므로, 여기 닿는 것은
+     * 링크는 멀쩡한데 견적 상태가 어긋난 경우다.
+     */
+    private void requireRespondable() {
+        if (status != Status.VIEWED) {
+            throw new BusinessException(ErrorCode.QUOTE_NOT_RESPONDABLE);
+        }
+    }
+
+    /**
+     * 발송 가능한지 검사한다 (QT-14~16, Q-17) — <b>상태는 바꾸지 않는다.</b>
+     *
+     * <p>여기서 보는 것은 <b>견적 자체의 조건</b> 셋뿐이다.
+     * <ul>
+     *   <li>작성 중(DRAFT)이어야 한다 (QT-14·16)</li>
+     *   <li><b>항목이 1개 이상</b>이어야 한다 (QT-15) — 빈 견적은 보낼 것이 없다</li>
+     *   <li><b>유효기간이 지나지 않았어야</b> 한다 (Q-17) — 입력은 {@code @Future}가 막지만
+     *       <b>저장된 값이 낡는 것은 못 막는다.</b> 오늘 만든 견적을 다음 주에 보내면
+     *       이미 만료된 링크가 나간다</li>
+     * </ul>
+     *
+     * <p><b>전이({@link #markSent})와 나눈 이유는 순서 합의다.</b>
+     * {@code ViewTokenCommand.issue}는 "issue 시점의 status는 아직 DRAFT"를 계약으로 두고 있다
+     * (Q-40) — 링크를 먼저 발급하고 그 다음 SENT로 바꾼다. 그런데 검증까지 뒤로 미루면
+     * <b>빈 견적에 링크를 발급한 뒤에야 실패</b>하게 된다. 그래서 검증만 앞으로 뺀다.
+     *
+     * <p><b>종결 Deal 차단(Q-25)·수신인 검증은 여기서 하지 않는다.</b> 둘 다 견적 밖의
+     * 사실을 물어야 해서 서비스가 경계 계약으로 판정한다 — 엔티티가 그걸 알면 테스트에
+     * DB가 딸려온다.
+     */
+    public void requireSendable(LocalDate today) {
+        requireDraft();
+        if (items.isEmpty()) {
+            throw new BusinessException(ErrorCode.QUOTE_EMPTY_ITEMS);   // QT-15
+        }
+        if (validUntil.isBefore(today)) {
+            throw new BusinessException(ErrorCode.QUOTE_VALID_UNTIL_PASSED);   // Q-17
+        }
+    }
+
+    /**
+     * 발송 확정 (QT-13) — 작성 중(DRAFT) → 발송됨(SENT), 발송 시각을 남긴다.
+     *
+     * <p><b>{@link #requireSendable}을 먼저 부른 뒤</b> 링크 발급이 성공하면 호출한다.
+     * 여기서 {@code requireDraft}를 다시 보는 것은 순서를 건너뛴 호출을 막기 위한 것이지
+     * 검증을 대신하려는 것이 아니다 — 항목·유효기간은 앞에서 이미 봤다.
+     */
+    public void markSent(Instant sentAt) {
+        requireDraft();
+        this.status = Status.SENT;
+        this.sentAt = sentAt;
+    }
+
+    /**
+     * 회수 (QT-17) — 발송됨·열람됨 → 회수됨(WITHDRAWN). <b>종결이다.</b>
+     *
+     * <p>링크 즉시 만료는 서비스가 {@code ViewTokenCommand.expire(WITHDRAWN)}으로 처리한다
+     * (전이표 §6의 효과).
+     *
+     * <p><b>종결 Deal에서도 회수된다</b> — 발송과 반대다. 발송은 새 약속을 만드는 행위라
+     * 끝난 딜에서 할 일이 아니지만, 회수는 이미 나간 링크를 닫는 뒷정리라 오히려
+     * 종결 딜에서 필요하다 (07 §C "종결 Deal에서도 가능 — 정리 목적").
+     */
+    public void withdraw() {
+        if (status != Status.SENT && status != Status.VIEWED) {
+            throw new BusinessException(ErrorCode.QUOTE_NOT_WITHDRAWABLE);
+        }
+        this.status = Status.WITHDRAWN;
+    }
+
+    /**
+     * 수신인을 바꿔 다시 보낼 수 있는지 (AP-13) — <b>발송됨·열람됨에서만</b>.
+     *
+     * <p><b>판정 축이 링크가 아니라 견적 상태다</b> ({@code QUOTE_NOT_RESENDABLE} 주석).
+     * 수동 만료(AP-14)로 링크를 닫은 뒤 다른 수신인에게 다시 보내는 흐름을 막지 않으려는 것이다 —
+     * 링크가 없다는 것이 재발송 불가의 이유가 되면 그 흐름이 죽는다.
+     *
+     * <p><b>종결 Deal 여부를 따로 보지 않는다.</b> 실패(LOST)한 딜의 진행 중 견적은 이미
+     * 기간 만료(EXPIRED)로 닫혀 있고(전이표 §5의 효과), 성사(WON)한 딜의 발송된 견적은
+     * 끝까지 유효하다(Q-25). 두 경우 모두 <b>견적 상태만 보면 답이 나온다.</b>
+     */
+    public void requireResendable() {
+        if (status != Status.SENT && status != Status.VIEWED) {
+            throw new BusinessException(ErrorCode.QUOTE_NOT_RESENDABLE);
+        }
+    }
+
+    /**
      * 금액 3분리 재계산 (QT-08·22) — 항목 합계가 계산의 <b>유일한</b> 입력이다.
      * <p>단가가 항상 세전이므로 항목 합계가 곧 공급가액이다 (Q-46).
      */

@@ -22,6 +22,16 @@ public final class QuoteRequests {
     public record CreateQuote(@NotNull UUID dealId) {
     }
 
+    /** 발송 (QT-13, AP-01) — 수신 담당자 1명 (Q-07). {@code message}는 안내 메일 본문에 덧붙인다 */
+    public record SendQuote(
+            @NotNull UUID recipientContactId,
+            @Size(max = 500) String message) {
+    }
+
+    /** 수신인 변경 재발송 (AP-13) — 기존 링크는 RESENT로 닫히고 새 링크가 발급된다 */
+    public record ResendViewToken(@NotNull UUID recipientContactId) {
+    }
+
     /**
      * 작성 중 전체 갱신 (QT-02~11·23) — <b>PUT이다.</b>
      *

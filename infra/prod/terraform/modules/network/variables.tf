@@ -9,7 +9,7 @@ variable "project" {
 variable "vpc_cidr" {
   description = "VPC CIDR. /16 이면 65,536 IP — 서브넷을 더 쪼갤 여지를 남긴다"
   type        = string
-  default     = "10.0.0.0/16"
+  default     = "10.62.0.0/16"
 }
 
 variable "public_subnets" {
@@ -19,8 +19,8 @@ variable "public_subnets" {
   EOT
   type        = map(string)
   default = {
-    a = "10.0.0.0/24" # EC2 가 들어간다
-    c = "10.0.1.0/24" # 예비 — 비어 있다. 서브넷 자체는 과금되지 않는다
+    a = "10.62.0.0/24" # EC2 가 들어간다
+    c = "10.62.1.0/24" # 예비 — 비어 있다. 서브넷 자체는 과금되지 않는다
   }
 
   validation {

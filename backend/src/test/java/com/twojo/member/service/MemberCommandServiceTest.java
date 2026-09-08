@@ -3,8 +3,7 @@ package com.twojo.member.service;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
-import com.twojo.global.error.BusinessException;
-import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.member.repository.MemberRepository;
 import java.time.Instant;
 import java.util.Optional;
@@ -39,8 +38,11 @@ class MemberCommandServiceTest {
     }
 
     /**
-     * SC-09 — 404 계열은 존재·권한을 구별해서 말하지 않는다.
-     * 호출자가 토큰으로 대상을 특정한 뒤라, 없다는 것은 명세가 다루는 실패가 아니라 데이터 이상이다.
+     * 호출자(auth)가 토큰으로 대상을 특정하고 getCredential까지 통과한 뒤라,
+     * 없다는 것은 명세가 다루는 실패가 아니라 <b>데이터 이상</b>이다 — 404가 아니라 500이다 (#165).
+     *
+     * <p>404로 답하면 SC-09의 "없거나 범위 밖"과 구별되지 않아, 무결성 이상이
+     * 정상적인 조회 실패처럼 보이고 로그에도 남지 않는다.
      */
     @Test
     void 없는_구성원의_비밀번호는_바꿀_수_없다() {
@@ -50,7 +52,8 @@ class MemberCommandServiceTest {
 
         // when · then — 조용히 넘기지 않고 예외로 드러낸다
         assertThatThrownBy(() -> memberCommandService.changePassword(없는_구성원, "$2a$10$K7Lm", NOW))
-                .isInstanceOf(BusinessException.class)
-                .hasFieldOrPropertyWithValue("errorCode", ErrorCode.RESOURCE_NOT_FOUND);
+                .isInstanceOf(MissingReferenceException.class)
+                .hasMessageContaining("member")
+                .hasMessageContaining(없는_구성원.toString());
     }
 }
