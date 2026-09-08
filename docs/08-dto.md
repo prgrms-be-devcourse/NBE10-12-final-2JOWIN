@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.16
+# DTO 설계서 — v1.6.17
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.17 | **`DeactivateMemberRequest` MB-14 주석 정정(2026-09-08)** — "담당 Deal 1건 이상"을 **진행 중(리드~협상) 담당 Deal** 기준으로. 종결 Deal은 이관하지 않으므로 필수 판정에서도 빠진다 (03 Q-48, 07 v1.6.14) |
 | v1.6.16 | **`PublicQuoteResponse` boundary 이동 + `PublicQuoteAssembler` 조립 계약 신설(2026-09-08)** — preview(§C, QT-12)와 고객 열람(§D)이 "같은 응답"이어야 하는데(v1.6 주석 규약) 조립 로직이 D의 서비스에만 있어, preview가 boundary 원본 `QuoteQuery.PublicQuoteView`를 그대로 내보내며 `companyName`·`companyBusinessNo`·`assignee`·`respondable`이 빠지고 내부 식별자(`dealId`·`companyId`)가 샜다 — 프론트 미리보기 화면이 렌더에서 크래시. `PublicQuoteResponse`를 `com.twojo.approval.dto` → `com.twojo.boundary`로 옮기고(preview·열람 두 모듈이 import), `boundary/PublicQuoteAssembler`(`assembleForPreview`·`assembleForView`, 구현 D)가 `getPublicView` + `CompanyQuery.get` + `DealQuery.assigneeIdOf` + `MemberQuery.getContact`를 하나로 조립한다. record 필드·JSON 모양 변경 없음. 발견 경로: PR #101 리뷰 ② 후속(#114) · 계약 신설이라 #163으로 분리 |
 | v1.6.15 | **`RejectQuoteRequest.reason` 길이 제한(2026-09-07)** — v1.6.3에서 응답자 필드를 넣을 때 `reason`에 `@Size(max)`가 빠졌다. `quote.reject_reason VARCHAR(500)`을 넘는 값이 Bean Validation을 통과해 DB에서 거부되고, C의 반려 트랜잭션이 통째로 롤백돼 500으로 나간다 — 400 `VALIDATION_FAILED`가 맞는 자리이고 v1.6.8·v1.6.9와 같은 구멍이다. 값은 `V1__baseline.sql`의 `reject_reason` 정의(500)를 그대로 옮겼다. 발견 경로: 고객 응답 API(#105) 착수 전 소스 대조 · 계약 변경이라 PR #136에서 분리 |
 | v1.6.14 | **§A `NotificationSettingResponse.Entry.type` 값 목록 명시(2026-09-07)** — NT-07 설정 대상 4종의 enum 값이 문서에 없어 프론트가 맞출 기준이 없었다. 백엔드 계약(`boundary/NotificationSettingType`, #127)이 확정한 `QUOTE_VIEWED` · `QUOTE_RESPONDED` · `REMIND_NO_RESPONSE` · `INQUIRY_RECEIVED`를 응답 record 주석에 적는다. `QUOTE_RESPONDED`는 NT-04(승인·반려)를 한 토글로 묶은 것이라 `notification.type`의 `QUOTE_APPROVED`/`QUOTE_REJECTED`와 1:1이 아니다(03 §2.13). 스키마·필드 변경 없음, 주석만. 발견 경로: NT-07 계약 리뷰(#127) |
@@ -147,7 +148,7 @@ public record ChangeRoleRequest(@NotBlank String role) {}
 
 public record DeactivateMemberRequest(
         UUID transferToMemberId) {}
-// MB-14: 담당 Deal 1건 이상이면 필수 → 없으면 422 MEMBER_INACTIVE_TRANSFER_REQUIRED (v1.6.1: 400→422)
+// MB-14: 진행 중(리드~협상) 담당 Deal 1건 이상이면 필수 → 없으면 422 MEMBER_INACTIVE_TRANSFER_REQUIRED (v1.6.1: 400→422 · v1.6.17: 종결 Deal 제외, Q-48)
 // 할 일은 Deal을 따라 자동 이동(Q-29) — 별도 이관 없음
 // 검증: 같은 회사의 활성 구성원 (타사·비활성 대상은 SC-09에 따라 404)
 // 효과: 대상 구성원 refresh_token 전 행 폐기 (즉시 차단, MB-10)
