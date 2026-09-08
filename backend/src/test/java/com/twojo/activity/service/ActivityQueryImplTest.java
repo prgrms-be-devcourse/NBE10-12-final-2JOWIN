@@ -1,6 +1,7 @@
 package com.twojo.activity.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 
 /**
  * 대시보드 최근 활동 (DB-04) — 범위 분기가 핵심이다.
@@ -57,8 +59,9 @@ class ActivityQueryImplTest {
     @Test
     @DisplayName("기업 관리자는 회사 전체 활동을 받는다 — 담당 딜을 묻지 않는다 (SC-05)")
     void recent_admin_seesWholeCompany() {
+        // limit이 그대로 쿼리에 실려야 한다 — any()로 두면 상수로 바꿔치기해도 안 잡힌다
         given(activityRepository.findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
-                eq(COMPANY_ID), any()))
+                COMPANY_ID, PageRequest.of(0, 10)))
                 .willReturn(List.of(활동("리모델링 일정 확인")));
 
         List<RecentActivitySummary> result = activityQuery.recent(ADMIN, 10);
@@ -76,10 +79,13 @@ class ActivityQueryImplTest {
         List<UUID> 담당딜 = List.of(DEAL_ID);
         given(dealQuery.assignedDealIds(COMPANY_ID, MEMBER_ID)).willReturn(담당딜);
         given(activityRepository.findByCompanyIdAndDealIdInAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
-                eq(COMPANY_ID), eq(담당딜), any()))
+                COMPANY_ID, 담당딜, PageRequest.of(0, 10)))
                 .willReturn(List.of(활동("리모델링 일정 확인")));
 
-        activityQuery.recent(SALES, 10);
+        // G7: 결과를 버리고 빈 목록을 돌려줘도 never()만으로는 안 잡힌다
+        List<RecentActivitySummary> result = activityQuery.recent(SALES, 10);
+        assertThat(result).singleElement()
+                .extracting(RecentActivitySummary::summary).isEqualTo("리모델링 일정 확인");
 
         then(activityRepository).should(never())
                 .findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(any(), any());
@@ -110,6 +116,17 @@ class ActivityQueryImplTest {
     }
 
     @Test
+    @DisplayName("경계값 1과 MAX_LIMIT은 통과한다 — 부등호가 밀리면 정상 요청이 막힌다")
+    void recent_limitAtBoundary_passes() {
+        given(activityRepository.findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
+                eq(COMPANY_ID), any()))
+                .willReturn(List.of());
+
+        assertThatNoException().isThrownBy(() -> activityQuery.recent(ADMIN, 1));
+        assertThatNoException().isThrownBy(() -> activityQuery.recent(ADMIN, ActivityQuery.MAX_LIMIT));
+    }
+
+    @Test
     @DisplayName("내용은 80자까지 그대로, 넘으면 80자에서 자르고 …를 붙인다")
     void recent_longContent_truncated() {
         String 여든자 = "가".repeat(80);
@@ -129,7 +146,7 @@ class ActivityQueryImplTest {
     void recent_multilineContent_flattened() {
         given(activityRepository.findByCompanyIdAndDeletedAtIsNullOrderByOccurredAtDescIdAsc(
                 eq(COMPANY_ID), any()))
-                .willReturn(List.of(활동("방문 미팅 진행\n\n예산  1,300만")));
+                .willReturn(List.of(활동("  방문 미팅 진행\n\n예산  1,300만  ")));
 
         String summary = activityQuery.recent(ADMIN, 10).get(0).summary();
 

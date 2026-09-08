@@ -1,6 +1,7 @@
 package com.twojo.activity.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
@@ -25,6 +26,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
 /**
@@ -67,7 +69,9 @@ class TaskQueryImplTest {
     @Test
     @DisplayName("기업 관리자는 회사 전체 할 일을 받는다 — 담당 딜을 묻지 않는다 (SC-05)")
     void followUps_admin_seesWholeCompany() {
-        given(taskRepository.findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(eq(COMPANY_ID), any()))
+        // limit이 그대로 쿼리에 실려야 한다 — any()로 두면 상수로 바꿔치기해도 안 잡힌다
+        given(taskRepository.findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(
+                COMPANY_ID, PageRequest.of(0, 10)))
                 .willReturn(List.of(할일("성원산업 재방문 일정 조율", TASK_ID)));
 
         List<FollowUpSummary> result = taskQuery.followUps(ADMIN, 10);
@@ -85,10 +89,13 @@ class TaskQueryImplTest {
         List<UUID> 담당딜 = List.of(DEAL_ID);
         given(dealQuery.assignedDealIds(COMPANY_ID, MEMBER_ID)).willReturn(담당딜);
         given(taskRepository.findByCompanyIdAndDealIdInAndDoneAtIsNullOrderByDueDateAscIdAsc(
-                eq(COMPANY_ID), eq(담당딜), any()))
+                COMPANY_ID, 담당딜, PageRequest.of(0, 10)))
                 .willReturn(List.of(할일("성원산업 재방문 일정 조율")));
 
-        taskQuery.followUps(SALES, 10);
+        // G7: 결과를 버리고 빈 목록을 돌려줘도 never()만으로는 안 잡힌다
+        List<FollowUpSummary> result = taskQuery.followUps(SALES, 10);
+        assertThat(result).singleElement()
+                .extracting(FollowUpSummary::content).isEqualTo("성원산업 재방문 일정 조율");
 
         then(taskRepository).should(never())
                 .findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(any(), any());
@@ -116,5 +123,15 @@ class TaskQueryImplTest {
 
         then(taskRepository).shouldHaveNoInteractions();
         then(dealQuery).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("경계값 1과 MAX_LIMIT은 통과한다 — 부등호가 밀리면 정상 요청이 막힌다")
+    void followUps_limitAtBoundary_passes() {
+        given(taskRepository.findByCompanyIdAndDoneAtIsNullOrderByDueDateAscIdAsc(eq(COMPANY_ID), any()))
+                .willReturn(List.of());
+
+        assertThatNoException().isThrownBy(() -> taskQuery.followUps(ADMIN, 1));
+        assertThatNoException().isThrownBy(() -> taskQuery.followUps(ADMIN, TaskQuery.MAX_LIMIT));
     }
 }
