@@ -188,6 +188,30 @@ public class Deal extends BaseTimeEntity {
         }
     }
 
+    /**
+     * 주문 전환에 따른 <b>자동 성사</b> (OD-06) — 진행 중이면 <b>단계와 무관하게</b> 성사(WON)다.
+     *
+     * <p>전이표 §5: "리드 ~ 협상 → 주문 전환 → 성사(WON) · <b>시스템</b>".
+     * {@link #advance}로는 성사에 닿을 수 없다 — 협상에서 호출하면 {@code DEAL_WON_REQUIRES_ORDER}다.
+     * <b>승인된 견적 없이 성사될 수 없다</b>는 DL-09를 코드로 강제하는 구조이고,
+     * 그 유일한 출구가 여기다.
+     *
+     * <p><b>이미 성사면 무동작이다 — {@link #promoteToQuoteStage}와 반대다.</b>
+     * 발송은 끝난 딜에 <b>새 약속</b>을 만드는 일이라 막아야 하지만, 주문 전환은 이미 성사된 딜에
+     * <b>주문을 하나 더</b> 붙이는 일이라 정상 시나리오다 — 성사 전에 발송된 견적은 끝까지 유효하고
+     * 두 번째 승인 견적도 전환된다 (Q-25, 07 §C 257행).
+     *
+     * <p>실패(LOST) 딜은 막는다({@code DEAL_NOT_OPEN}). 실패 처리는 진행 중이던 견적을 기간 만료로
+     * 닫으므로(전이표 §5의 효과) 승인 견적이 남아 있을 수 없고, 남아 있다면 그건 표에 없는 상태다.
+     */
+    public void win() {
+        if (stage == Stage.WON) {
+            return;   // 멱등 — 주문 추가 생성 (Q-25)
+        }
+        requireOpen();   // 실패(LOST)는 DEAL_NOT_OPEN
+        this.stage = Stage.WON;
+    }
+
     /** 이전 단계로 되돌리기 (DL-08) — 리드에서는 되돌릴 곳이 없다 */
     public void revert() {
         requireOpen();

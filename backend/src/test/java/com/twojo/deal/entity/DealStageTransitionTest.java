@@ -173,6 +173,58 @@ class DealStageTransitionTest {
     }
 
     @Nested
+    @DisplayName("주문 전환에 따른 자동 성사 (OD-06) — 시스템 전이")
+    class Win {
+
+        @ParameterizedTest(name = "{0} → WON")
+        @EnumSource(value = Stage.class, names = {"LEAD", "CONSULT", "QUOTE", "NEGOTIATION"})
+        @DisplayName("진행 중이면 단계와 무관하게 성사가 된다 — 리드에서도 곧장 WON이다")
+        void 단계_무관_성사(Stage from) {
+            Deal deal = dealAt(from);
+
+            deal.win();
+
+            assertThat(deal.getStage()).isEqualTo(Stage.WON);
+        }
+
+        /**
+         * {@code promoteToQuoteStage}가 종결 딜에서 던지는 것과 <b>반대</b>다.
+         * 발송은 끝난 딜에 새 약속을 만드는 일이지만, 주문 전환은 이미 성사된 딜에
+         * 주문을 하나 더 붙이는 정상 시나리오다 (Q-25).
+         */
+        @Test
+        @DisplayName("이미 성사면 무동작이다 — 두 번째 승인 견적도 전환된다 (Q-25)")
+        void 이미_성사면_멱등() {
+            Deal deal = dealAt(Stage.WON);
+
+            deal.win();
+
+            assertThat(deal.getStage()).isEqualTo(Stage.WON);
+        }
+
+        @Test
+        @DisplayName("실패 Deal은 막힌다 — 실패 처리가 견적을 이미 만료시켰으므로 승인 견적이 없다")
+        void 실패는_차단() {
+            assertThatThrownBy(dealAt(Stage.LOST)::win)
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(DealStageTransitionTest::errorOf)
+                    .isEqualTo(ErrorCode.DEAL_NOT_OPEN);
+        }
+
+        @Test
+        @DisplayName("advance()로는 협상에서 성사에 닿을 수 없다 — win()이 유일한 출구다 (DL-09)")
+        void advance로는_도달_불가() {
+            assertThatThrownBy(dealAt(Stage.NEGOTIATION)::advance)
+                    .extracting(DealStageTransitionTest::errorOf)
+                    .isEqualTo(ErrorCode.DEAL_WON_REQUIRES_ORDER);
+
+            Deal 전환 = dealAt(Stage.NEGOTIATION);
+            전환.win();
+            assertThat(전환.getStage()).isEqualTo(Stage.WON);
+        }
+    }
+
+    @Nested
     @DisplayName("실패·재개 (DL-10~12)")
     class LoseAndReopen {
 
@@ -245,6 +297,11 @@ class DealStageTransitionTest {
     /**
      * DL-09("승인된 견적 없이 성사될 수 없다")를 전이 메서드 전체에 대해 고정한다.
      * 출발점에서 WON은 제외한다 — 이미 성사인 것은 "도달"이 아니다.
+     *
+     * <p><b>{@link Deal#win()}은 이 목록에 넣지 않는다 — 일부러다.</b> 그것이 바로
+     * "주문 전환만이 성사를 만든다"의 그 출구이고, 넣으면 이 테스트가 자기 전제를 부정한다.
+     * 전이 메서드를 추가할 때는 여기에도 넣되, <b>성사를 만드는 것은 win() 하나뿐</b>이라는
+     * 조건을 함께 확인한다.
      */
     @ParameterizedTest(name = "{0}에서는 어떤 전이로도 성사에 닿지 않는다")
     @EnumSource(value = Stage.class, names = {"LEAD", "CONSULT", "QUOTE", "NEGOTIATION", "LOST"})

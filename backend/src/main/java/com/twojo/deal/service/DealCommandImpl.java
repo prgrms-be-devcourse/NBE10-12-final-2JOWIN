@@ -32,9 +32,19 @@ class DealCommandImpl implements DealCommand {
     @Override
     @Transactional
     public void promoteToQuoteStage(UUID dealId) {
-        Deal deal = dealRepository.findByIdAndDeletedAtIsNull(dealId)
+        find(dealId).promoteToQuoteStage();   // 종결이면 여기서 막힌다 · 견적·협상이면 무동작
+    }
+
+    @Override
+    @Transactional
+    public void markWon(UUID dealId) {
+        find(dealId).win();   // 이미 성사면 무동작 · 실패면 DEAL_NOT_OPEN
+    }
+
+    /** 없으면 RESOURCE_NOT_FOUND — 조용히 무동작하면 주문은 생겼는데 딜은 그대로인 상태가 남는다 */
+    private Deal find(UUID dealId) {
+        return dealRepository.findByIdAndDeletedAtIsNull(dealId)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
-        deal.promoteToQuoteStage();   // 종결이면 여기서 막힌다 · 견적·협상이면 무동작
     }
 
     /**

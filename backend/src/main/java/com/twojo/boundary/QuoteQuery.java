@@ -2,6 +2,7 @@ package com.twojo.boundary;
 
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 
@@ -42,6 +43,31 @@ public interface QuoteQuery {
      */
     PublicQuoteView getPublicView(UUID quoteId);
 
+    /**
+     * 견적 id 묶음 → 출처 배치 조회 — <b>주문 조회의 유일한 통로다</b> (OD-08·09).
+     *
+     * <p>{@code orders}에는 {@code deal_id} 컬럼이 없다 (ERD). 주문 응답의 {@code dealId}·
+     * {@code quoteNo}는 견적을 거쳐야 나오는데, order 모듈은 quote 테이블을 직접 읽지 않는다
+     * (11 §7.3). 줄마다 부르지 않게 배치로 받는다 — 목록 20건이면 조회도 20번이 된다.
+     *
+     * <p>반환은 요청 순서를 보장하지 않으므로 호출자가 id로 인덱싱한다.
+     * 없는 id는 결과에서 빠진다(예외 아님). 빈 목록을 넘기면 빈 목록을 돌려준다.
+     */
+    List<QuoteOrigin> originsByIds(UUID companyId, Collection<UUID> quoteIds);
+
+    /**
+     * 담당 Deal 묶음에 속한 견적 id 전체 — 주문 목록의 <b>범위 필터</b>다 (SC-04, 09 §80).
+     *
+     * <p>주문의 범위도 {@code deal.assignee_member_id}에서 파생하는데(견적과 같은 축),
+     * {@code orders}에서 Deal까지 가려면 quote를 거쳐야 한다. 그 조인을 모듈 밖에서 할 수 없어
+     * <b>id 집합으로 받아 {@code quote_id IN (...)}으로 좁힌다</b>.
+     *
+     * <p><b>{@code scope == OWNED_ONLY}일 때만 호출한다</b> — 기업 관리자는 회사 범위면 충분하다
+     * ({@code DealQuery.assignedDealIds}와 같은 규약). 빈 목록을 넘기면 빈 목록을 돌려준다 —
+     * 담당 Deal이 하나도 없는 영업이고, 그에게는 주문도 하나도 보이지 않아야 한다.
+     */
+    List<UUID> quoteIdsByDeals(UUID companyId, Collection<UUID> dealIds);
+
     /** firstViewedAt이 null이면 미열람 (v2.0.2, GAP-08) */
     record QuoteSummary(UUID id, String quoteNo, String customerName,
                         Instant sentAt, Instant firstViewedAt, LocalDate validUntil) {}
@@ -69,4 +95,12 @@ public interface QuoteQuery {
         public record Item(String name, String unit, int quantity,
                     Long unitPrice, Long amount, int sortOrder) {}
     }
+
+    /**
+     * 주문이 견적에서 물려받는 최소 정보 — 표시용 {@code quoteNo}와 범위 축인 {@code dealId}.
+     *
+     * <p>금액·항목은 여기 없다. 주문은 전환 시점 값을 <b>자기 테이블에 복사해 가지고</b>
+     * 있어서(OD-04·05) 조회 때 견적을 다시 볼 이유가 없다 — 다시 보면 스냅샷이 무너진다.
+     */
+    record QuoteOrigin(UUID quoteId, String quoteNo, UUID dealId) {}
 }
