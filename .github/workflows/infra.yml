@@ -52,8 +52,10 @@ jobs:
       config: ${{ steps.filter.outputs.config }}
       workflows: ${{ steps.filter.outputs.workflows }}
       aws_ready: ${{ steps.gate.outputs.aws_ready }}
+      state_ready: ${{ steps.gate.outputs.state_ready }}
       infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
       stack_ready: ${{ steps.gate.outputs.stack_ready }}
+      tfvars_ready: ${{ steps.gate.outputs.tfvars_ready }}
     steps:
       - uses: actions/checkout@v4
 
@@ -71,6 +73,7 @@ jobs:
               - 'infra/prod/compose/**'
               - 'infra/prod/caddy/**'
               - 'infra/prod/monitoring/**'
+              - 'infra/prod/systemd/**'
               - '.github/workflows/infra.yml'
             workflows:
               - '.github/workflows/**'
@@ -83,12 +86,22 @@ jobs:
         shell: bash
         env:
           HAS_PLAN_ROLE: ${{ secrets.AWS_TF_PLAN_ROLE_ARN != '' }}
+          # backend.tf 에 bucket 이 없다(계정 ID 를 코드에 박지 않는다).
+          # 없으면 terraform init 이 "The attribute bucket is required" 로
+          # 죽는다 — plan·apply 의 첫 줄이다.
+          HAS_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET != '' }}
           HAS_INFRACOST_KEY: ${{ secrets.INFRACOST_API_KEY != '' }}
+          # key_name·deploy_public_key 는 기본값이 없다. 없는 채로 -input=false
+          # 로 돌면 "No value for required variable" 로 죽는다. 시크릿이 아니라
+          # 공개키와 키페어 이름이므로 variable 로 받는다.
+          HAS_TFVARS: ${{ vars.SSH_KEY_NAME != '' && vars.DEPLOY_PUBLIC_KEY != '' }}
         run: |
           set -euo pipefail
           {
             echo "aws_ready=${HAS_PLAN_ROLE}"
+            echo "state_ready=${HAS_STATE_BUCKET}"
             echo "infracost_ready=${HAS_INFRACOST_KEY}"
+            echo "tfvars_ready=${HAS_TFVARS}"
             # 메인 스택은 TF_ROOT 바로 아래 .tf 파일. bootstrap/ 은 여기 해당 없음
             if compgen -G "${TF_ROOT}/*.tf" > /dev/null; then
               echo "stack_ready=true"
@@ -263,6 +276,19 @@ jobs:
 
       # 가장 잘 깨지는 곳이다. Grafana 알람 provisioning 은 형식이 조금만
       # 어긋나도 오류 없이 그냥 등록되지 않는다 — 알람이 조용히 사라진다.
+      # 유닛 파일이 틀리면 배포는 성공하는데 백업만 조용히 안 돈다.
+      # 그건 25시간 뒤 알람으로만 드러나므로 여기서 먼저 잡는다 (이슈 #159).
+      - name: systemd 유닛
+        run: |
+          set -euo pipefail
+          sudo mkdir -p /opt/2jo/scripts
+          echo '#!/bin/sh' | sudo tee /opt/2jo/scripts/backup.sh >/dev/null
+          sudo chmod +x /opt/2jo/scripts/backup.sh
+          cp infra/prod/systemd/backup.service infra/prod/systemd/backup.timer /tmp/
+          systemd-analyze verify --user /tmp/backup.timer
+          # OnCalendar 가 파싱되는지, 실제로 하루 한 번인지 확인한다
+          systemd-analyze calendar --iterations=2 '*-*-* 19:00:00 UTC'
+
       - name: Grafana provisioning (실제 기동)
         run: |
           set -euo pipefail
@@ -279,8 +305,26 @@ jobs:
           docker logs gf-check 2>&1 | grep "level=error" || true
 
           docker rm -f gf-check > /dev/null
-          if [ "$rules" -ne 6 ]; then
-            echo "::error::알람 규칙이 6개가 아니다 (${rules}개). provisioning 형식을 확인할 것"
+
+          # 개수를 코드에 박아두면 알람을 하나 추가할 때마다 여기가 깨진다.
+          # 이 검사가 막으려는 건 그게 아니라 "형식이 틀린 규칙을 Grafana 가
+          # 조용히 버리는 것" 이다. 그러니 파일에 선언된 개수와 대조한다.
+          declared="$(python3 -c "
+          import yaml
+          d = yaml.safe_load(open('infra/prod/monitoring/grafana/provisioning/alerting/rules.yml'))
+          print(sum(len(g['rules']) for g in d['groups']))
+          ")"
+          echo "rules.yml 에 선언된 규칙: ${declared}개"
+
+          if [ "$rules" -ne "$declared" ]; then
+            echo "::error::선언은 ${declared}개인데 Grafana 가 ${rules}개만 등록했다. 규칙 하나가 조용히 버려졌다"
+            exit 1
+          fi
+
+          # 알람 개수 상한은 별개 관심사다. 울려도 아무도 안 보게 되면 0개와 같다.
+          # 늘려야 한다면 그건 의식적인 결정이어야 하므로 여기서 한 번 막는다.
+          if [ "$declared" -gt 8 ]; then
+            echo "::error::알람이 ${declared}개다. 상한(8)을 넘기려면 이 줄을 함께 고칠 것"
             exit 1
           fi
 
@@ -374,12 +418,17 @@ jobs:
       github.event_name == 'pull_request' &&
       needs.changes.outputs.infra == 'true' &&
       needs.changes.outputs.aws_ready == 'true' &&
-      needs.changes.outputs.stack_ready == 'true'
+      needs.changes.outputs.state_ready == 'true' &&
+      needs.changes.outputs.stack_ready == 'true' &&
+      needs.changes.outputs.tfvars_ready == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
       id-token: write # OIDC 토큰 발급
       pull-requests: write
+    env:
+      TF_VAR_key_name: ${{ vars.SSH_KEY_NAME }}
+      TF_VAR_deploy_public_key: ${{ vars.DEPLOY_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v6
@@ -393,9 +442,12 @@ jobs:
 
       - name: plan
         working-directory: ${{ env.TF_ROOT }}
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
         run: |
           set -euo pipefail
-          terraform init -input=false -no-color
+          terraform init -input=false -no-color \
+            -backend-config="bucket=${TF_STATE_BUCKET}"
           terraform plan -input=false -no-color -lock-timeout=120s | tee /tmp/plan.txt
 
       - name: PR 코멘트
@@ -427,7 +479,9 @@ jobs:
     if: >-
       github.event_name == 'push' &&
       needs.changes.outputs.aws_ready == 'true' &&
-      needs.changes.outputs.stack_ready == 'true'
+      needs.changes.outputs.state_ready == 'true' &&
+      needs.changes.outputs.stack_ready == 'true' &&
+      needs.changes.outputs.tfvars_ready == 'true'
     runs-on: ubuntu-latest
     # 승인 게이트. Environment 에 Required reviewers 를 걸면
     # 승인 전에는 OIDC 토큰 자체가 발급되지 않는다 — 브랜치 기준으로는 안 되는 것
@@ -435,6 +489,9 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      TF_VAR_key_name: ${{ vars.SSH_KEY_NAME }}
+      TF_VAR_deploy_public_key: ${{ vars.DEPLOY_PUBLIC_KEY }}
     steps:
       - uses: actions/checkout@v4
       - uses: aws-actions/configure-aws-credentials@v6
@@ -448,9 +505,12 @@ jobs:
 
       - name: apply
         working-directory: ${{ env.TF_ROOT }}
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
         run: |
           set -euo pipefail
-          terraform init -input=false -no-color
+          terraform init -input=false -no-color \
+            -backend-config="bucket=${TF_STATE_BUCKET}"
           terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
 
       # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면

@@ -1,8 +1,7 @@
 package com.twojo.onboarding.service;
 
 import com.twojo.boundary.CompanyQuery;
-import com.twojo.global.error.BusinessException;
-import com.twojo.global.error.ErrorCode;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.onboarding.entity.Company;
 import com.twojo.onboarding.repository.CompanyRepository;
 import java.util.UUID;
@@ -24,6 +23,6 @@ public class CompanyQueryService implements CompanyQuery {
                 .map(c -> new CompanySummary(
                         c.getId(), c.getName(), c.getBusinessNo(),
                         c.getStatus() == Company.Status.ACTIVE))
-                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+                .orElseThrow(() -> new MissingReferenceException("company", companyId));
     }
 }

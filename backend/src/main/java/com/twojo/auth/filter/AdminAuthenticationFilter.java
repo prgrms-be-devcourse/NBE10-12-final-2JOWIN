@@ -4,6 +4,7 @@ import com.twojo.auth.entity.ActorType;
 import com.twojo.auth.jwt.JwtProvider;
 import com.twojo.boundary.PlatformAdminQuery;
 import com.twojo.global.error.BusinessException;
+import com.twojo.global.error.MissingReferenceException;
 import io.jsonwebtoken.Claims;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -71,6 +72,13 @@ public class AdminAuthenticationFilter extends OncePerRequestFilter {
                 return Optional.empty();
             }
             return Optional.of(adminId);
+
+        } catch (MissingReferenceException e) {
+            // 구성원 필터와 같은 모양으로 둔다 — 지금은 닿는 경로가 없다
+            // (PlatformAdminQuery.isActive는 없는 id에 false를 돌려주고 던지지 않는다).
+            // 두 필터가 다른 모양이면 나중에 한쪽만 다르게 동작하는 자리가 생긴다
+            logger.error("관리자 인증 중 데이터 무결성 이상", e);
+            return Optional.empty();
 
         } catch (JwtException | IllegalArgumentException | BusinessException e) {
             // 서명·만료 실패 · claim 형식 이상 — 전부 미인증이다
