@@ -1,9 +1,11 @@
 package com.twojo.onboarding.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.BDDMockito.given;
 
 import com.twojo.boundary.CompanyQuery.CompanySummary;
+import com.twojo.global.error.MissingReferenceException;
 import com.twojo.onboarding.entity.Company;
 import com.twojo.onboarding.repository.CompanyRepository;
 import java.util.Optional;
@@ -60,5 +62,21 @@ class CompanyQueryServiceTest {
         given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.of(company));
 
         assertThat(companyQueryService.get(COMPANY_ID).active()).isFalse();
+    }
+
+    /**
+     * companyId는 {@code member.company_id} FK를 타고 온다 — 없다는 것은 조회 실패가 아니라
+     * 데이터 이상이다. 404로 답하면 이 경계를 부르는 쪽(로그인·필터·내 정보·초대 메일)이
+     * 전부 "없거나 범위 밖"이라는 다른 뜻의 응답을 받는다 (#165).
+     */
+    @Test
+    @DisplayName("없는 회사는 무결성 이상으로 터진다 — 404가 아니다 (#165)")
+    void 없는_회사는_무결성_이상이다() {
+        given(companyRepository.findById(COMPANY_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> companyQueryService.get(COMPANY_ID))
+                .isInstanceOf(MissingReferenceException.class)
+                .hasMessageContaining("company")
+                .hasMessageContaining(COMPANY_ID.toString());
     }
 }
