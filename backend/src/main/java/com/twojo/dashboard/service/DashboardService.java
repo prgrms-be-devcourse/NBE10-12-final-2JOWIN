@@ -44,7 +44,7 @@ public class DashboardService {
     private static final int RECENT_LIMIT = 10;
     private static final int FOLLOWUP_LIMIT = 10;
 
-    /** 실적 조회 기간 상한 — 366일(윤년 1년). 넘으면 400. */
+    /** 실적 조회 기간 상한 — from~to 간격이 366일(윤년 1년) 이상이면 400. */
     private static final int MAX_RANGE_DAYS = 366;
 
     private final SalesStatsQuery salesStatsQuery;
@@ -106,14 +106,14 @@ public class DashboardService {
 
     /**
      * 실적 분석 (DB-06~08) — <b>기업 관리자 전용</b>. 역할 위반은 403 {@code FORBIDDEN} (Q-43).
-     * 기간은 {@code from <= to}이고 {@link #MAX_RANGE_DAYS}일 이하여야 하며, 벗어나면 400 {@code VALIDATION_FAILED}.
+     * 기간은 {@code from <= to}이고 간격이 {@link #MAX_RANGE_DAYS}일 미만이어야 하며, 벗어나면 400 {@code VALIDATION_FAILED}.
      * {@code performance}·{@code conversions}는 아직 자리표시자라 빈 목록으로 나갈 수 있다 (위 클래스 주석).
      */
     public DashboardPerformanceResponse performance(AccessContext ctx, LocalDate from, LocalDate to) {
         if (ctx.role() != Role.COMPANY_ADMIN) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
-        if (from.isAfter(to) || ChronoUnit.DAYS.between(from, to) > MAX_RANGE_DAYS) {
+        if (from.isAfter(to) || ChronoUnit.DAYS.between(from, to) >= MAX_RANGE_DAYS) {
             throw new BusinessException(ErrorCode.VALIDATION_FAILED);
         }
 
