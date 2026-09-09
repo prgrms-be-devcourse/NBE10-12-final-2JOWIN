@@ -581,6 +581,8 @@ export interface OrderResponse {
 
 /** 08 §C OrderDetailResponse — 스냅샷 항목 (OD-04, FK 없음) */
 export interface OrderDetailResponse extends OrderResponse {
+  /** 전환 직후에는 항상 WON — 자동 성사(OD-06)의 확인용. 목록에는 없다 (08 v1.6.18) */
+  dealStage: DealStage
   items: OrderItemResponse[]
 }
 export interface OrderItemResponse {
@@ -591,10 +593,16 @@ export interface OrderItemResponse {
   amount: number
 }
 
-/** 08 §C OrderScheduleRequest — OD-10 */
+/**
+ * 08 §C OrderScheduleRequest — OD-10.
+ *
+ * **PATCH지만 null은 "미변경"이 아니라 "지움"이다** — 두 날짜는 하나의 일정이라 서버가 함께
+ * 덮어쓴다 (`Order.updateSchedule`). 08 §B의 "안 보내면 미변경"과 다른 자리라 필드를 선택으로
+ * 두지 않는다 — 하나만 보내면 나머지가 지워진다.
+ */
 export interface OrderScheduleRequest {
-  startDate?: string | null
-  deliveryDate?: string | null
+  startDate: string | null
+  deliveryDate: string | null
 }
 
 // ═══════════════════════════════════════════════════════════════════════════

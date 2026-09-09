@@ -7,7 +7,7 @@ import type { OrderDetailResponse, OrderResponse, OrderScheduleRequest, PagePara
  */
 
 export interface OrderListParams extends PageParams {
-  /** 생성일 기준 YYYY-MM-DD */
+  /** 전환일(= createdAt) 기준 YYYY-MM-DD — 양끝을 포함한다 (OrderController) */
   from?: string
   to?: string
 }

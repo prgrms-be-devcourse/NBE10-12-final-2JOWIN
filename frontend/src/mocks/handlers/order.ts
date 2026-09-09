@@ -19,7 +19,10 @@ function visibleOrder(request: Request, id: string): OrderRow | undefined {
 }
 
 const toResponse = (o: OrderRow): OrderResponse => o
-const toDetail = (o: OrderRow): OrderDetailResponse => ({ ...o, items: db.orderItems.get(o.id) ?? [] })
+/** dealStage는 상세에만 실린다 — 전환의 자동 성사(OD-06)를 응답에서 바로 확인하는 값 (08 v1.6.18) */
+const toDetail = (o: OrderRow): OrderDetailResponse => ({
+  ...o, dealStage: findDeal(o.dealId)!.stage, items: db.orderItems.get(o.id) ?? [],
+})
 
 export const orderHandlers = [
   // 목록 (OD-08) — from·to는 생성일 기준 (YYYY-MM-DD) · createdAt DESC
@@ -49,13 +52,15 @@ export const orderHandlers = [
     return HttpResponse.json(toDetail(order))
   }),
 
-  // 착수일·납기 기록 (OD-10) — 날짜 필드이지 상태가 아니다
+  // 착수일·납기 기록 (OD-10) — 날짜 필드이지 상태가 아니다.
+  // **두 날짜를 함께 덮어쓴다** — 안 보낸 필드는 미변경이 아니라 지움이다 (Order.updateSchedule).
+  // 08 §B의 PATCH 규약과 다른 자리라, 목이 "생략 = 미변경"으로 받으면 실 API에서 값이 사라진다.
   http.patch(`${BASE}/:id/schedule`, async ({ params, request }) => {
     const order = visibleOrder(request, String(params.id))
     if (!order) return notFound()
     const body = (await request.json()) as OrderScheduleRequest
-    if (body.startDate !== undefined) order.startDate = body.startDate || null
-    if (body.deliveryDate !== undefined) order.deliveryDate = body.deliveryDate || null
+    order.startDate = body.startDate || null
+    order.deliveryDate = body.deliveryDate || null
     return HttpResponse.json(toDetail(order))
   }),
 ]
