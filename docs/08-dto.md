@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.20
+# DTO 설계서 — v1.6.21
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.21 | **§C `OrderScheduleRequest`가 §B PATCH 규약의 예외임을 명시(2026-09-09)** — 착수일·납기는 **두 날짜를 함께 덮어써서 `null`이 "미변경"이 아니라 "지움"**이다(`Order.updateSchedule`). record가 필드만 적고 있어 §B의 "안 보내면 미변경"이 여기에도 걸리는 것으로 읽혔다. 프론트 목이 실제로 그렇게 받고 있어 목으로 개발하면 통과하고 실 API에서 값이 사라졌다 — 주문 실 API 전환(#248)에서 서버에 `deliveryDate`를 빼고 PATCH해 확인했다. 규약 문장 자체는 여기가 정본이고 11 §1.3은 포인터만 갖는다(#233) |
 | v1.6.20 | **§B `channel` 값 검증 신설(2026-09-09)** — `CreateActivityRequest`·`UpdateActivityRequest`의 `channel`이 `@NotBlank`·공백 검사뿐이라 `"카카오톡"`이 Bean Validation을 통과한다. 값 집합은 03 AC-02와 06 CHECK(`CALL`·`MEETING`·`EMAIL`)로 이미 확정돼 있는데 DTO만 강제하지 않았다. 서비스에서 `BusinessException.invalidEnumField`로 400을 낼 수도 있지만(`role`·`Entry.type`이 그 형태다), **경계에서 막는 쪽을 택한다** — 08은 그대로 복사해 쓰는 문서라 제약이 record에 보이는 편이 낫고, 서비스 작성자가 파싱을 기억해야 하는 구조를 만들지 않는다. **DTO를 enum으로 받는 방식은 택하지 않는다** — `Activity.Channel`은 엔티티 중첩 enum이라 §0 "엔티티를 API에 직접 노출 금지"에 걸리고, Jackson 파싱 실패는 `handleHttpMessageNotReadable` override가 없어 `code` 없는 RFC 7807로 나가 프론트 공통 에러 핸들러가 알아보지 못한다. 프론트 목(`isChannel`)과 타입(`ActivityChannel`)은 이미 이 형태다. v1.6.8(#68)이 "길이가 아니라 값 검증 문제라 별건"으로 미뤄둔 자리다 |
 | v1.6.19 | **§D 대시보드 조립 서비스·컨트롤러 구현(2026-09-08)** — `com.twojo.dashboard` 신규 모듈: `DashboardService`(무트랜잭션 조립) + `DashboardController` 2종. DTO(`DashboardSummaryResponse`·`DashboardPerformanceResponse`)는 변경 없음 — #21 그대로. `pipeline`·`findAwaitingResponse`는 C 실구현(#205·#207)에 연결하고, 영업 담당자의 `waitingQuotes`는 `QuoteSummary.dealId` + `DealQuery.assignedDealIds`로 본인 담당만 실필터한다. 이달 성사·담당자별 실적·단계 전환율은 `SalesStatsQuery` 자리표시자라 빈 값·0으로 나가므로 화면에서 "집계 준비 중"으로 표시 — 0으로 오해 금지(주문 합계·전이 이력 실구현은 #216, `customerName` 공백 해소는 #218). `month`/`from`/`to` 기본값·검증은 07 v1.6.15. 발견 경로: 대시보드 API 구현(#202) |
 | v1.6.18 | **§C `OrderDetailResponse`에 `dealStage` 추가(2026-09-08)** — 주문 전환(OD-01)의 201 응답이 이 record다. 전환은 Deal을 자동 성사시키는데(OD-06, 전이표 §5) 응답에 단계가 없으면 화면이 전환 직후 Deal을 한 번 더 조회해야 확인할 수 있었다. 전환 직후에는 항상 `WON`이고, 상세 조회(OD-09)에서는 그 시점의 단계다. 목록(`OrderResponse`)에는 넣지 않는다 — 줄마다 필요한 값이 아니다. 발견 경로: 주문 전환 구현(#160) |
@@ -403,7 +404,9 @@ public record OrderDetailResponse(
                                Long unitPrice, Long amount) {}        // FK 없는 값 복사 (OD-04)
 }
 
-public record OrderScheduleRequest(LocalDate startDate, LocalDate deliveryDate) {}
+public record OrderScheduleRequest(                   // OD-10 · **PATCH지만 null은 미변경이 아니라 지움**
+        LocalDate startDate,                         // 두 날짜는 하나의 일정이라 함께 덮어쓴다 (Order.updateSchedule)
+        LocalDate deliveryDate) {}                   // 하나만 보내면 나머지가 지워진다 — §B PATCH 규약의 예외
 ```
 
 ---
