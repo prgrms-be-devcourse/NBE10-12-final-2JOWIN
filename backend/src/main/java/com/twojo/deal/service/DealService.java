@@ -2,9 +2,11 @@ package com.twojo.deal.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
+import com.twojo.deal.DealStageChanged;
 import com.twojo.deal.dto.DealRequests;
 import com.twojo.deal.dto.DealResponses;
 import com.twojo.deal.entity.Deal;
@@ -12,8 +14,10 @@ import com.twojo.deal.repository.DealRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -40,6 +44,7 @@ public class DealService {
     private final DealRepository dealRepository;
     private final CustomerQuery customerQuery;
     private final MemberQuery memberQuery;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** 생성 (DL-01~04) — 회사의 모든 고객사에 가능하고, 배정 대상은 활성 구성원이다 */
     @Transactional
@@ -157,11 +162,33 @@ public class DealService {
                                              java.util.function.Consumer<Deal> transition) {
         Deal deal = findInScope(ctx, dealId);
         deal.checkVersion(version);
+
+        // 전이 전 단계를 먼저 잡는다 — 바꾼 뒤에는 before를 알 방법이 없다 (#22 changes 규약)
+        Deal.Stage before = deal.getStage();
         transition.accept(deal);
+        publishStageChanged(deal, before, AuditActor.member(ctx.memberId()));
 
         return DealResponses.DealItem.of(deal,
                 customerQuery.get(ctx, deal.getCustomerId()).name(),
                 memberQuery.get(deal.getAssigneeMemberId()).name());
+    }
+
+    /**
+     * 단계 전이 감사 이벤트 (AC-07, #22) — <b>실제로 바뀐 경우에만</b> 발행한다.
+     *
+     * <p>수동 전이는 규칙상 항상 바뀌지만(안 바뀌면 엔티티가 던진다), 판정을 호출부에 흩지 않고
+     * 여기 한 곳에 둔다 — 자동 승급·성사(멱등)와 같은 규칙을 쓰기 위해서다.
+     *
+     * <p>{@code lostReason}은 실패 전이일 때만 실린다 (DL-11) — 그 외 단계에서는 엔티티 값이
+     * 이미 null이라 그대로 넘겨도 규약(#22 3번)과 어긋나지 않는다.
+     */
+    private void publishStageChanged(Deal deal, Deal.Stage before, AuditActor actor) {
+        if (deal.getStage() == before) {
+            return;
+        }
+        eventPublisher.publishEvent(new DealStageChanged(
+                deal.getCompanyId(), deal.getId(), actor, Instant.now(),
+                before.name(), deal.getStage().name(), deal.getLostReason()));
     }
 
     /**
