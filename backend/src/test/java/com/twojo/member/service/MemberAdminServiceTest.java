@@ -13,6 +13,7 @@ import static org.mockito.Mockito.never;
 import com.twojo.auth.SessionRevoker;
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.Role;
@@ -22,8 +23,10 @@ import com.twojo.global.error.ErrorResponse;
 import com.twojo.member.dto.ChangeRoleRequest;
 import com.twojo.member.dto.DeactivateMemberRequest;
 import com.twojo.member.entity.Member;
+import com.twojo.member.event.MemberDeactivated;
 import com.twojo.member.repository.MemberRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.assertj.core.api.InstanceOfAssertFactories;
@@ -32,9 +35,11 @@ import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -62,6 +67,7 @@ class MemberAdminServiceTest {
     @Mock private DealQuery dealQuery;
     @Mock private DealCommand dealCommand;
     @Mock private SessionRevoker sessionRevoker;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private MemberAdminService memberAdminService;
 
@@ -356,6 +362,109 @@ class MemberAdminServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(기대);
+        }
+    }
+
+    /**
+     * 비활성화 이벤트 — B가 audit_log를 채우는 유일한 통로다. B는 member를 읽을 수 없어
+     * 여기 실리지 않은 값은 어디서도 복구되지 않는다.
+     */
+    @Nested
+    @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
+    class 비활성화_이벤트는 {
+
+        /**
+         * 이관을 건너뛴 호출에 요청값을 그대로 실으면, 아무것도 넘어가지 않았는데 넘겼다는
+         * 기록이 남는다. B는 이 값이 비어야 "넘어간 Deal이 없다"로 읽는다.
+         */
+        @Test
+        void 넘어간_Deal이_없으면_요청에_대상이_있어도_이관받은_구성원을_싣지_않는다() {
+            // given — 요청에는 최민아가 실려 있지만 넘길 진행 딜이 없다
+            대상_영업();
+            given(dealQuery.countOpenAssigned(한빛오피스, 박지훈)).willReturn(0L);
+
+            memberAdminService.deactivate(김서연_관리자, 박지훈, 이관(최민아));
+
+            MemberDeactivated 이벤트 = 발행된_이벤트();
+            assertThat(이벤트.transferToMemberId()).isNull();
+            assertThat(이벤트.dealIds()).isEmpty();
+        }
+
+        /** 이 흐름은 몇 번을 돌아도 결과가 같다 — 아무것도 바뀌지 않은 호출까지 기록에 쌓지 않는다. */
+        @Test
+        void 이미_비활성인데_넘어간_Deal도_없으면_발행하지_않는다() {
+            given(memberRepository.findByIdAndCompanyId(박지훈, 한빛오피스)).willReturn(
+                    Optional.of(비활성(활성_영업(박지훈, "jihun@hanbit.co.kr", "박지훈"))));
+            given(dealQuery.countOpenAssigned(한빛오피스, 박지훈)).willReturn(0L);
+
+            memberAdminService.deactivate(김서연_관리자, 박지훈, 이관_없이());
+
+            then(eventPublisher).shouldHaveNoInteractions();
+        }
+
+        /**
+         * 배정에 잠금이 없어(reassignOpenDeals v1 공백) 비활성 담당자에게 Deal이 남을 수 있다.
+         * 상태만 보고 거르면 그 이관이 어디에도 남지 않는다 — 다른 이벤트가 담당자 변경을 싣지 않는다.
+         */
+        @Test
+        void 이미_비활성이어도_Deal이_넘어갔으면_발행한다() {
+            given(memberRepository.findByIdAndCompanyId(박지훈, 한빛오피스)).willReturn(
+                    Optional.of(비활성(활성_영업(박지훈, "jihun@hanbit.co.kr", "박지훈"))));
+            given(dealQuery.countOpenAssigned(한빛오피스, 박지훈)).willReturn(1L);
+            given(memberRepository.findByIdAndCompanyId(최민아, 한빛오피스))
+                    .willReturn(Optional.of(활성_영업(최민아, "mina@hanbit.co.kr", "최민아")));
+            UUID 남아있던_딜 = UUID.randomUUID();
+            given(dealCommand.reassignOpenDeals(한빛오피스, 박지훈, 최민아))
+                    .willReturn(List.of(남아있던_딜));
+
+            memberAdminService.deactivate(김서연_관리자, 박지훈, 이관(최민아));
+
+            MemberDeactivated 이벤트 = 발행된_이벤트();
+            assertThat(이벤트.dealIds()).containsExactly(남아있던_딜);
+            assertThat(이벤트.transferToMemberId()).isEqualTo(최민아);
+        }
+
+        /**
+         * 행위자는 <b>실행한 관리자</b>지 비활성화된 구성원이 아니다. 둘 다 이 메서드 안에 있는
+         * UUID라 바꿔 넣어도 컴파일이 통과하고, 그러면 감사 로그가 대상을 실행자로 지목한다.
+         *
+         * <p>시각은 세션 폐기와 같아야 한다 — 갈리면 나중에 두 기록이 같은 사건인지 알 수 없다.
+         *
+         * <p>넘어간 Deal은 <b>목록 그대로</b> 실린다. B가 deal을 읽지 못해 여기 없으면 어느 Deal이
+         * 넘어갔는지 복구되지 않는다 (Q-48).
+         */
+        @Test
+        void 이관이_일어나면_관리자와_폐기_시각과_넘어간_Deal을_그대로_싣는다() {
+            대상_영업();
+            List<UUID> 넘어간_딜 =
+                    List.of(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID());
+            given(dealQuery.countOpenAssigned(한빛오피스, 박지훈)).willReturn(3L);
+            given(memberRepository.findByIdAndCompanyId(최민아, 한빛오피스))
+                    .willReturn(Optional.of(활성_영업(최민아, "mina@hanbit.co.kr", "최민아")));
+            given(dealCommand.reassignOpenDeals(한빛오피스, 박지훈, 최민아)).willReturn(넘어간_딜);
+
+            memberAdminService.deactivate(김서연_관리자, 박지훈, 이관(최민아));
+
+            ArgumentCaptor<Instant> 폐기_시각 = ArgumentCaptor.forClass(Instant.class);
+            then(sessionRevoker).should().revokeOnDeactivation(eq(박지훈), 폐기_시각.capture());
+
+            assertThat(발행된_이벤트()).isEqualTo(new MemberDeactivated(
+                    한빛오피스, 박지훈, AuditActor.member(김서연), 폐기_시각.getValue(),
+                    최민아, 넘어간_딜));
+        }
+
+        private Member 대상_영업() {
+            Member member = 활성_영업(박지훈, "jihun@hanbit.co.kr", "박지훈");
+            given(memberRepository.findByIdAndCompanyId(박지훈, 한빛오피스))
+                    .willReturn(Optional.of(member));
+            return member;
+        }
+
+        private MemberDeactivated 발행된_이벤트() {
+            ArgumentCaptor<MemberDeactivated> captor =
+                    ArgumentCaptor.forClass(MemberDeactivated.class);
+            then(eventPublisher).should().publishEvent(captor.capture());
+            return captor.getValue();
         }
     }
 
