@@ -368,7 +368,7 @@ COMMIT
 | 알림 수신자 = 발송 시점 유효 담당자, 비활성이면 기업 관리자 폴백 (`MemberQuery.findAdminIds`) | Q-26 |
 | 회사 정지 중: 열람 허용·응답 차단·배치 알림 중단 (만료 **전이** 배치는 계속) | SC-10, Q-27 |
 | 메일 실패: 재시도 1회 → 실패 시 인앱 EMAIL_FAILED (NT-07로 못 끔) — **수신자는 실패 메일별 규칙(요구사항 §2.13 NT-12 수신자 표). NT-13 실패는 인앱 수신자 없음 → email_log FAILED 지표로 감지** | NT-12, Q-35 |
-| NT-05·06 배치: 메일은 email_log UNIQUE가 이중 발송 차단 — 수신자 변경 시 키가 달라져 새 담당자에게 정상 발송. **인앱은 배치가 `notification`(REMIND_NO_RESPONSE·해당 견적) 존재로 견적당 1회 가드 — 담당자가 재배정돼도 재알림 없음** | NT-05·06 |
+| NT-05 리마인드 배치: 배치가 `notification`(`REMIND_NO_RESPONSE`·해당 견적) 존재로 **견적 전체를 스킵**해 인앱·메일 모두 견적당 1회 — 담당자가 재배정돼도 재알림 없음. `email_log` UNIQUE는 정상 흐름에서 미도달하는 백스톱. (NT-06 임박 배치는 메일 전용·인앱 가드 없음 — 착수 시 별도 행) | NT-05 |
 | 대시보드 집계는 SC절 범위를 따름 — 영업은 본인 담당 Deal 기준 · **집계·후보 조회는 C의 `SalesStatsQuery`·`QuoteQuery` 경유(deal·quote·orders 직접 조회 금지, v2.0.1)** | DB-01~05, SC-02 |
 
 ---

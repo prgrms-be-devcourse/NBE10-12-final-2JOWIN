@@ -49,7 +49,7 @@ class RemindNoResponseBatch {
         this.afterDays = afterDays;
     }
 
-    @Scheduled(cron = "${notification.remind.cron}", zone = "Asia/Seoul")
+    @Scheduled(cron = "${notification.remind.cron}", zone = "${notification.remind.zone:Asia/Seoul}")
     public void run() {
         List<UUID> companyIds = companyQuery.findActiveIds();
         Instant threshold = Instant.now().minus(Duration.ofDays(afterDays));
@@ -67,12 +67,12 @@ class RemindNoResponseBatch {
                     try {
                         remindWorker.remind(companyId, quote);
                     } catch (RuntimeException e) {
-                        log.warn("견적 리마인드 스킵 - quoteId={}, {}", quote.id(), e.getClass().getName());
+                        log.warn("견적 리마인드 스킵 - quoteId={}", quote.id(), e);
                     }
                 }
             } catch (RuntimeException e) {
                 failedCompanies++;
-                log.warn("회사 리마인드 스킵 - companyId={}, {}", companyId, e.getClass().getName());
+                log.warn("회사 리마인드 스킵 - companyId={}", companyId, e);
             }
         }
 

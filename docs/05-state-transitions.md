@@ -10,7 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
-| v1.6.7 | **§11에 NT-05 리마인드 배치 예약 행 추가(2026-09-09, #231)** — `RemindNoResponseBatch`가 발송 후 임계일수(기본 3일, `sentAt` 기준) 지나도록 무응답인 견적을 회사별로 훑어 담당 구성원(Q-26 폴백)에게 인앱 `REMIND_NO_RESPONSE` + 병행 메일(`QUOTE_REMIND`, NT-07 설정 시)을 예약한다. `QUOTE_REMIND`의 `ref_id`는 견적 id로 실행 간 고정 — 인앱은 배치가 `notification` 존재로 견적당 1회 가드, 메일은 `uk_email_log_dedup`가 수신자별 1회. 정지 회사는 억제(Q-27) |
+| v1.6.7 | **§11에 NT-05 리마인드 배치 예약 행 추가(2026-09-09, #231)** — `RemindNoResponseBatch`가 발송 후 임계일수(기본 3일, `sentAt` 기준) 지나도록 무응답인 견적을 회사별로 훑어 담당 구성원(Q-26 폴백)에게 인앱 `REMIND_NO_RESPONSE` + 병행 메일(`QUOTE_REMIND`, NT-07 설정 시)을 예약한다. `QUOTE_REMIND`의 `ref_id`는 견적 id로 실행 간 고정 — 배치가 `notification`(해당 견적) 존재로 **견적 전체를 스킵**해 인앱·메일 모두 견적당 1회, 담당자 재배정돼도 재알림 없음. `uk_email_log_dedup`는 정상 흐름에서 미도달하는 백스톱. 정지 회사는 억제(Q-27) |
 | v1.6.6 | **§11 email_log FAILED 전이에 NT-12 인앱 알림 연동(2026-09-09, #212)** — `MailOutcomeWriter`가 SCHEDULED → FAILED로 **실제 전이할 때만** `EmailDeliveryFailedEvent`를 발행하고, notification 모듈 리스너가 AFTER_COMMIT + REQUIRES_NEW로 받아 `QUOTE_SENT` 실패에 한해 담당 구성원(Q-26 폴백)에게 인앱 `EMAIL_FAILED`를 만든다. 알림 쓰기 실패는 커밋된 FAILED를 되돌리지 않는다. 그 외 template은 email_log FAILED만(§2.13). 토큰→견적 되짚기는 `ViewTokenQuery.quoteIdOf` |
 | v1.6.5 | **§6 막히는 것에 `QUOTE_NOT_RESPONDABLE` 추가(2026-09-07)** — 승인·반려는 §6상 **열람됨(VIEWED)에서만** 열리는데, 그 밖의 상태에서 들어온 응답을 가리킬 코드가 표에 없었다. "불가 전이 하나가 에러 코드 하나"라는 이 문서의 원칙에서 빠져 있던 자리다. `COMPANY_SUSPENDED`(회사 정지)·`LINK_ALREADY_RESPONDED`(링크 상태)와 **판정 축이 다르다** | 고객 응답 구현 (#126) |
 | v1.6.4 | **email_log 전이 절 신설(2026-09-03)** — §11. 메일 파이프라인(#67): 예약됨(SCHEDULED) → 발송됨(SENT)/실패(FAILED), 실제 발송은 커밋 후 비동기. 재시도(NT-12)·`발송 중(SENDING)` 클레임 상태는 NT-12/정체 감지 배치 이슈로 유예. `body` 미저장에 따른 유실 한계 명시(14 §2-1·§7.3) |
@@ -193,8 +193,9 @@
 **커밋 후 비동기** 디스패처가 발송됨(SENT)/실패(FAILED)로 닫는다 (Q-40, NT-01~06·10·13·14).
 `ref_id`는 발송이 배달한 토큰 행 id (QUOTE_SENT → `quote_view_token`, PASSWORD_RESET → `password_reset_token`) —
 발송마다 유일하므로 재발송은 기존 행을 덮지 않고 새 행을 만든다.
-단 NT-05 리마인드(`QUOTE_REMIND`)의 `ref_id`는 **견적 id로 배치 재실행 간 고정**이라, 재실행 시
-`uk_email_log_dedup`가 수신자별 이중 발송을 막는다 (아래 "막히는 것").
+단 NT-05 리마인드(`QUOTE_REMIND`)의 `ref_id`는 **견적 id로 배치 재실행 간 고정**이라, 재실행 시엔
+배치의 `notification` 가드가 먼저 걸러 `schedule`에 도달하지 않고 `uk_email_log_dedup`는 백스톱이다
+(아래 "막히는 것").
 
 | 현재 | 행동 | 다음 | 행위자 | 조건 · 효과 |
 | --- | --- | --- | --- | --- |
