@@ -2,6 +2,7 @@ package com.twojo.member.service;
 
 import com.twojo.auth.SessionRevoker;
 import com.twojo.boundary.AccessContext;
+import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.Role;
@@ -13,11 +14,13 @@ import com.twojo.member.dto.DeactivateMemberRequest;
 import com.twojo.member.dto.MemberOptionResponse;
 import com.twojo.member.dto.MemberResponse;
 import com.twojo.member.entity.Member;
+import com.twojo.member.event.MemberDeactivated;
 import com.twojo.member.repository.MemberRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -37,6 +40,7 @@ public class MemberAdminService {
     private final DealQuery dealQuery;
     private final DealCommand dealCommand;
     private final SessionRevoker sessionRevoker;
+    private final ApplicationEventPublisher eventPublisher;
 
     /** 목록 (MB-07) — 비활성 구성원도 함께 나온다. 재활성화 대상을 찾는 화면이다. */
     public PageResponse<MemberResponse> list(AccessContext ctx, Pageable pageable) {
@@ -90,7 +94,11 @@ public class MemberAdminService {
      * 생긴다 (Q-48).
      *
      * <p>이미 비활성인 구성원을 다시 불러도 막지 않는다. 이 흐름은 몇 번을 돌아도 결과가 같고,
-     * 05에 그 경우를 막는 전이가 없다.
+     * 05에 그 경우를 막는 전이가 없다. 다만 <b>이벤트는 상태가 실제로 바뀐 호출에서만</b> 나간다 —
+     * 재호출까지 발행하면 아무 일도 없었던 호출이 감사 기록에 비활성화로 쌓인다.
+     *
+     * <p>세션 폐기와 이벤트가 같은 시각을 쓴다. {@code Instant.now()}를 각자 부르면 두 기록의
+     * 시각이 갈려, 나중에 감사 로그와 세션 이력을 맞춰 볼 때 같은 사건인지 판단할 근거가 흐려진다.
      */
     @Transactional
     public MemberResponse deactivate(AccessContext ctx, UUID memberId,
@@ -101,11 +109,19 @@ public class MemberAdminService {
         if (isLastActiveAdmin(ctx, member)) {
             throw new BusinessException(ErrorCode.LAST_ADMIN_PROTECTED);
         }
-        transferOpenDeals(ctx, member, request.transferToMemberId());
+        boolean wasActive = member.isActive();
+        UUID transferredTo = transferOpenDeals(ctx, member, request.transferToMemberId());
 
         member.deactivate();
-        sessionRevoker.revokeOnDeactivation(memberId, Instant.now());
+        Instant occurredAt = Instant.now();
+        sessionRevoker.revokeOnDeactivation(memberId, occurredAt);
 
+        if (wasActive) {
+            eventPublisher.publishEvent(new MemberDeactivated(
+                    ctx.companyId(), memberId,
+                    AuditActor.member(ctx.memberId()), occurredAt,
+                    transferredTo));
+        }
         return MemberResponse.of(member);
     }
 
@@ -128,17 +144,24 @@ public class MemberAdminService {
      *
      * <p>넘긴 건수가 처음 센 건수와 다르면 그 사이 배정이 바뀐 것이다. 지금은 잠금이 없어 드물게
      * 생길 수 있고, 남은 Deal은 관리자가 담당자 변경으로 바로잡는다.
+     *
+     * @return 실제로 Deal을 넘겨받은 구성원. 한 건도 넘어가지 않았으면 {@code null}이다 —
+     *     받은 인자를 그대로 돌려주지 않는 이유는, 넘길 Deal이 없어 이관을 건너뛴 경우에도
+     *     요청에는 대상이 실려 올 수 있어서다. 호출자가 이 값을 감사 기록에 싣는다.
      */
-    private void transferOpenDeals(AccessContext ctx, Member member, UUID transferToMemberId) {
+    private UUID transferOpenDeals(AccessContext ctx, Member member, UUID transferToMemberId) {
         if (dealQuery.countOpenAssigned(ctx.companyId(), member.getId()) == 0) {
-            return;
+            return null;
         }
         if (transferToMemberId == null) {
             throw new BusinessException(ErrorCode.MEMBER_INACTIVE_TRANSFER_REQUIRED);
         }
         requireTransferTarget(ctx, member, transferToMemberId);
 
-        dealCommand.reassignOpenDeals(ctx.companyId(), member.getId(), transferToMemberId);
+        List<UUID> moved =
+                dealCommand.reassignOpenDeals(ctx.companyId(), member.getId(), transferToMemberId);
+
+        return moved.isEmpty() ? null : transferToMemberId;
     }
 
     /**
