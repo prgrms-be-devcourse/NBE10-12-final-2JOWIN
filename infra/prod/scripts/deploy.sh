@@ -27,6 +27,9 @@ AWS_REGION="${AWS_REGION:-ap-northeast-2}"
 BUCKET="${BUCKET:?BUCKET 을 모른다 — /etc/2jo.conf 를 확인할 것}"
 PROJECT="${COMPOSE_PROJECT:-twojo}"
 HEALTH_TIMEOUT="${HEALTH_TIMEOUT:-90}"
+# 스크레이프 주기가 30s 다. 성공한 스크레이프가 한 번은 지나가야 판정할 수
+# 있어 그보다 넉넉히 잡는다. 전부 정상이면 대개 첫 질의에서 빠져나온다.
+TARGET_TIMEOUT="${TARGET_TIMEOUT:-60}"
 
 TARGET_IMAGE="${1:-}"
 
@@ -78,12 +81,18 @@ else
 fi
 
 # ── 3. 설정 번들 ─────────────────────────────────────────────────────────
-# .env 계열은 S3 에 없으므로 --delete 대상에서 빼야 한다.
-# 빼지 않으면 방금 받은 시크릿과 이미지 태그가 이 줄에서 지워진다.
+# --delete 는 S3 에 없는 파일을 지운다. 서버가 런타임에 만드는 것은 전부
+# 여기서 빼야 한다. 빼지 않으면 방금 받은 시크릿과 이미지 태그가 지워진다.
+#
+# metrics/ 도 그런 자리다. backup.sh 가 마지막 성공 시각을 여기 떨구는데,
+# 번들에는 없으니 배포마다 지워졌다. 바로 아래 install -d 가 빈 디렉터리를
+# 다시 만들어서 흔적조차 남지 않았고, 그동안 "백업이 하루 넘게 없다"가
+# critical 로 계속 울렸다 — 백업은 멀쩡한데 (#222).
 log "설정 번들 동기화"
 aws s3 sync "s3://${BUCKET}/config/" "$APP_DIR/" \
   --region "$AWS_REGION" --delete \
-  --exclude ".env" --exclude ".env.image" --exclude ".deploy.lock"
+  --exclude ".env" --exclude ".env.image" --exclude ".deploy.lock" \
+  --exclude "metrics/*"
 
 # S3 는 실행 비트를 보존하지 않는다. 방금 받아온 스크립트는 전부 644 다.
 chmod +x "$APP_DIR"/scripts/*.sh
@@ -215,7 +224,45 @@ wait_healthy() {
   return 1
 }
 
+# ── 9-1. 스크레이프 타깃 확인 ────────────────────────────────────────────
+# caddy 와 backend 타깃이 배포 첫날부터 죽어 있었는데 19시간 동안 아무도
+# 몰랐다. 알람은 정상적으로 울리고 있었고 Discord 로도 갔다 — 우리가 안
+# 봤다. 그래서 알람을 더 만드는 대신 배포가 스스로 확인하게 한다 (#222).
+#
+# 배포를 실패시키지 않는다. 앱은 멀쩡한데 모니터링 결함 때문에 롤백이
+# 도는 것이 훨씬 나쁘다. 여기서는 로그에 남기는 것까지만 한다.
+check_targets() {
+  local cid ip body down waited=0
+
+  cid="$(container_of prometheus || true)"
+  [ -n "$cid" ] || { log "타깃 확인 건너뜀 (prometheus 없음)"; return 0; }
+  ip="$(docker inspect \
+    -f '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}' "$cid" 2>/dev/null || true)"
+  [ -n "$ip" ] || { log "타깃 확인 건너뜀 (IP 조회 실패)"; return 0; }
+
+  # 스크레이프 주기가 30s 라, 교체 직후에는 재기동 중에 실패한 결과가 아직
+  # 남아 있다. 성공한 스크레이프가 한 번은 지나가야 판정할 수 있다.
+  while :; do
+    body="$(curl -fsS --max-time 10 \
+      "http://${ip}:9090/api/v1/query?query=up==0" 2>/dev/null || true)"
+    case "$body" in
+      *'"result":[]'*) log "스크레이프 타깃 전부 정상"; return 0 ;;
+    esac
+    [ "$waited" -lt "$TARGET_TIMEOUT" ] || break
+    sleep 10
+    waited=$((waited + 10))
+  done
+
+  [ -n "$body" ] || { log "타깃 확인 건너뜀 (질의 실패)"; return 0; }
+
+  # pipefail 이라 grep 이 못 찾으면 파이프라인 전체가 실패한다 — 여기서 죽으면
+  # 앱이 멀쩡한데 배포가 실패로 끝난다. 이름을 못 뽑는 것은 경고감이 아니다.
+  down="$(printf '%s' "$body" | grep -o '"job":"[^"]*"' | cut -d'"' -f4 | sort -u | tr '\n' ' ' || true)"
+  log "경고: 스크레이프 타깃이 응답하지 않는다 — ${down:-알 수 없음}"
+}
+
 if wait_healthy "$HEALTH_TIMEOUT"; then
+  check_targets
   log "OK"
   exit 0
 fi

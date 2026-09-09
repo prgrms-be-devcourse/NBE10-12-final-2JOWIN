@@ -22,9 +22,13 @@ scrape_configs:
 
   # 엣지 지표가 따로 필요한 이유: 앱이 죽으면 http_server_requests 가 아예
   # 안 나온다. "요청이 0"으로 보여 장애를 놓친다. Caddy 는 그때도 502 를 센다.
+  #
+  # 2019 는 Caddy 관리 API 다. 기본 바인딩이 localhost 라 여기서 닿지
+  # 않아 배포 첫날부터 down 이었다. Caddyfile 에 지표 전용 리스너를
+  # 따로 뒀다 (#222).
   - job_name: caddy
     static_configs:
-      - targets: ['caddy:2019']
+      - targets: ['caddy:2020']
 
   - job_name: backend
     metrics_path: /actuator/prometheus

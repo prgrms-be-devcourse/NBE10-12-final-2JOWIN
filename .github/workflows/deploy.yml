@@ -82,7 +82,7 @@ jobs:
     environment: prod-deploy
 
     # SSH 가 종료 코드를 직접 돌려주므로 폴링 상한 대신 job 타임아웃으로 막는다.
-    # 최악 케이스 230초(pull 30 + up 10 + health 90 + 롤백 10 + health 90)에
+    # 최악 케이스 290초(pull 30 + up 10 + health 90 + 타깃확인 60 + 롤백 10 + health 90)에
     # 빌드·push 를 더해도 넉넉하다.
     timeout-minutes: 15
 
