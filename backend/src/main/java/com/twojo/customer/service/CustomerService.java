@@ -3,6 +3,7 @@ package com.twojo.customer.service;
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.MemberQuery;
+import com.twojo.boundary.ViewTokenQuery;
 import com.twojo.customer.dto.ContactResponse;
 import com.twojo.customer.dto.CreateContactRequest;
 import com.twojo.customer.dto.CreateCustomerRequest;
@@ -17,6 +18,7 @@ import com.twojo.customer.repository.CustomerRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
@@ -25,7 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * 고객사·담당자 (CU-01~06·09~12) — 회사 공유 자원이라 담당 개념이 없다.
+ * 고객사·담당자 (CU-01~12·14) — 회사 공유 자원이라 담당 개념이 없다.
  * 조회도 수정도 전 구성원이 한다 (SC-03) — 상품과 달리 역할 검사가 없는 이유다.
  *
  * <p>타사·미존재 리소스는 둘 다 404다. 있는지 없는지를 구별해서 알려주지 않는다 (SC-09).
@@ -34,7 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 없어(06 부모 경유 격리) 담당자 단독 조회로는 회사를 판정할 수 없다. 모든 담당자 메서드가
  * 먼저 고객사를 회사 스코프로 찾는 것이 테넌트 방어 그 자체다.
  *
- * <p>삭제(CU-07·08·14)는 여기에 없다 — 차단 규칙이 C·D 경계 조회를 필요로 해 별도 이슈다.
+ * <p>삭제는 고객사가 소프트 삭제, 담당자가 하드 삭제다 (11 §1.5). 담당자 차단 둘의 순서는 {@link #deleteContact} 참조.
  */
 @Service
 @RequiredArgsConstructor
@@ -45,6 +47,7 @@ public class CustomerService {
     private final CustomerContactRepository contactRepository;
     private final MemberQuery memberQuery;
     private final DealQuery dealQuery;
+    private final ViewTokenQuery viewTokenQuery;
 
     /**
      * 목록·검색 (CU-03·04) — 회사 전체가 나온다. 영업 담당자도 같은 결과를 본다 (SC-03).
@@ -92,6 +95,18 @@ public class CustomerService {
         Customer customer = findInScope(ctx, customerId);
         customer.update(request.name(), request.industry(), request.size(), request.note());
         return CustomerResponse.of(customer);
+    }
+
+    /**
+     * 삭제 (CU-07) — 소프트 삭제다. 진행 중(리드~협상) Deal이 하나라도 있으면 막는다 (CU-08).
+     */
+    @Transactional
+    public void delete(AccessContext ctx, UUID customerId, Instant now) {
+        Customer customer = findInScope(ctx, customerId);
+        if (dealQuery.hasOpenDeals(customerId)) {
+            throw new BusinessException(ErrorCode.CUSTOMER_HAS_ACTIVE_DEALS);
+        }
+        customer.softDelete(now);
     }
 
     /**
@@ -145,6 +160,23 @@ public class CustomerService {
         });
         target.markPrimary();
         return ContactResponse.of(target);
+    }
+
+    /**
+     * 담당자 삭제 — 대표(CU-11)와 발송 이력 있는 담당자(CU-14)는 막는다.
+     *
+     * <p>둘 다 걸리는 담당자는 대표를 먼저 알린다. 정본에 순서 규정이 없고 프론트 목이 그 순서다.
+     */
+    @Transactional
+    public void deleteContact(AccessContext ctx, UUID customerId, UUID contactId) {
+        CustomerContact contact = findContactInScope(ctx, customerId, contactId);
+        if (contact.isPrimary()) {
+            throw new BusinessException(ErrorCode.PRIMARY_CONTACT_REQUIRED);
+        }
+        if (viewTokenQuery.existsForContact(contactId)) {
+            throw new BusinessException(ErrorCode.CONTACT_HAS_QUOTES);
+        }
+        contactRepository.delete(contact);
     }
 
     /** 회사 스코프 조회. 없거나 타사 것이면 404 — 존재 여부를 구별해서 말하지 않는다 (SC-09). */

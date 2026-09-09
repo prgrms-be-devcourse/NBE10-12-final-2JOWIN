@@ -15,6 +15,7 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
+import com.twojo.boundary.ViewTokenQuery;
 import com.twojo.customer.dto.ContactResponse;
 import com.twojo.customer.dto.CreateContactRequest;
 import com.twojo.customer.dto.CreateCustomerRequest;
@@ -59,6 +60,7 @@ class CustomerServiceTest {
     private static final UUID MEMBER_ID = UUID.randomUUID();
     private static final UUID CUSTOMER_ID = UUID.randomUUID();
     private static final UUID CONTACT_ID = UUID.randomUUID();
+    private static final Instant NOW = Instant.parse("2026-09-09T00:00:00Z");
 
     private static final AccessContext SALES =
             new AccessContext(COMPANY_ID, MEMBER_ID, Role.SALES_REP, AccessScope.OWNED_ONLY);
@@ -67,6 +69,7 @@ class CustomerServiceTest {
     @Mock private CustomerContactRepository contactRepository;
     @Mock private MemberQuery memberQuery;
     @Mock private DealQuery dealQuery;
+    @Mock private ViewTokenQuery viewTokenQuery;
     @InjectMocks private CustomerService customerService;
 
     private static Customer 고객사() {
@@ -270,5 +273,104 @@ class CustomerServiceTest {
         assertThat(response.primary()).isTrue();
         then(contactRepository).should(never()).findByCustomerIdAndIsPrimaryTrue(any());
         then(contactRepository).should(never()).saveAndFlush(any());
+    }
+
+    @Test
+    @DisplayName("진행 중 Deal이 있는 고객사는 삭제할 수 없다 (CU-08)")
+    void delete_openDeals_conflict() {
+        Customer customer = 고객사();
+        given(customerRepository.findByIdAndCompanyIdAndDeletedAtIsNull(CUSTOMER_ID, COMPANY_ID))
+                .willReturn(Optional.of(customer));
+        given(dealQuery.hasOpenDeals(CUSTOMER_ID)).willReturn(true);
+
+        assertThatThrownBy(() -> customerService.delete(SALES, CUSTOMER_ID, NOW))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.CUSTOMER_HAS_ACTIVE_DEALS);
+        assertThat(customer.getDeletedAt()).isNull();
+    }
+
+    @Test
+    @DisplayName("진행 중 Deal이 없으면 소프트 삭제된다 (CU-07)")
+    void delete_noOpenDeals_softDeletes() {
+        Customer customer = 고객사();
+        given(customerRepository.findByIdAndCompanyIdAndDeletedAtIsNull(CUSTOMER_ID, COMPANY_ID))
+                .willReturn(Optional.of(customer));
+        given(dealQuery.hasOpenDeals(CUSTOMER_ID)).willReturn(false);
+
+        customerService.delete(SALES, CUSTOMER_ID, NOW);
+
+        assertThat(customer.getDeletedAt()).isEqualTo(NOW);
+    }
+
+    @Test
+    @DisplayName("타사 고객사 삭제는 404이고, 진행 딜 조회까지 가지 않는다 (SC-01·09)")
+    void delete_otherCompany_notFoundBeforeDealCheck() {
+        given(customerRepository.findByIdAndCompanyIdAndDeletedAtIsNull(CUSTOMER_ID, COMPANY_ID))
+                .willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> customerService.delete(SALES, CUSTOMER_ID, NOW))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+        then(dealQuery).should(never()).hasOpenDeals(any());
+    }
+
+    @Test
+    @DisplayName("대표 담당자는 삭제할 수 없다 — 발송 이력 조회까지 가지 않는다 (CU-11 · 설계 결정 1)")
+    void deleteContact_primary_unprocessable() {
+        고객사있음();
+        CustomerContact primary = 담당자("이수정");
+        primary.markPrimary();
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.of(primary));
+
+        assertThatThrownBy(() -> customerService.deleteContact(SALES, CUSTOMER_ID, CONTACT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.PRIMARY_CONTACT_REQUIRED);
+        then(viewTokenQuery).should(never()).existsForContact(any());
+        then(contactRepository).should(never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("견적 발송 이력이 있는 담당자는 삭제할 수 없다 (CU-14)")
+    void deleteContact_hasQuotes_conflict() {
+        고객사있음();
+        CustomerContact contact = 담당자("박건우");
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.of(contact));
+        given(viewTokenQuery.existsForContact(CONTACT_ID)).willReturn(true);
+
+        assertThatThrownBy(() -> customerService.deleteContact(SALES, CUSTOMER_ID, CONTACT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.CONTACT_HAS_QUOTES);
+        then(contactRepository).should(never()).delete(any());
+    }
+
+    @Test
+    @DisplayName("대표가 아니고 발송 이력도 없는 담당자는 지워진다 — 하드 삭제 (docs/11 §1.5)")
+    void deleteContact_plainContact_deletes() {
+        고객사있음();
+        CustomerContact contact = 담당자("박건우");
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.of(contact));
+        given(viewTokenQuery.existsForContact(CONTACT_ID)).willReturn(false);
+
+        customerService.deleteContact(SALES, CUSTOMER_ID, CONTACT_ID);
+
+        then(contactRepository).should().delete(contact);
+    }
+
+    @Test
+    @DisplayName("타사·타 고객사 담당자 삭제는 404이고, 발송 이력 조회까지 가지 않는다 (SC-01·09)")
+    void deleteContact_outOfScope_notFoundBeforeQuoteCheck() {
+        고객사있음();
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> customerService.deleteContact(SALES, CUSTOMER_ID, CONTACT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+        then(viewTokenQuery).should(never()).existsForContact(any());
+        then(contactRepository).should(never()).delete(any());
     }
 }
