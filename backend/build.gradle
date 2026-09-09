@@ -71,6 +71,9 @@ dependencies {
 	testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
 	testImplementation 'org.springframework.modulith:spring-modulith-starter-test'
 
+	// ArchUnit — 컴파일·런타임이 잡지 못하는 구조 규약을 테스트로 고정 (13-dev-workflow.md §3)
+	testImplementation 'com.tngtech.archunit:archunit-junit5:1.4.1'
+
 	// 테스트는 실제 PostgreSQL에서 — ddl-auto 기준 금지 (13-dev-workflow.md §3)
 	// 로컬: infra/dev/docker-compose.yml의 twojo_test DB · CI: 서비스 컨테이너 PG (application-test.yml)
 	testCompileOnly 'org.projectlombok:lombok'
