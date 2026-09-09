@@ -30,9 +30,9 @@ import org.springframework.stereotype.Service;
  * <p><b>무트랜잭션</b> — 각 boundary 구현이 자기 readOnly 트랜잭션을 잡는다. 커넥션 하나를
  * 조립 내내 붙들지 않기 위함이며 {@code PublicQuoteAssembler}·{@code CustomerQuoteService}와 같은 방침이다.
  *
- * <p><b>일부 집계는 아직 자리표시자다</b> (#207) — {@link SalesStatsQuery#monthlyWon}·
+ * <p><b>일부 집계는 아직 자리표시자다</b> (C 후속 #216) — {@link SalesStatsQuery#monthlyWon}·
  * {@link SalesStatsQuery#performance}·{@link SalesStatsQuery#conversions}가 빈 값·0을 돌려준다
- * (성사 금액은 orders 경계 창구, 전환율은 전이 이력이 아직 없음 — C 후속). 화면은 이 세 카드를
+ * (성사 금액은 orders 경계 창구, 전환율은 전이 이력이 아직 없음). 화면은 이 세 카드를
  * "0"이 아니라 "집계 준비 중"으로 표시한다. {@code pipeline}과 {@link QuoteQuery#findAwaitingResponse}는
  * 실구현이다.
  */
@@ -93,7 +93,7 @@ public class DashboardService {
     /**
      * DB-03 응답 대기. {@link QuoteQuery#findAwaitingResponse}는 {@code AccessContext}를 받지 못해
      * 회사 전체를 돌려주므로, 영업 담당자는 {@link DealQuery#assignedDealIds}로 본인 담당 딜만 남긴다.
-     * ({@code customerName}은 계약상 아직 {@code null} — B의 회사 스코프 이름 조회 창구 대기.)
+     * ({@code customerName}은 계약상 아직 {@code null} — B의 회사 스코프 이름 조회 창구 대기 #218.)
      */
     private List<DashboardSummaryResponse.WaitingQuote> waitingQuotes(AccessContext ctx) {
         List<QuoteQuery.QuoteSummary> awaiting = quoteQuery.findAwaitingResponse(ctx.companyId());
