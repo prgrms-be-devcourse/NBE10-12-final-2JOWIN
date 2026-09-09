@@ -77,7 +77,10 @@ export async function expireViewToken(id: string) {
   await api.post(`/quotes/${id}/view-token/expire`)
 }
 
-/** POST /quotes/{id}/convert-to-order — 스냅샷 + Deal 성사 (OD-01~07). 백엔드 미구현(#160) — 404. 응답 형태는 07에 미명시 → 주문 상세로 가정 */
+/**
+ * POST /quotes/{id}/convert-to-order — 스냅샷 + Deal 성사 (OD-01~07). 201 OrderDetailResponse (#160·#197).
+ * 응답의 dealStage(08 v1.6.18)는 아직 타입에 없다 — 주문 도메인을 실 API로 넘기는 PR에서 함께 맞춘다.
+ */
 export async function convertToOrder(id: string) {
   const { data } = await api.post<OrderDetailResponse>(`/quotes/${id}/convert-to-order`)
   return data

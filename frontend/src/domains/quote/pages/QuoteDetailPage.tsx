@@ -119,6 +119,15 @@ export function QuoteDetailPage() {
           </Callout.Text>
         </Callout.Root>
       )}
+      {/* 주문 화면(/orders)이 아직 목이라 전환 뒤 주문 상세로 보내면 방금 만든 실 주문이 404가 된다 —
+          주문 도메인을 실 API로 넘기는 PR에서 이 Callout을 지우고 navigate(`/orders/${order.id}`)를 되살린다 */}
+      {actions.convert.isSuccess && actions.convert.data && (
+        <Callout.Root color="green" mb="4" className="enter">
+          <Callout.Text>
+            주문으로 전환했습니다 — {actions.convert.data.orderNo}. 주문 상세 화면은 준비 중입니다 (프론트 목 해제 대기).
+          </Callout.Text>
+        </Callout.Root>
+      )}
 
       {/* 대체 견적 (QT-28) — 반려·회수된 견적에서 그것을 대신한 새 견적으로 */}
       {quote.supersededByQuoteId && (
@@ -182,7 +191,7 @@ export function QuoteDetailPage() {
         quote={quote}
         loading={actions.convert.isPending}
         error={actions.convert.error}
-        onConfirm={() => actions.convert.mutate(undefined, { onSuccess: (order) => navigate(`/orders/${order.id}`) })}
+        onConfirm={() => actions.convert.mutate(undefined, { onSuccess: close })}
       />
     </Box>
   )
