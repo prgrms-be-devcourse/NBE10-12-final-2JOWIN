@@ -153,7 +153,7 @@ public class QuoteService {
         requireContactInCustomer(dealId, request.recipientContactId());
         quote.requireSendable(LocalDate.now(SEOUL));
 
-        viewTokenCommand.issue(quoteId, request.recipientContactId());
+        viewTokenCommand.issue(quoteId, request.recipientContactId(), request.message());   // message는 메일 본문에 (#183)
         dealCommand.promoteToQuoteStage(dealId);
         quote.markSent(Instant.now());
 
@@ -201,7 +201,7 @@ public class QuoteService {
         quote.requireResendable();
         requireContactInCustomer(quote.getDealId(), request.recipientContactId());
 
-        viewTokenCommand.issue(quoteId, request.recipientContactId());
+        viewTokenCommand.issue(quoteId, request.recipientContactId(), null);   // 08 ResendViewTokenRequest에는 message가 없다
     }
 
     /**

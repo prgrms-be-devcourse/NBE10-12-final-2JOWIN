@@ -1,4 +1,4 @@
-# 상태 전이표 — v1.6.5 (확정)
+# 상태 전이표 — v1.6.6 (확정)
 
 > 🧭 [문서 지도](README.md) · ← [04 사용자 시나리오](04-user-scenarios.md) · [06 ERD](06-erd.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.6 | **§11 email_log FAILED 전이에 NT-12 인앱 알림 연동(2026-09-09, #212)** — `MailOutcomeWriter`가 SCHEDULED → FAILED로 **실제 전이할 때만** `EmailDeliveryFailedEvent`를 발행하고, notification 모듈 리스너가 AFTER_COMMIT + REQUIRES_NEW로 받아 `QUOTE_SENT` 실패에 한해 담당 구성원(Q-26 폴백)에게 인앱 `EMAIL_FAILED`를 만든다. 알림 쓰기 실패는 커밋된 FAILED를 되돌리지 않는다. 그 외 template은 email_log FAILED만(§2.13). 토큰→견적 되짚기는 `ViewTokenQuery.quoteIdOf` |
 | v1.6.5 | **§6 막히는 것에 `QUOTE_NOT_RESPONDABLE` 추가(2026-09-07)** — 승인·반려는 §6상 **열람됨(VIEWED)에서만** 열리는데, 그 밖의 상태에서 들어온 응답을 가리킬 코드가 표에 없었다. "불가 전이 하나가 에러 코드 하나"라는 이 문서의 원칙에서 빠져 있던 자리다. `COMPANY_SUSPENDED`(회사 정지)·`LINK_ALREADY_RESPONDED`(링크 상태)와 **판정 축이 다르다** | 고객 응답 구현 (#126) |
 | v1.6.4 | **email_log 전이 절 신설(2026-09-03)** — §11. 메일 파이프라인(#67): 예약됨(SCHEDULED) → 발송됨(SENT)/실패(FAILED), 실제 발송은 커밋 후 비동기. 재시도(NT-12)·`발송 중(SENDING)` 클레임 상태는 NT-12/정체 감지 배치 이슈로 유예. `body` 미저장에 따른 유실 한계 명시(14 §2-1·§7.3) |
 | v1.6.3 | **AP-19·Q-44 반영(2026-08-26)** — §6 고객 승인·반려 전이의 효과에 **응답자 이름·직책 기록** 추가 (계정 없는 응답자의 신원을 자기 신고로 확보) |
@@ -196,8 +197,8 @@
 | --- | --- | --- | --- | --- |
 | (없음) | 메일 예약 (`MailCommand.schedule`) | 예약됨(SCHEDULED) | 시스템 | 호출자 트랜잭션 합류 — 호출자 롤백 시 행도 사라진다. `MailScheduled` 이벤트를 같은 트랜잭션에서 발행 |
 | 예약됨(SCHEDULED) | 커밋 후 발송 성공 | 발송됨(SENT) | 시스템(비동기) | `sent_at` 기록. 디스패처가 `status ≠ SCHEDULED`면 스킵 (이중 발송 가드) |
-| 예약됨(SCHEDULED) | 발송 실패 · 비동기 제출 실패(큐 포화 · 셧다운 등) | 실패(FAILED) | 시스템(비동기) | FAILED 비율이 발송 실패 운영 지표 (14 §1.5). NT-13(가입 승인)은 인앱 수신자가 없어 이 지표가 **유일한** 감지 경로. 제출 실패는 리스너가 요청 스레드에서 동기로 FAILED 기록 |
-| 실패(FAILED) | 재시도 성공 (NT-12) | 발송됨(SENT) | 시스템 | 엔티티 `markSent`가 FAILED → SENT를 허용한다(NT-12 재시도 1회). **재시도 메커니즘 자체는 미구현 — NT-12 이슈에서 확정**. 재시도 후에도 실패면 담당 구성원에게 인앱 EMAIL_FAILED |
+| 예약됨(SCHEDULED) | 발송 실패 · 비동기 제출 실패(큐 포화 · 셧다운 등) | 실패(FAILED) | 시스템(비동기) | FAILED 비율이 발송 실패 운영 지표 (14 §1.5). NT-13(가입 승인)은 인앱 수신자가 없어 이 지표가 **유일한** 감지 경로. 제출 실패는 리스너가 요청 스레드에서 동기로 FAILED 기록. **이 전이가 실제로 일어나면** `EmailDeliveryFailedEvent`가 같은 트랜잭션에서 발행돼 NT-12 인앱 알림으로 이어진다 (`QUOTE_SENT`만, §2.13) |
+| 실패(FAILED) | 재시도 성공 (NT-12) | 발송됨(SENT) | 시스템 | 엔티티 `markSent`가 FAILED → SENT를 허용한다(NT-12 재시도 1회, #112). 재시도 후에도 실패면 담당 구성원에게 인앱 `EMAIL_FAILED` (`QUOTE_SENT` 실패 → 딜 담당자, Q-26 폴백, #212). Deal 컨텍스트 없는 실패(초대 등)·NT-13·14는 인앱 없음 (§2.13) |
 
 | 막히는 것 | 처리 |
 | --- | --- |

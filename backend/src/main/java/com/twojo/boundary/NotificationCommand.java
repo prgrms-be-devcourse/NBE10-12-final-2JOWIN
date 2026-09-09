@@ -23,8 +23,9 @@ import java.util.UUID;
  * <p><b>{@code RefType}을 {@link #notify} 파라미터로 둔다</b> — {@code MailCommand.TemplateType}이
  * {@code refType()}를 상수로 고정한 것과 반대다. 이유: {@code EMAIL_FAILED}의 {@code refId}가 가리키는
  * 대상이 실패한 메일 종류마다 달라(견적 메일이면 견적, 초대 메일이면 초대, 승인·재설정 메일이면 없음 —
- * docs/03-requirements.md §2.13) 타입 하나에 refType 하나로 접히지 않는다. 견적 컨텍스트 5종은
- * {@link #notifyForDeal}이 {@code RefType.QUOTE}를 자동으로 채워 호출자가 불일치 쌍을 만들 여지를 없앤다.
+ * docs/03-requirements.md §2.13) 타입 하나에 refType 하나로 접히지 않는다. 견적 딜 컨텍스트가 있는 호출
+ * (견적 알림 4종 + {@code QUOTE_SENT} 실패의 {@code EMAIL_FAILED})은 {@link #notifyForDeal}이
+ * {@code RefType.QUOTE}를 자동으로 채워 호출자가 불일치 쌍을 만들 여지를 없앤다.
  *
  * <p>시그니처·enum 상수의 <b>이름 변경·삭제</b>는 소유자(E) + 소비자 합의가 필요하다.
  * enum <b>값 추가는 D 단독</b>으로 한다 — D가 notification 소유이고 기존 소비자에 영향이 없다.
@@ -47,13 +48,16 @@ public interface NotificationCommand {
     /**
      * Deal 담당자(들)에게 알림 — 타입별 수신자 규칙은 구현이 해석한다(docs/03-requirements.md §2.13 표).
      * <ul>
-     *   <li>{@code QUOTE_VIEWED}·{@code QUOTE_APPROVED}·{@code QUOTE_REJECTED}·{@code REMIND_NO_RESPONSE}
-     *       — 현재 담당자. 담당자가 비활성이면 기업 관리자 전원(Q-26).</li>
+     *   <li>{@code QUOTE_VIEWED}·{@code QUOTE_APPROVED}·{@code QUOTE_REJECTED}·{@code REMIND_NO_RESPONSE}·
+     *       {@code EMAIL_FAILED} — 현재 담당자. 담당자가 비활성이면 기업 관리자 전원(Q-26).</li>
      *   <li>{@code INQUIRY_RECEIVED} — 담당자(활성 시) <b>및</b> 기업 관리자 전원(NT-10).</li>
      * </ul>
      * refType은 {@code RefType.QUOTE}로 고정, {@code refId}는 {@code quoteId}다 — {@code quoteId}가
      * null이면 {@code IllegalArgumentException}(refType/refId 짝 불변식).
-     * {@code EMAIL_FAILED}는 Deal 컨텍스트가 아니므로 이 메서드로 부르면 {@code IllegalArgumentException}.
+     *
+     * <p>{@code EMAIL_FAILED}는 <b>호출자가 실패한 {@code QUOTE_SENT} 메일을 견적·딜로 되짚어 Deal 컨텍스트를
+     * 확보한 경우</b>에만 이 메서드를 쓴다(NT-12, 수신자는 위 첫 그룹과 같다). Deal 컨텍스트가 없는 실패
+     * (초대 등)는 {@link #notify}로 수신자를 직접 지정한다.
      *
      * <p>{@code companyId}와 {@code dealId}는 <b>같은 조회에서 얻은 쌍</b>이어야 한다 —
      * {@code DealQuery.assigneeIdOf}는 회사 스코프를 걸지 않으므로, 어긋난 쌍이면 담당자가 다른 회사로 풀려

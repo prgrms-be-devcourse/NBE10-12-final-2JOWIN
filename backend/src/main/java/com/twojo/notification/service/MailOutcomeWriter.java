@@ -5,6 +5,7 @@ import com.twojo.notification.repository.EmailLogRepository;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -25,13 +26,18 @@ import org.springframework.transaction.annotation.Transactional;
  * {@code @Transactional}을 붙이면 자기호출이라 프록시를 안 지난다.
  *
  * <p>{@code findById} 후 대상이 없으면 조용히 무동작한다. 상태 전이는 {@link EmailLog}의 멱등 메서드에
- * 맡긴다 — {@code markSent}: 이미 SENT면 무동작 / {@code markFailed}: 이미 SENT면 무동작.
+ * 맡긴다 — {@code markSent}: 이미 SENT면 무동작 / {@code markFailed}: SCHEDULED에서만 전이.
+ *
+ * <p>{@code markFailed}가 SCHEDULED&rarr;FAILED로 <b>실제 전이한 경우에만</b> {@link EmailDeliveryFailedEvent}를
+ * 이 트랜잭션에서 발행한다. 멱등 재호출(이중 디스패치·정체 재처리)은 이벤트를 내지 않아 중복 알림이 없고,
+ * AFTER_COMMIT 리스너가 받으므로 알림은 FAILED가 커밋된 뒤에야 시도된다 (NT-12).
  */
 @Component
 @RequiredArgsConstructor
 class MailOutcomeWriter {
 
     private final EmailLogRepository emailLogRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markSent(UUID emailLogId, Instant sentAt) {
@@ -40,6 +46,11 @@ class MailOutcomeWriter {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void markFailed(UUID emailLogId) {
-        emailLogRepository.findById(emailLogId).ifPresent(EmailLog::markFailed);
+        emailLogRepository.findById(emailLogId).ifPresent(row -> {
+            if (row.markFailed()) {
+                eventPublisher.publishEvent(new EmailDeliveryFailedEvent(
+                        row.getId(), row.getTemplateType(), row.getCompanyId(), row.getRefId()));
+            }
+        });
     }
 }
