@@ -84,21 +84,50 @@ runs:
         fi
         echo "security_group=${sg}" >> "$GITHUB_OUTPUT"
 
-        # 잔류 규칙 정리가 먼저다. 아래 회수 스텝은 if: always() 라서 거의
-        # 항상 돌지만, 러너가 강제 종료되면 그것도 안 돈다. 그때 남은 규칙을
-        # 치우는 것이 여기다 — 두 겹이라야 22번이 조용히 열린 채 남지 않는다.
-        stale="$(aws ec2 describe-security-group-rules \
+        # 잔류 규칙 정리 — 두 번째 그물이다. 아래 회수 스텝(if: always())이
+        # 첫 번째고, 러너가 강제 종료됐을 때를 위한 보험이 이것이다.
+        #
+        # 설명이 같다고 지우면 안 된다. Backend CD 와 Infra CD 는 concurrency
+        # 그룹이 달라 동시에 돌 수 있고, 둘 다 같은 설명으로 22번을 연다.
+        # 살아 있는 규칙을 뺏으면 그쪽 SSH 가 배포 도중에 끊긴다 (#262).
+        #
+        # 그래서 설명에 여는 시각을 함께 넣고, 충분히 오래된 것만 지운다.
+        # 규칙 태그를 쓰지 않은 이유는 ec2:CreateTags 가 배포 역할에 없어서다.
+        # 권한을 늘리려면 bootstrap 을 사람이 다시 apply 해야 하는데, 설명
+        # 문자열로 같은 일을 할 수 있으면 그쪽이 싸다.
+        #
+        # 배포는 길어야 몇 분이다. 이 값을 넘겼다면 죽은 규칙이다.
+        STALE_AFTER=1800
+        now="$(date +%s)"
+
+        # 설명이 정확히 '2jo-deploy' 인 옛 형식은 시각을 알 수 없다.
+        # 손대지 않고 알리기만 한다 — 잘못 지우는 쪽이 더 나쁘다.
+        aws ec2 describe-security-group-rules \
           --filters "Name=group-id,Values=${sg}" \
           --region "$AWS_REGION" \
-          --query "SecurityGroupRules[?Description=='2jo-deploy' && IsEgress==\`false\`].SecurityGroupRuleId" \
-          --output text)"
-        if [ -n "$stale" ] && [ "$stale" != "None" ]; then
-          echo "::warning::이전 배포의 22번 규칙이 남아 있었다 — 회수한다: ${stale}"
-          # shellcheck disable=SC2086
+          --query "SecurityGroupRules[?starts_with(Description, '2jo-deploy') && IsEgress==\`false\`].[SecurityGroupRuleId,Description]" \
+          --output text > "${RUNNER_TEMP}/sg-rules.txt" || true
+
+        # 설명은 "2jo-deploy <시각>" 이라 두 칸으로 갈린다. 앞칸은 안 쓴다.
+        while read -r rid _ opened; do
+          [ -n "${rid:-}" ] || continue
+          if ! printf %s "${opened:-}" | grep -Eq '^[0-9]+$'; then
+            echo "::warning::시각이 없는 옛 형식 규칙이다 — 손대지 않는다: ${rid}"
+            continue
+          fi
+          age=$(( now - opened ))
+          if [ "$age" -lt "$STALE_AFTER" ]; then
+            echo "다른 배포가 방금 연 규칙으로 보인다 — 건드리지 않는다 (${rid}, ${age}초)"
+            continue
+          fi
+          echo "::warning::${age}초 된 22번 규칙을 회수한다: ${rid}"
+          # 청소는 보험이다. 여기서 실패했다고 배포를 죽이지 않는다 —
+          # 목록을 읽은 뒤 다른 실행이 먼저 지웠으면 NotFound 가 난다.
           aws ec2 revoke-security-group-ingress \
-            --group-id "$sg" --security-group-rule-ids $stale \
-            --region "$AWS_REGION" >/dev/null
-        fi
+            --group-id "$sg" --security-group-rule-ids "$rid" \
+            --region "$AWS_REGION" >/dev/null 2>&1 \
+            || echo "::warning::회수 실패 — 이미 사라졌을 수 있다: ${rid}"
+        done < "${RUNNER_TEMP}/sg-rules.txt"
 
         # 러너 공인 IP. 응답이 이상하면 여기서 멈춘다 — 검증 없이 넘기면
         # 쓰레기 값이 CIDR 로 들어가거나, 최악의 경우 의도치 않게 넓게 열린다.
@@ -109,9 +138,11 @@ runs:
         fi
         echo "러너 IP: ${ip}"
 
+        # 설명에 여는 시각을 함께 남긴다. 위 청소가 이 값으로 살아 있는
+        # 규칙과 죽은 규칙을 가른다 (#262).
         rule="$(aws ec2 authorize-security-group-ingress \
           --group-id "$sg" \
-          --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${ip}/32,Description=2jo-deploy}]" \
+          --ip-permissions "IpProtocol=tcp,FromPort=22,ToPort=22,IpRanges=[{CidrIp=${ip}/32,Description=2jo-deploy ${now}}]" \
           --region "$AWS_REGION" \
           --query 'SecurityGroupRules[0].SecurityGroupRuleId' --output text)"
         echo "rule_id=${rule}" >> "$GITHUB_OUTPUT"
