@@ -75,7 +75,7 @@ export function QuoteDetailPage() {
               </Button>
             )}
             {quote.status === 'APPROVED' && (
-              <Button color="green" onClick={() => setDialog('convert')}>
+              <Button color="green" disabled={actions.convert.isSuccess} onClick={() => setDialog('convert')}>
                 <ArrowRightIcon /> 주문 전환
               </Button>
             )}
