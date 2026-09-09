@@ -53,6 +53,13 @@ jobs:
           cache: npm
           cache-dependency-path: frontend/package-lock.json
 
+      # 가장 싸고 가장 조용한 결함을 먼저 막는다. import.meta.env 에는 인덱스
+      # 시그니처가 있어서 선언에 없는 키를 써도 타입 오류가 나지 않는다 —
+      # 빌드는 통과하고 배포 환경에 그 키가 없으면 런타임에 undefined 가 된다.
+      - name: VITE_ 키가 선언되어 있는가
+        working-directory: .
+        run: python3 .github/scripts/check-vite-env-keys.py frontend
+
       - name: 의존성 설치
         run: npm ci
 
