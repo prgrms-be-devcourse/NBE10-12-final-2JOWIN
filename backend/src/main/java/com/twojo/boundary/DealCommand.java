@@ -39,6 +39,23 @@ public interface DealCommand {
     void promoteToQuoteStage(UUID dealId);
 
     /**
+     * 주문 전환에 따른 자동 성사 (OD-06) — 진행 중이면 <b>단계와 무관하게</b> 성사(WON)로 만든다.
+     *
+     * <p>전이표 §5: "리드 ~ 협상 → 주문 전환 → 성사(WON) · <b>시스템</b>".
+     * 담당자의 수동 이동으로는 성사에 닿을 수 없다(DL-09) — 이 메서드가 유일한 출구다.
+     *
+     * <p><b>이미 성사면 아무 일도 하지 않는다 — {@link #promoteToQuoteStage}와 반대다.</b>
+     * 발송은 종결 딜에서 막지만(새 약속), 주문 전환은 이미 성사된 딜에 주문을 하나 더 붙이는
+     * 정상 시나리오다 (Q-25 — 두 번째 승인 견적도 전환 가능, 07 §C 257행).
+     * 두 메서드가 종결 딜을 다르게 다루는 이유가 여기 있다.
+     *
+     * <p>실패(LOST) Deal이면 {@code DEAL_NOT_OPEN}. 없거나 소프트 삭제된 Deal이면
+     * {@code RESOURCE_NOT_FOUND}. <b>호출자의 트랜잭션에 합류한다</b> —
+     * 주문 생성이 롤백되면 성사도 되돌아가야 한다.
+     */
+    void markWon(UUID dealId);
+
+    /**
      * 구성원 비활성화에 따른 담당 Deal 이관 (MB-14, Q-29) — A의 비활성화 API가 부른다.
      *
      * <p>{@code fromMemberId}가 담당인 <b>진행 중(리드~협상)</b> Deal 전부를 {@code toMemberId}로 옮긴다.

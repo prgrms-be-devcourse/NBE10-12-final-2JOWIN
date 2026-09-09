@@ -233,6 +233,19 @@ public class Quote extends BaseTimeEntity {
     }
 
     /**
+     * 주문 전환이 열리는 상태 — <b>승인됨(APPROVED)뿐이다</b> (OD-02, 전이표 §5).
+     *
+     * <p>발송·열람 중인 견적은 고객이 아직 동의하지 않았고, 반려·회수·만료는 합의가 없다.
+     * 작성 중은 고객이 본 적조차 없다. <b>주문은 되돌릴 수 없다</b> — v1에 취소가 없어
+     * (OD-11·12 제외, Q-09) 잘못 만든 주문을 지울 방법이 없으므로 여기서 좁게 연다.
+     */
+    public void requireApproved() {
+        if (status != Status.APPROVED) {
+            throw new BusinessException(ErrorCode.QUOTE_NOT_APPROVED);
+        }
+    }
+
+    /**
      * 발송 가능한지 검사한다 (QT-14~16, Q-17) — <b>상태는 바꾸지 않는다.</b>
      *
      * <p>여기서 보는 것은 <b>견적 자체의 조건</b> 셋뿐이다.

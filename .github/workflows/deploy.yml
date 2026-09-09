@@ -13,23 +13,13 @@
 name: deploy
 
 on:
-  # ┌──────────────────────────────────────────────────────────────────┐
-  # │ 임시로 꺼둔다 — 첫 수동 배포가 끝나면 되살릴 것 (이슈 #194)      │
-  # └──────────────────────────────────────────────────────────────────┘
-  #
-  # 왜 껐나: 시크릿이 방금 다 채워져서, 지금 백엔드 PR 이 머지되면 배포가
-  # 승인 대기로 걸린다. 첫 배포가 남의 PR 에 얹혀 일어나면 실패했을 때
-  # 백엔드 코드 문제인지 SSH 경로 문제인지 구분이 안 된다.
-  #
-  # 수동으로 한 번 성공시켜 인프라를 검증한 뒤 아래 주석을 풀면 된다.
-  #
-  # push:
-  #   branches: [develop]
-  #   paths:
-  #     - 'backend/**'
-  #     - 'infra/prod/docker/**'
-  #     - '.github/workflows/deploy.yml'
-  #     - '.github/actions/remote-deploy/**'
+  push:
+    branches: [develop]
+    paths:
+      - 'backend/**'
+      - 'infra/prod/docker/**'
+      - '.github/workflows/deploy.yml'
+      - '.github/actions/remote-deploy/**'
   workflow_dispatch:
     inputs:
       config_only:
@@ -82,9 +72,14 @@ jobs:
     # 에뮬레이션이 필요 없어 그냥 빌드하면 된다.
     runs-on: ubuntu-latest
 
-    # 승인 게이트. 승인 전에는 job 이 시작되지 않고 토큰도 발급되지 않는다.
-    # SSH 로 바뀐 뒤에도 그대로다 — 22번을 여는 것도 승인 후에만 일어난다.
-    environment: prod
+    # 이 환경에는 승인자가 없다. 팀원 5명이 머지하는데 승인자 1명이 매번
+    # 챙기는 것은 현실적이지 않고, 결국 "일단 승인" 이 되어 게이트가 형식만
+    # 남는다. 인프라 apply 는 여전히 prod(승인 있음)를 쓴다.
+    #
+    # environment 를 지우면 안 된다. 배포 역할의 신뢰 조건이
+    # environment:<이름> 이라, 빼면 OIDC 토큰의 sub 가 달라져 AWS 접근
+    # 자체가 막힌다. 승인은 환경 설정에서 빼는 것이지 이 줄이 아니다.
+    environment: prod-deploy
 
     # SSH 가 종료 코드를 직접 돌려주므로 폴링 상한 대신 job 타임아웃으로 막는다.
     # 최악 케이스 230초(pull 30 + up 10 + health 90 + 롤백 10 + health 90)에

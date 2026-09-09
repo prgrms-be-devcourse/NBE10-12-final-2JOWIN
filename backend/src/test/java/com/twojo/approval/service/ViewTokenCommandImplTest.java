@@ -133,7 +133,7 @@ class ViewTokenCommandImplTest {
     void 신규발급_토큰을_저장한다() {
         givenHappyPath();
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         QuoteViewToken saved = captureSaved();
         assertThat(saved.getTokenHash()).matches("[0-9a-f]{64}");
@@ -151,7 +151,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact("박지훈", "jihun@hanbit.co.kr"));
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.empty());
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         ArgumentCaptor<String> subject = ArgumentCaptor.forClass(String.class);
         ArgumentCaptor<String> body = ArgumentCaptor.forClass(String.class);
@@ -171,7 +171,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.empty());
 
-        assertThatCode(() -> viewTokenCommand.issue(QUOTE_ID, CONTACT_ID)).doesNotThrowAnyException();
+        assertThatCode(() -> viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null)).doesNotThrowAnyException();
         verify(quoteViewTokenRepository).save(any(QuoteViewToken.class));
     }
 
@@ -180,7 +180,7 @@ class ViewTokenCommandImplTest {
     void 링크_원문의_해시가_저장된_tokenHash와_일치한다() {
         givenHappyPath();
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         String raw = extractRawToken(captureBody());
         assertThat(raw).matches("[A-Za-z0-9_-]+");
@@ -196,7 +196,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact("박지훈", "  Jihun@Hanbit.CO.KR  "));
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.empty());
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         verify(mailCommand).schedule(any(), any(), eq("jihun@hanbit.co.kr"), any(), any(), any());
     }
@@ -208,7 +208,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact(null, "jihun@hanbit.co.kr"));
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.empty());
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         assertThat(captureBody()).startsWith("고객님,");
     }
@@ -223,7 +223,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.empty());
 
-        withSlash.issue(QUOTE_ID, CONTACT_ID);
+        withSlash.issue(QUOTE_ID, CONTACT_ID, null);
 
         assertThat(captureBody())
                 .contains("http://localhost:5173/q/")
@@ -233,6 +233,48 @@ class ViewTokenCommandImplTest {
     // ─────────────────────────────── issue() — 재발송 ───────────────────────────────
 
     @Test
+    @DisplayName("담당자 한마디(message)는 인사와 링크 사이에 한 문단으로 실린다 (#183)")
+    void 메시지가_본문에_실린다() {
+        given(quoteQuery.getPublicView(QUOTE_ID)).willReturn(view());
+        given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
+        given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.empty());
+
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, "  요청하신 견적서입니다. 확인 부탁드립니다.  ");
+
+        String body = captureBody();
+        String[] lines = body.split("\n");
+        int greeting = indexOf(lines, "님, 아래 링크에서 견적서를 확인하실 수 있습니다.");
+        int note = indexOf(lines, "요청하신 견적서입니다. 확인 부탁드립니다.");   // strip된 채로 한 줄
+        int link = indexOf(lines, "/q/");
+        assertThat(greeting).isNotNegative();
+        assertThat(note).isGreaterThan(greeting);
+        assertThat(link).isGreaterThan(note);                        // 링크 줄은 여전히 독립된 한 줄
+        assertThat(lines[note]).isEqualTo("요청하신 견적서입니다. 확인 부탁드립니다.");
+    }
+
+    @Test
+    @DisplayName("message가 null·공백이면 본문은 종전과 같다 — 빈 문단을 넣지 않는다")
+    void 빈_메시지는_덧붙이지_않는다() {
+        given(quoteQuery.getPublicView(QUOTE_ID)).willReturn(view());
+        given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
+        given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.empty());
+
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, "   ");
+
+        assertThat(captureBody()).doesNotContain("\n\n\n");   // 빈 문단 없음
+        assertThat(captureBody().split("\n")).filteredOn(l -> l.contains("/q/")).hasSize(1);
+    }
+
+    private static int indexOf(String[] lines, String contains) {
+        for (int i = 0; i < lines.length; i++) {
+            if (lines[i].contains(contains)) {
+                return i;
+            }
+        }
+        return -1;
+    }
+
+    @Test
     @DisplayName("재발송 — 같은 견적에 ACTIVE 링크가 있으면 RESENT 사유로 만료시킨다")
     void 재발송_기존_링크를_RESENT로_만료한다() {
         QuoteViewToken existing = activeToken();
@@ -240,7 +282,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.of(existing));
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         assertThat(existing.getStatus()).isEqualTo(QuoteViewToken.Status.EXPIRED);
         assertThat(existing.getExpiredReason()).isEqualTo(QuoteViewToken.ExpiredReason.RESENT);
@@ -253,7 +295,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.of(activeToken()));
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         InOrder inOrder = inOrder(quoteViewTokenRepository);
         inOrder.verify(quoteViewTokenRepository).flush();
@@ -267,7 +309,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.of(activeToken()));
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         verify(mailCommand, times(1)).schedule(any(), any(), any(), any(), any(), any());
     }
@@ -281,7 +323,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.of(existing));
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         assertThat(captureSaved().getRecipientContactId()).isEqualTo(CONTACT_ID);
     }
@@ -294,7 +336,7 @@ class ViewTokenCommandImplTest {
         given(customerQuery.getContact(CONTACT_ID)).willReturn(contact());
         given(quoteViewTokenRepository.findActiveByQuoteId(QUOTE_ID)).willReturn(Optional.of(existing));
 
-        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID);
+        viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null);
 
         assertThat(captureSaved().getExpiresAt()).isEqualTo(existing.getExpiresAt());
     }
@@ -306,7 +348,7 @@ class ViewTokenCommandImplTest {
     void getPublicView_예외는_부수효과_없이_전파된다() {
         given(quoteQuery.getPublicView(QUOTE_ID)).willThrow(new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        assertThatThrownBy(() -> viewTokenCommand.issue(QUOTE_ID, CONTACT_ID))
+        assertThatThrownBy(() -> viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null))
                 .isInstanceOf(BusinessException.class);
         verifyNoInteractions(quoteViewTokenRepository, customerQuery, mailCommand);
     }
@@ -317,7 +359,7 @@ class ViewTokenCommandImplTest {
         given(quoteQuery.getPublicView(QUOTE_ID)).willReturn(view());
         given(customerQuery.getContact(CONTACT_ID)).willThrow(new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        assertThatThrownBy(() -> viewTokenCommand.issue(QUOTE_ID, CONTACT_ID))
+        assertThatThrownBy(() -> viewTokenCommand.issue(QUOTE_ID, CONTACT_ID, null))
                 .isInstanceOf(BusinessException.class);
         verifyNoInteractions(quoteViewTokenRepository);
         verify(mailCommand, never()).schedule(any(), any(), any(), any(), any(), any());

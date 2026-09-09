@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -70,6 +71,31 @@ public class QuoteCommandImpl implements QuoteCommand {
     @Transactional
     public void reject(UUID quoteId, String reason, Responder responder) {
         find(quoteId).reject(reason, responder.name(), responder.title(), Instant.now());
+    }
+
+    /**
+     * 주문 전환용 행 잠금 + 스냅샷 (OD-01·02·04) — 계약의 이유는 {@link QuoteCommand} javadoc에 있다.
+     *
+     * <p><b>{@code MANDATORY}다.</b> 여기서 건 락은 <b>호출자가 커밋할 때</b> 풀려야 의미가 있는데,
+     * 트랜잭션 없이 불리면 이 메서드가 끝나는 순간 풀려 아무것도 막지 못한다.
+     * 조용히 무력해지느니 그 자리에서 실패하는 편이 낫다 ({@code DocumentNumberService}, #72).
+     *
+     * <p>이 경로만 <b>회사 스코프를 건다</b> — 열람·승인 3종과 다르다. 저쪽은 토큰이 견적
+     * 하나를 특정하는 고객 경로이고, 전환은 로그인한 구성원의 요청이라 SC-01이 걸린다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public ConversionSnapshot lockApprovedForConversion(UUID companyId, UUID quoteId) {
+        Quote quote = quoteRepository.findForUpdate(quoteId, companyId)
+                .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+        quote.requireApproved();   // 승인됨이 아니면 QUOTE_NOT_APPROVED (OD-02)
+
+        return new ConversionSnapshot(quote.getId(), quote.getQuoteNo(), quote.getDealId(),
+                quote.getSupplyAmount(), quote.getVatAmount(), quote.getTotalAmount(),
+                quote.getItems().stream()
+                        .map(item -> new ConversionSnapshot.Line(item.getName(), item.getUnit(),
+                                item.getQuantity(), item.getUnitPrice(), item.getAmount()))
+                        .toList());
     }
 
     /**
