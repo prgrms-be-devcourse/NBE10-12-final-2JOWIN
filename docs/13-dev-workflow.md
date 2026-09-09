@@ -155,14 +155,16 @@ Closes #
 `backend/src/test/java/com/twojo/global/`에 둔다.
 
 **클래스 레벨 `@Transactional(readOnly = true)`를 쓰는 서비스의 쓰기 메서드는 메서드 레벨
-`@Transactional`을 반드시 붙인다.** 빠뜨리면 읽기 전용 트랜잭션에서 돌아 Hibernate가 flush를
-건너뛰고 **변경이 예외도 로그도 없이 버려진다** — 컴파일·테스트·런타임 어디서도 티가 나지 않는다.
+`@Transactional`로 쓰기 트랜잭션을 열어야 한다.** 빠뜨리면 읽기 전용 트랜잭션에서 돌아 Hibernate가
+flush를 건너뛰고 **변경이 예외도 로그도 없이 버려진다** — 컴파일·테스트·런타임 어디서도 티가 나지 않는다.
 
 - 판정은 **메서드 이름**으로 한다 (`create`·`update`·`send`·`mark`… — 목록은 테스트의
   `WRITE_PREFIXES`가 정본). 리포지터리 `save` 호출로 판정하면 엔티티를 고치기만 하는
   더티 체킹 쓰기(`deal.markWon()`)가 통째로 빠진다
 - **새 쓰기 동사를 쓰면 `WRITE_PREFIXES`에 추가한다.** 추가를 잊으면 목록 최신화 테스트가 먼저
   실패해 알려준다 — 어노테이션을 붙인 메서드의 이름은 전부 목록에 있어야 한다
+- **어노테이션이 붙었는지만으로는 안 된다.** `@Transactional(readOnly = true)`를 복사해 붙이면
+  어노테이션은 있는데 여전히 읽기 전용이라 결과가 같다. 규칙도 `readOnly = false`까지 확인한다
 - 클래스 레벨 `readOnly = true` 자체는 금지하지 않는다. 조회 서비스에서는 유용하다
 
 ---

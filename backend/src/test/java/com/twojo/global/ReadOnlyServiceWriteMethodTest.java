@@ -34,6 +34,9 @@ import org.springframework.transaction.annotation.Transactional;
  * JPA는 엔티티를 고치기만 해도 더티 체킹으로 쓰기가 된다({@code deal.markWon()}). 호출만 보면
  * 그쪽이 통째로 빠진다. 그래서 이름 규약을 정본으로 두고, 새 동사가 생기면
  * {@link #WRITE_PREFIXES}에 추가한다.
+ *
+ * <p><b>어노테이션이 붙었는지만 보지 않는다</b> — {@code @Transactional(readOnly = true)}를 복사해
+ * 붙이면 어노테이션은 있는데 여전히 읽기 전용이다. {@code readOnly = false}까지 확인한다.
  */
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
 class ReadOnlyServiceWriteMethodTest {
@@ -78,6 +81,19 @@ class ReadOnlyServiceWriteMethodTest {
                                     && Character.isUpperCase(name.charAt(prefix.length()))));
                 }
             };
+
+    /**
+     * 메서드 레벨 어노테이션이 <b>쓰기</b> 트랜잭션을 여는가.
+     *
+     * <p>붙어 있는지만 보면 {@code @Transactional(readOnly = true)}를 복사해 붙인 쓰기 메서드가
+     * 통과한다 — 어노테이션은 있는데 여전히 읽기 전용이라 변경은 그대로 버려진다.
+     * 이 저장소에도 메서드 레벨 {@code readOnly = true} 선례가 있다({@code LoginAttemptService}).
+     */
+    private static boolean opensWriteTransaction(JavaMethod method) {
+        return method.tryGetAnnotationOfType(Transactional.class)
+                .map(annotation -> !annotation.readOnly())
+                .orElse(false);
+    }
 
     private static JavaClasses productionClasses;
 
@@ -128,7 +144,7 @@ class ReadOnlyServiceWriteMethodTest {
         var unlisted = productionClasses.stream()
                 .flatMap(clazz -> clazz.getMethods().stream())
                 .filter(IN_READ_ONLY_SERVICE)
-                .filter(method -> method.isAnnotatedWith(Transactional.class))
+                .filter(ReadOnlyServiceWriteMethodTest::opensWriteTransaction)
                 .filter(method -> !NAMED_LIKE_A_WRITE.test(method))
                 .map(JavaMethod::getFullName)
                 .toList();
@@ -142,12 +158,15 @@ class ReadOnlyServiceWriteMethodTest {
         return new ArchCondition<>("메서드 레벨 @Transactional을 가진다") {
             @Override
             public void check(JavaMethod method, ConditionEvents events) {
-                if (method.isAnnotatedWith(Transactional.class)) {
+                if (opensWriteTransaction(method)) {
                     return;
                 }
+                String reason = method.isAnnotatedWith(Transactional.class)
+                        ? "메서드 레벨 @Transactional이 readOnly = true다 — 어노테이션은 있지만 여전히 읽기 전용이다"
+                        : "메서드 레벨 @Transactional이 없다";
                 events.add(SimpleConditionEvent.violated(method, method.getFullName()
-                        + " — 클래스가 @Transactional(readOnly = true)인데 메서드 레벨"
-                        + " @Transactional이 없다. 변경이 조용히 버려진다 (13 §3)"));
+                        + " — 클래스가 @Transactional(readOnly = true)인데 " + reason
+                        + ". 변경이 조용히 버려진다 (13 §3)"));
             }
         };
     }
