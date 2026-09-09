@@ -146,7 +146,13 @@ groups:
             model:
               refId: A
               editorMode: code
-              expr: 'sum(rate(caddy_http_requests_total{code=~"5.."}[5m]))'
+              # caddy_http_requests_total 에는 code 라벨이 없다. 상태 코드는
+              # duration 히스토그램에 붙는다 — 그래서 이 규칙은 매칭되는 시계열이
+              # 없어 항상 0 이었고, 타깃을 살린 뒤에도 발화하지 않았다 (#223).
+              #
+              # handler 로 거른다. server(srv0/srv1)는 Caddyfile 의 사이트 블록
+              # 순서로 정해져서, 블록을 재배치하면 조용히 뒤바뀐다.
+              expr: 'sum(rate(caddy_http_request_duration_seconds_count{code=~"5..", handler!="metrics"}[5m]))'
               instant: true
               range: false
           - refId: B
