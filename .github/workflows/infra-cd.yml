@@ -78,7 +78,7 @@ jobs:
           set -euo pipefail
           terraform init -input=false -no-color \
             -backend-config="bucket=${TF_STATE_BUCKET}"
-          terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
+          terraform apply -input=false -no-color -auto-approve -lock-timeout=300s | tee "${RUNNER_TEMP}/apply.log"
 
       # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면
       # S3 만 바뀌고 서버는 옛 설정으로 계속 돈다 (cd.md §9.3).
@@ -94,7 +94,8 @@ jobs:
           OK: ${{ secrets.DEPLOY_HOST != '' && secrets.SSH_PRIVATE_KEY != '' && secrets.SSH_KNOWN_HOSTS != '' }}
         run: echo "ok=${OK}" >> "$GITHUB_OUTPUT"
 
-      - name: 서버에 설정 재동기화 (설정 전용 배포)
+      - id: resync
+        name: 서버에 설정 재동기화 (설정 전용 배포)
         if: steps.sshgate.outputs.ok == 'true'
         uses: ./.github/actions/remote-deploy
         with:
@@ -104,3 +105,44 @@ jobs:
           ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
           known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
           tolerate-missing-host: 'true'
+
+      # 승인 화면에서 destroy 개수를 확인하는 것이 유일한 방어인데, 승인한
+      # 뒤에는 결과를 다시 볼 곳이 없었다. 실행 화면 첫 페이지에 올린다 (#260).
+      - name: 반영 요약
+        if: always()
+        env:
+          RC: ${{ steps.resync.outputs.rc }}
+          LOG: ${{ steps.resync.outputs.log }}
+        run: |
+          set -uo pipefail
+          apply="${RUNNER_TEMP}/apply.log"
+
+          {
+            echo "## 인프라 반영"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            if [ -s "$apply" ]; then
+              # 못 찾으면 pipefail 이 스텝을 죽인다 — 요약이 apply 판정을
+              # 뒤엎으면 안 된다.
+              line="$(grep -o "Apply complete.*" "$apply" | tail -1 || true)"
+              echo "| terraform | ${line:-출력을 찾지 못했다} |"
+            else
+              echo "| terraform | 실행되지 않았다 |"
+            fi
+            case "${RC:-}" in
+              0)  echo "| 서버 재동기화 | 완료 |" ;;
+              "") echo "| 서버 재동기화 | 건너뜀 (시크릿 없음 또는 서버 없음) |" ;;
+              *)  echo "| 서버 재동기화 | 실패 — 종료 코드 \`${RC}\` |" ;;
+            esac
+            echo "| 커밋 | \`${GITHUB_SHA:0:7}\` |"
+            echo
+
+            if [ -s "${LOG:-/dev/null}" ]; then
+              echo "### 서버에서 일어난 일"
+              echo
+              echo "\`\`\`"
+              grep "^\[deploy\]" "$LOG" || cat "$LOG"
+              echo "\`\`\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
