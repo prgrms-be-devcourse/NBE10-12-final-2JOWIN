@@ -1,5 +1,6 @@
 package com.twojo.boundary;
 
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -65,6 +66,21 @@ public interface NotificationCommand {
      */
     void notifyForDeal(NotificationType type, UUID companyId, UUID dealId,
                        String message, UUID quoteId);
+
+    /**
+     * {@link #notifyForDeal}이 저장할 <b>수신자 member id 목록을 그대로 돌려준다</b> — 알림을 만들지는 않는다.
+     * 규칙은 {@code notifyForDeal}과 같다(활성 담당자 / 비활성이면 Q-26 관리자 폴백 /
+     * {@code INQUIRY_RECEIVED}는 NT-10 union · 중복 제거 · 순서 보존). 구현은 같은 내부 해석을 공유해
+     * 두 경로가 갈라지지 않는다.
+     *
+     * <p><b>NT-05 리마인드 배치가 쓴다</b> — 인앱({@link #notify})과 병행 메일을 <b>같은 수신자</b>에게
+     * 보내야 하는데 {@code notifyForDeal}은 수신자를 내부에서만 해석하고 돌려주지 않는다. 배치는 이 목록을
+     * 한 번 받아 인앱 저장과 메일 예약(수신 설정 확인 포함)을 함께 돈다.
+     *
+     * <p>읽기 전용이라 트랜잭션을 요구하지 않는다({@code notify*}의 {@code MANDATORY}와 다르다).
+     * 수신자가 없으면(담당자 비활성 + 관리자 0명 — MB-11이 정상 흐름에선 막는다) <b>빈 목록</b>이다.
+     */
+    List<UUID> dealRecipients(NotificationType type, UUID companyId, UUID dealId);
 
     /**
      * 알림 종류 — {@code notification.type} CHECK 값(docs/06-erd.md)과 1:1. 엔티티 {@code Notification.Type}과

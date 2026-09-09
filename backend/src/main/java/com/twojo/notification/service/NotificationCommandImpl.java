@@ -6,6 +6,7 @@ import com.twojo.boundary.NotificationCommand;
 import com.twojo.notification.entity.Notification;
 import com.twojo.notification.repository.NotificationRepository;
 import java.util.LinkedHashSet;
+import java.util.List;
 import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
@@ -55,14 +56,7 @@ class NotificationCommandImpl implements NotificationCommand {
     public void notifyForDeal(NotificationType type, UUID companyId, UUID dealId,
                               String message, UUID quoteId) {
         // EMAIL_FAILED도 허용한다 - 호출자(NT-12 리스너)가 실패한 QUOTE_SENT 메일을 딜로 되짚은 경우.
-        UUID assignee = dealQuery.assigneeIdOf(dealId);   // 살아있는 Deal은 담당자 항상 있음 (계약)
-        Set<UUID> targets = new LinkedHashSet<>();
-        if (memberQuery.isActive(assignee)) {
-            targets.add(assignee);
-        }
-        if (type == NotificationType.INQUIRY_RECEIVED || targets.isEmpty()) {
-            targets.addAll(memberQuery.findAdminIds(companyId));   // NT-10 union / Q-26 폴백
-        }
+        Set<UUID> targets = resolveRecipients(type, companyId, dealId);
         if (targets.isEmpty()) {
             // MB-11이 활성 관리자 존재를 보장하므로 정상 흐름엔 없다 - 방어선.
             log.warn("알림 수신자 없음 - type={}, dealId={}", type, dealId);
@@ -71,6 +65,28 @@ class NotificationCommandImpl implements NotificationCommand {
         for (UUID target : targets) {
             write(companyId, target, type, message, RefType.QUOTE, quoteId);
         }
+    }
+
+    @Override
+    public List<UUID> dealRecipients(NotificationType type, UUID companyId, UUID dealId) {
+        return List.copyOf(resolveRecipients(type, companyId, dealId));
+    }
+
+    /**
+     * §2.13 타입별 수신자 규칙 — 활성 담당자, 비활성이면 기업 관리자 폴백(Q-26),
+     * {@code INQUIRY_RECEIVED}는 담당자 + 관리자 union(NT-10). 순서 보존 · 중복 제거.
+     * {@link #notifyForDeal}(쓰기)과 {@link #dealRecipients}(조회)가 공유해 규칙이 한 곳에만 있다.
+     */
+    private Set<UUID> resolveRecipients(NotificationType type, UUID companyId, UUID dealId) {
+        UUID assignee = dealQuery.assigneeIdOf(dealId);   // 살아있는 Deal은 담당자 항상 있음 (계약)
+        Set<UUID> targets = new LinkedHashSet<>();
+        if (memberQuery.isActive(assignee)) {
+            targets.add(assignee);
+        }
+        if (type == NotificationType.INQUIRY_RECEIVED || targets.isEmpty()) {
+            targets.addAll(memberQuery.findAdminIds(companyId));   // NT-10 union / Q-26 폴백
+        }
+        return targets;
     }
 
     private void write(UUID companyId, UUID recipientMemberId, NotificationType type,
