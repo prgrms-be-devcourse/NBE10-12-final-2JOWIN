@@ -46,6 +46,9 @@ outputs:
   rc:
     description: deploy.sh 의 종료 코드. 0 성공 · 1 롤백대상없음 · 2 롤백됨 · 3 롤백실패 · 75 배포중
     value: ${{ steps.run.outputs.rc }}
+  log:
+    description: 서버가 내놓은 출력을 담은 파일 경로. 호출 쪽이 요약에 쓴다 (#260)
+    value: ${{ steps.run.outputs.log }}
 
 runs:
   using: composite
@@ -226,15 +229,25 @@ runs:
 
         # composite 의 shell: bash 는 기본이 -eo pipefail 이다. 그냥 실행하면
         # 0 이 아닌 순간 스텝이 죽어서 rc 를 잡지 못한다. || 로 받아야 한다.
+        # 서버 출력을 파일로도 남긴다. 호출 쪽이 요약에 올린다 (#260).
+        # 로그를 펼쳐야 보이는 정보는 못 본 정보다.
+        #
+        # tee 를 걸어도 종료 코드는 보존된다 — 이 셸은 pipefail 이라
+        # 파이프라인이 ssh 의 실패를 그대로 돌려준다.
+        log="${RUNNER_TEMP}/remote-deploy.log"
+
         rc=0
         ssh -i "$SSH_DIR/id_deploy" \
           -o UserKnownHostsFile="$SSH_DIR/known_hosts" \
           -o StrictHostKeyChecking=yes \
           -o BatchMode=yes \
           -o ConnectTimeout=15 \
-          "$TARGET" "$remote" || rc=$?
+          "$TARGET" "$remote" 2>&1 | tee "$log" || rc=$?
 
-        echo "rc=${rc}" >> "$GITHUB_OUTPUT"
+        {
+          echo "rc=${rc}"
+          echo "log=${log}"
+        } >> "$GITHUB_OUTPUT"
         echo "deploy.sh 종료 코드: ${rc}"
 
         # ssh 자체가 붙지 못한 경우(255)와 서버가 아직 없는 경우를 구분한다.

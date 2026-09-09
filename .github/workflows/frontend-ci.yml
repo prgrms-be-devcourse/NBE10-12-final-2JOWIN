@@ -74,7 +74,15 @@ jobs:
       # 테스트 파일이 10개 있는데 CI 가 한 번도 돌리지 않고 있었다.
       # 통과 여부를 아무도 몰랐고 마침 통과하고 있었을 뿐이다 (#251 2단계).
       - name: 테스트
-        run: npm test
+        run: npm test -- --reporter=default --reporter=json --outputFile.json=vitest-report.json
+
+      # 통과했을 때는 한 줄이면 되고, 실패했을 때 어느 테스트가 깨졌는지를
+      # 스텝을 펼치지 않고 보는 것이 목적이다 (#260).
+      # always() 다 — 실패했을 때야말로 요약이 필요하다.
+      - name: 테스트 결과 요약
+        if: always()
+        working-directory: .
+        run: python3 .github/scripts/vitest-summary.py frontend/vitest-report.json
 
       # 타입 검사는 build 안에 있다 (tsc -b && vite build).
       - name: 빌드 (타입 검사 포함)
