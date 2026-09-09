@@ -27,8 +27,12 @@ import org.springframework.transaction.annotation.Transactional;
 /**
  * 감사 로그 조회 (AC-11) — 기업 관리자 전용이다.
  *
- * <p>역할 위반은 403 {@code FORBIDDEN}이다 (09 구현 위치, Q-43). 리소스 범위가 아니라
- * 행위 자체가 역할로 갈리므로 존재를 숨길 이유가 없다.
+ * <p>역할 위반은 403 {@code FORBIDDEN}이다 (Q-43). 리소스 범위가 아니라 행위 자체가 역할로
+ * 갈리므로 존재를 숨길 이유가 없다 — 09 매트릭스가 감사 로그를 기업 관리자 ⭕ / 영업 ✕로 둔다.
+ *
+ * <p><b>09 구현 위치 표는 이 판정을 권한 어노테이션 층에 두고 감사 로그 조회를 그 예로 든다.</b>
+ * 그 어노테이션이 아직 없어(09 다음 단계 2번) 서비스에서 판정한다 —
+ * {@code ProductService}·{@code MemberAdminService}가 같은 형태이고, 어노테이션이 나오면 대체된다.
  */
 @Slf4j
 @Service
@@ -52,12 +56,13 @@ public class AuditLogService {
     /** 상세 (AC-11) — payload를 changes로 펼친다. 없거나 타사 것이면 404 (SC-09). */
     public AuditLogDetailResponse get(AccessContext ctx, UUID auditLogId) {
         requireAdmin(ctx);
-        AuditLog log = auditLogRepository.findByIdAndCompanyId(auditLogId, ctx.companyId())
+        AuditLog auditLog = auditLogRepository.findByIdAndCompanyId(auditLogId, ctx.companyId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
 
-        return new AuditLogDetailResponse(log.getId(), log.getEntityType(), log.getEntityId(),
-                log.getEventType(), log.getActorType().name(), log.getActorId(),
-                actorName(log), changesOf(log.getPayload(), log.getId()), log.getOccurredAt());
+        return new AuditLogDetailResponse(auditLog.getId(), auditLog.getEntityType(),
+                auditLog.getEntityId(), auditLog.getEventType(), auditLog.getActorType().name(),
+                auditLog.getActorId(), actorName(auditLog),
+                changesOf(auditLog.getPayload(), auditLog.getId()), auditLog.getOccurredAt());
     }
 
     /**
@@ -74,6 +79,9 @@ public class AuditLogService {
         try {
             return memberQuery.get(auditLog.getActorId()).name();
         } catch (BusinessException e) {
+            if (e.getErrorCode() != ErrorCode.RESOURCE_NOT_FOUND) {
+                throw e;   // 계약이 약속한 것은 "없으면 RESOURCE_NOT_FOUND"뿐이다 (MemberQuery:13)
+            }
             // audit_log.actor_id 에는 FK 가 없다 (V1:361). 고객사 상세가 memberQuery 를 그냥 부를 수
             // 있는 것은 created_by_member_id 가 NOT NULL FK 라서인데 여기엔 그 보증이 없다 —
             // 한 행의 구성원이 없으면 목록 전체가 404 가 된다. 이름만 비우고 나머지 행을 살린다.
@@ -121,14 +129,14 @@ public class AuditLogService {
         return node.isMissingNode() || node.isNull() ? null : objectMapper.convertValue(node, Object.class);
     }
 
-    private AuditLogResponse toResponse(AuditLog log) {
-        return new AuditLogResponse(log.getId(), log.getEntityType(), log.getEntityId(),
-                log.getEventType(), log.getActorType().name(), log.getActorId(),
-                actorName(log), log.getOccurredAt());
+    private AuditLogResponse toResponse(AuditLog auditLog) {
+        return new AuditLogResponse(auditLog.getId(), auditLog.getEntityType(), auditLog.getEntityId(),
+                auditLog.getEventType(), auditLog.getActorType().name(), auditLog.getActorId(),
+                actorName(auditLog), auditLog.getOccurredAt());
     }
 
     /**
-     * 감사 로그 조회는 기업 관리자만 (09).
+     * 감사 로그 조회는 기업 관리자만 (09 매트릭스 감사 로그 행).
      * 컨트롤러가 아니라 여기서 판정한다 — 웹 계층 검사는 다른 호출 경로가 생기면 뚫린다.
      */
     private void requireAdmin(AccessContext ctx) {

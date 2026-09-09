@@ -78,7 +78,7 @@ class AuditLogServiceTest {
     }
 
     @Test
-    @DisplayName("목록은 회사 스코프로 조회하고 안 보낸 필터는 조건에서 빠진다 (SC-01, AC-11)")
+    @DisplayName("목록은 회사 스코프로 조회한다 — 안 보낸 필터는 null 그대로 넘어간다 (SC-01)")
     void list_admin_scopedAndOptionalFilters() {
         given(auditLogRepository.search(eq(COMPANY_ID), isNull(), isNull(), isNull(), any()))
                 .willReturn(new PageImpl<>(List.of(로그("{}"))));
@@ -192,5 +192,28 @@ class AuditLogServiceTest {
 
         assertThat(response.actorName()).isNull();
         assertThat(response.actorType()).isEqualTo("MEMBER");
+    }
+
+    @Test
+    @DisplayName("entityType 만 보내면 기간은 null 로 넘어간다")
+    void list_entityTypeOnly() {
+        given(auditLogRepository.search(eq(COMPANY_ID), eq("QUOTE"), isNull(), isNull(), any()))
+                .willReturn(new PageImpl<>(List.of()));
+
+        auditLogService.list(ADMIN, "QUOTE", null, null, PageRequest.of(0, 20));
+
+        then(auditLogRepository).should().search(eq(COMPANY_ID), eq("QUOTE"), isNull(), isNull(), any());
+    }
+
+    @Test
+    @DisplayName("기간만 보내면 entityType 은 null 로 넘어간다")
+    void list_periodOnly() {
+        Instant from = Instant.parse("2026-08-25T00:00:00Z");
+        given(auditLogRepository.search(eq(COMPANY_ID), isNull(), eq(from), isNull(), any()))
+                .willReturn(new PageImpl<>(List.of()));
+
+        auditLogService.list(ADMIN, null, from, null, PageRequest.of(0, 20));
+
+        then(auditLogRepository).should().search(eq(COMPANY_ID), isNull(), eq(from), isNull(), any());
     }
 }

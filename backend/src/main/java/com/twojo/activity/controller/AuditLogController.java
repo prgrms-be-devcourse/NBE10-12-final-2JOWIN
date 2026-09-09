@@ -8,7 +8,6 @@ import com.twojo.global.response.PageResponse;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
-import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -21,8 +20,8 @@ import org.springframework.web.bind.annotation.RestController;
 /**
  * 감사 로그 조회 (07 §B · AC-11) — 기업 관리자 전용이다.
  *
- * <p>역할 판정은 컨트롤러가 아니라 서비스가 한다 (09 구현 위치). 여기서 막으면 다른 호출 경로가
- * 생겼을 때 그대로 뚫린다.
+ * <p>역할 판정은 컨트롤러가 아니라 서비스가 한다. 여기서 막으면 다른 호출 경로가 생겼을 때
+ * 그대로 뚫린다 — 사유는 {@code AuditLogService} javadoc.
  */
 @RestController
 @RequestMapping("/api/v1/audit-logs")
@@ -45,8 +44,8 @@ public class AuditLogController {
     public PageResponse<AuditLogResponse> list(
             AccessContext ctx,
             @RequestParam(required = false) String entityType,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
-            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
+            @RequestParam(required = false) Instant from,
+            @RequestParam(required = false) Instant to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return auditLogService.list(ctx, entityType, from, to, pageable(page, size));
