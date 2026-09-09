@@ -28,8 +28,12 @@ public interface ViewTokenCommand {
      *
      * <p>재발송이면 기존 활성 링크를 {@link ExpiredReason#RESENT}로 만료시키고 새로 발급하는 것까지
      * <b>D 내부에서</b> 처리한다 — C는 {@code expire(RESENT)}를 부르지 않는다.
+     *
+     * <p><b>{@code message}는 담당자가 안내 메일에 덧붙이는 한마디다</b> (08 {@code SendQuoteRequest.message},
+     * 최대 500자 — 길이 검증은 C의 DTO가 한다). <b>null·공백이면 덧붙이지 않는다.</b> 평문 메일이라 이스케이프는 없다.
+     * 재발송(AP-13)의 요청 DTO에는 이 필드가 없으므로 C는 재발송에서 {@code null}을 넘긴다 (v2.0.12, #183).
      */
-    void issue(UUID quoteId, UUID recipientContactId);
+    void issue(UUID quoteId, UUID recipientContactId, String message);
 
     /**
      * 활성 링크 만료 (전이표 §7).

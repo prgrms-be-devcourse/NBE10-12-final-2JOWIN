@@ -3,7 +3,10 @@ package com.twojo.approval.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.BDDMockito.given;
 
+import com.twojo.approval.entity.QuoteViewToken;
 import com.twojo.approval.repository.QuoteViewTokenRepository;
+import java.time.Instant;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.DisplayNameGeneration;
@@ -15,8 +18,8 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
- * {@link ViewTokenQueryImpl} — CU-14 판정을 리포지토리에 위임하는지만 검증한다.
- * 판정 로직이 없으므로 리포지토리 결과가 그대로 전달되는지가 전부다.
+ * {@link ViewTokenQueryImpl} — 판정 로직이 없어 리포지토리 결과가 그대로 전달되는지만 검증한다
+ * (CU-14 존재 판정, NT-12 토큰&rarr;견적 되짚기).
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -44,5 +47,26 @@ class ViewTokenQueryImplTest {
         given(quoteViewTokenRepository.existsByRecipientContactId(contactId)).willReturn(false);
 
         assertThat(viewTokenQuery.existsForContact(contactId)).isFalse();
+    }
+
+    @Test
+    @DisplayName("quoteIdOf — 토큰 id로 그 링크가 가리키는 견적 id를 반환한다")
+    void quoteIdOf_토큰의_견적id를_반환한다() {
+        UUID tokenId = UUID.randomUUID();
+        UUID quoteId = UUID.randomUUID();
+        QuoteViewToken token = QuoteViewToken.issue(
+                quoteId, UUID.randomUUID(), "hash", Instant.parse("2026-09-30T14:59:59Z"));
+        given(quoteViewTokenRepository.findById(tokenId)).willReturn(Optional.of(token));
+
+        assertThat(viewTokenQuery.quoteIdOf(tokenId)).contains(quoteId);
+    }
+
+    @Test
+    @DisplayName("quoteIdOf — 토큰 행이 없으면 Optional.empty를 반환한다 (예외 아님)")
+    void quoteIdOf_행이_없으면_empty를_반환한다() {
+        UUID tokenId = UUID.randomUUID();
+        given(quoteViewTokenRepository.findById(tokenId)).willReturn(Optional.empty());
+
+        assertThat(viewTokenQuery.quoteIdOf(tokenId)).isEmpty();
     }
 }
