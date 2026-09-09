@@ -1,4 +1,4 @@
-# checkov 설정 — .github/workflows/infra-ci-cd.yml 의 checkov 잡이 읽는다.
+# checkov 설정 — .github/workflows/infra-ci.yml 의 checkov 잡이 읽는다.
 #
 # skip-check 는 "검사를 껐다"가 아니라 "의식적으로 감수한다"는 기록이다.
 # 새 항목을 추가할 때는 반드시 이유를 같이 적는다.

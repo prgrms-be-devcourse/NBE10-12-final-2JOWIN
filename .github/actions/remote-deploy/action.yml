@@ -1,6 +1,6 @@
 # 원격 배포 — 배포하는 동안만 22번을 열고 SSH 로 deploy.sh 를 실행한다.
 #
-# backend-cd.yml(이미지 교체)과 infra-ci-cd.yml(설정 전용)이 같은 일을 한다.
+# backend-cd.yml(이미지 교체)과 infra-cd.yml(설정 전용)이 같은 일을 한다.
 # 보안그룹을 여닫는 로직을 두 벌 두면 한쪽만 고치는 사고가 난다.
 #
 # 설계 근거: cd.md §4 · §9
