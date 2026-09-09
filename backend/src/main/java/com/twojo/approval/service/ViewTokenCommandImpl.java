@@ -74,7 +74,7 @@ class ViewTokenCommandImpl implements ViewTokenCommand {
 
     @Override
     @Transactional
-    public void issue(UUID quoteId, UUID recipientContactId) {
+    public void issue(UUID quoteId, UUID recipientContactId, String message) {
         QuoteQuery.PublicQuoteView view = quoteQuery.getPublicView(quoteId);   // 없으면 RESOURCE_NOT_FOUND 전파
         UUID companyId = Objects.requireNonNull(view.companyId(), "companyId"); // QUOTE_SENT는 계약상 필수
 
@@ -93,7 +93,7 @@ class ViewTokenCommandImpl implements ViewTokenCommand {
                 quoteId, recipientContactId, tokenGenerator.hash(rawToken), expiresAt));
 
         String subject = "[" + view.quoteNo() + "] 견적서 열람 안내";
-        String body = renderBody(contact.name(), rawToken, view.validUntil());
+        String body = renderBody(contact.name(), message, rawToken, view.validUntil());
         String recipientEmail = contact.email().trim().toLowerCase(Locale.ROOT);   // 멱등 키 일부 — 호출자 정규화 책임
 
         // refId = 방금 발급한 열람 링크 토큰 id — 발송마다 유일해 email_log 행이 발송마다 새로 생긴다 (MailCommand 계약)
@@ -118,10 +118,15 @@ class ViewTokenCommandImpl implements ViewTokenCommand {
      * 안내 메일 본문 — 평문, 링크는 독립된 한 줄(메일 클라이언트 자동 링크·raw 추출 단순).
      * {@code name}은 {@link CustomerQuery.ContactSummary}가 boundary record라 null 계약이 없다 —
      * 여기서 NPE가 나면 RESENT 만료를 이미 flush한 뒤라 폴백 메일도 못 나가고 트랜잭션이 통째로 롤백된다.
+     *
+     * <p>{@code message}(담당자 한마디, #183)는 인사와 링크 사이에 한 문단으로 들어간다 — 링크 줄의
+     * 독립성은 그대로다. null·공백이면 문단 자체를 넣지 않는다 (계약: 덧붙이지 않는다).
      */
-    private String renderBody(String name, String rawToken, LocalDate validUntil) {
+    private String renderBody(String name, String message, String rawToken, LocalDate validUntil) {
         String safeName = Objects.requireNonNullElse(name, "고객");
+        String note = message == null || message.isBlank() ? "" : message.strip() + "\n\n";
         return safeName + "님, 아래 링크에서 견적서를 확인하실 수 있습니다.\n\n"
+                + note
                 + baseUrl + VIEW_PATH + rawToken + "\n\n"
                 + "유효기간: " + validUntil;
     }

@@ -363,7 +363,7 @@ class QuoteServiceTest {
 
             // 링크가 SENT 전에 발급되어야 한다 — issue()의 계약이 "issue 시점 status는 DRAFT"다 (Q-40)
             InOrder 순서 = Mockito.inOrder(viewTokenCommand, dealCommand);
-            순서.verify(viewTokenCommand).issue(QUOTE_ID, CONTACT_ID);
+            순서.verify(viewTokenCommand).issue(QUOTE_ID, CONTACT_ID, "확인 부탁드립니다");   // message가 D로 넘어간다 (#183)
             순서.verify(dealCommand).promoteToQuoteStage(DEAL_ID);
         }
 
@@ -461,7 +461,7 @@ class QuoteServiceTest {
 
             quoteService.resendViewToken(SALES, QUOTE_ID, new QuoteRequests.ResendViewToken(CONTACT_ID));
 
-            then(viewTokenCommand).should().issue(QUOTE_ID, CONTACT_ID);
+            then(viewTokenCommand).should().issue(QUOTE_ID, CONTACT_ID, null);   // 재발송엔 message가 없다
             assertThat(quote.getStatus()).isEqualTo(Quote.Status.VIEWED);   // 그대로다
         }
 
