@@ -1,5 +1,5 @@
 # Gemini 1차 리뷰 — 리뷰어 시간을 줄이는 참고용. 머지를 막지 않는다.
-# required check는 ci.yml의 build / flyway-validate / flyway-version-check 3개다 (13 §3).
+# required check 는 backend-ci.yml 의 build / flyway-validate / flyway-version-check 3개다 (13 §3).
 # 기준은 13-dev-workflow.md의 PR 셀프 체크리스트 (.github/review-prompt.md).
 # 백엔드만 본다 — 프론트엔드는 팀 합의로 대상 제외.
 name: Gemini Review

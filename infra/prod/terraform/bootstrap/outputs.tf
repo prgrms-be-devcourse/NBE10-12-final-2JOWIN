@@ -26,7 +26,7 @@ output "tf_apply_role_name" {
 }
 
 output "gha_deploy_role_arn" {
-  description = ".github/workflows/deploy.yml"
+  description = ".github/workflows/backend-cd.yml"
   value       = aws_iam_role.gha_deploy.arn
 }
 

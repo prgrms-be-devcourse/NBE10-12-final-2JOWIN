@@ -1,8 +1,14 @@
-# 인프라 CI — infra/prod/terraform/** 를 머지 전에 검증한다 (이슈 #88)
+# Infra CI/CD — 검증(PR)과 반영(push)이 한 파일에 있다.
+#
+# CI 와 CD 를 별도 워크플로로 나누는 것은 4단계에서 한다 (#251).
+# 지금 나누면 경로 목록이 두 벌이 되는데, 그것이 #228 의 원인이었다.
+# 재사용 워크플로로 changes 를 빼면서 함께 나눈다.
+#
+# 원 설계: 이슈 #88
 #
 # 워크플로 레벨 paths 필터를 쓰지 않는다. 이유가 둘이다.
 #
-# PR 에서는 ci.yml 과 같은 이유 — required check 로 지정되면 워크플로가 아예 안 돈
+# PR 에서는 backend-ci.yml 과 같은 이유 — required check 로 지정되면 워크플로가 아예 안 돈
 # PR 에서 체크가 pending 으로 남아 머지가 영원히 막힌다. 잡 레벨 if 스킵은
 # "skipped" 로 보고되어 통과시킨다.
 #
@@ -20,7 +26,7 @@
 #
 # bootstrap/ 는 plan·apply 대상이 아니다. 사람이 로컬에서 1회 돌리는 스택이고,
 # CI 가 apply 하면 상태 버킷 자체를 CI 가 흔들게 된다. 정적 검사만 받는다.
-name: infra
+name: Infra CI/CD
 
 on:
   pull_request:
@@ -75,7 +81,7 @@ jobs:
           filters: |
             infra:
               - 'infra/prod/terraform/**'
-              - '.github/workflows/infra.yml'
+              - '.github/workflows/infra-ci-cd.yml'
               # terraform apply 가 이 파일들을 S3 config/ 로 올린다
               # (modules/storage/config_sync.tf 의 config_dirs).
               # 여기 없으면 파일을 고쳐도 apply 가 돌지 않아 S3 가
@@ -87,7 +93,7 @@ jobs:
               - 'infra/prod/systemd/**'
             scripts:
               - 'infra/**/*.sh'
-              - '.github/workflows/infra.yml'
+              - '.github/workflows/infra-ci-cd.yml'
             config:
               - 'infra/prod/compose/**'
               - 'infra/prod/caddy/**'
@@ -96,7 +102,7 @@ jobs:
               - 'infra/prod/.env.example'
               # 앱이 요구하는 키가 늘면 .env.example 도 따라와야 한다
               - 'backend/src/main/resources/application.yml'
-              - '.github/workflows/infra.yml'
+              - '.github/workflows/infra-ci-cd.yml'
             workflows:
               - '.github/workflows/**'
               - '.github/actions/**'

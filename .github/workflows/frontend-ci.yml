@@ -1,0 +1,61 @@
+# Frontend CI — 머지 전 검증 (ci-cd.md §6)
+#
+# Vercel 은 머지 "후" 에 빌드한다. 거기서 실패하면 develop 이 이미 깨진
+# 뒤다. 그리고 lint·테스트는 아예 돌리지 않는다. 그 둘을 여기서 막는다.
+#
+# 잡을 하나로 둔다. 이름 frontend 가 required check 라 바꾸면 PR 이
+# 머지 불가로 남고, 잡을 나누면 npm ci 를 그만큼 반복하게 된다.
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [develop, 'release/**', main]
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 워크플로 레벨 paths 를 쓰지 않는 이유는 backend-ci.yml 과 같다 —
+  # required check 가 pending 으로 남아 머지가 영원히 막힌다.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/frontend-ci.yml'
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    # 이름을 바꾸지 말 것 — 룰셋의 required check 목록에 이 문자열이 있다
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: 의존성 설치
+        run: npm ci
+
+      # 타입 검사는 build 안에 있다 (tsc -b && vite build).
+      - name: 빌드 (타입 검사 포함)
+        run: npm run build
