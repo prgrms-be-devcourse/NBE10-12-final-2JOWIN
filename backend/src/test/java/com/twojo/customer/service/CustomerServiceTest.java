@@ -291,7 +291,7 @@ class CustomerServiceTest {
     }
 
     @Test
-    @DisplayName("종결 Deal만 있는 고객사는 소프트 삭제된다 (CU-07)")
+    @DisplayName("진행 중 Deal이 없으면 소프트 삭제된다 (CU-07)")
     void delete_noOpenDeals_softDeletes() {
         Customer customer = 고객사();
         given(customerRepository.findByIdAndCompanyIdAndDeletedAtIsNull(CUSTOMER_ID, COMPANY_ID))
@@ -358,5 +358,19 @@ class CustomerServiceTest {
         customerService.deleteContact(SALES, CUSTOMER_ID, CONTACT_ID);
 
         then(contactRepository).should().delete(contact);
+    }
+
+    @Test
+    @DisplayName("타사·타 고객사 담당자 삭제는 404이고, 발송 이력 조회까지 가지 않는다 (SC-01·09)")
+    void deleteContact_outOfScope_notFoundBeforeQuoteCheck() {
+        고객사있음();
+        given(contactRepository.findByCustomerIdAndId(CUSTOMER_ID, CONTACT_ID)).willReturn(Optional.empty());
+
+        assertThatThrownBy(() -> customerService.deleteContact(SALES, CUSTOMER_ID, CONTACT_ID))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+        then(viewTokenQuery).should(never()).existsForContact(any());
+        then(contactRepository).should(never()).delete(any());
     }
 }

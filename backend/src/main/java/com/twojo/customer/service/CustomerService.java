@@ -36,8 +36,7 @@ import org.springframework.transaction.annotation.Transactional;
  * 없어(06 부모 경유 격리) 담당자 단독 조회로는 회사를 판정할 수 없다. 모든 담당자 메서드가
  * 먼저 고객사를 회사 스코프로 찾는 것이 테넌트 방어 그 자체다.
  *
- * <p>삭제는 고객사가 소프트 삭제, 담당자가 하드 삭제다 (11 §1.5). 담당자 차단 둘이 겹치면
- * 대표(422)를 먼저 알린다 — 정본에 순서 규정이 없고 프론트 목이 그 순서다 (#219).
+ * <p>삭제는 고객사가 소프트 삭제, 담당자가 하드 삭제다 (11 §1.5). 담당자 차단 둘의 순서는 {@link #deleteContact} 참조.
  */
 @Service
 @RequiredArgsConstructor
