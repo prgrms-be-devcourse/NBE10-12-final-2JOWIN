@@ -54,9 +54,7 @@ class NotificationCommandImpl implements NotificationCommand {
     @Transactional(propagation = Propagation.MANDATORY)
     public void notifyForDeal(NotificationType type, UUID companyId, UUID dealId,
                               String message, UUID quoteId) {
-        if (type == NotificationType.EMAIL_FAILED) {
-            throw new IllegalArgumentException("EMAIL_FAILED는 Deal 컨텍스트가 아니다 - notify()를 쓴다");
-        }
+        // EMAIL_FAILED도 허용한다 - 호출자(NT-12 리스너)가 실패한 QUOTE_SENT 메일을 딜로 되짚은 경우.
         UUID assignee = dealQuery.assigneeIdOf(dealId);   // 살아있는 Deal은 담당자 항상 있음 (계약)
         Set<UUID> targets = new LinkedHashSet<>();
         if (memberQuery.isActive(assignee)) {

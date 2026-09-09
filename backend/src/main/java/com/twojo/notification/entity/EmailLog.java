@@ -79,13 +79,17 @@ public class EmailLog extends BaseTimeEntity {
     }
 
     /**
-     * 발송 실패 — FAILED. 이미 SENT면 무동작(발송 성공은 뒤집지 않는다).
+     * 발송 실패 — FAILED. SCHEDULED에서만 전이한다 (이미 SENT·FAILED면 무동작).
      * 재시도 1회 후에도 실패면 인앱 EMAIL_FAILED로 통지 (NT-12).
+     *
+     * @return SCHEDULED&rarr;FAILED로 실제 전이했으면 {@code true}, 무동작이면 {@code false} —
+     *         호출자가 이 전이에 한 번만 반응(이벤트 발행)하도록 한다
      */
-    public void markFailed() {
-        if (status == Status.SENT) {
-            return;
+    public boolean markFailed() {
+        if (status != Status.SCHEDULED) {
+            return false;
         }
         this.status = Status.FAILED;
+        return true;
     }
 }

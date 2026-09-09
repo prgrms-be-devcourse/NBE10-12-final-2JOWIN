@@ -116,11 +116,11 @@ class ViewTokenCommandIssueIntegrationTest {
     @Test
     void 재발송하면_활성_링크는_하나만_남고_이전_링크는_RESENT로_남는다() {
         // given — 최초 발송으로 활성 링크가 하나 있다
-        viewTokenCommand.issue(quoteId, contactId);
+        viewTokenCommand.issue(quoteId, contactId, null);
         assertThat(개수("ACTIVE")).isEqualTo(1);
 
         // when — 같은 견적을 재발송하면 (flush 순서가 어긋나면 여기서 부분 유니크 위반)
-        assertThatCode(() -> viewTokenCommand.issue(quoteId, contactId)).doesNotThrowAnyException();
+        assertThatCode(() -> viewTokenCommand.issue(quoteId, contactId, null)).doesNotThrowAnyException();
 
         // then — 활성 1개 · 이전 링크는 RESENT 이력으로 남는다
         assertThat(개수("ACTIVE")).isEqualTo(1);
