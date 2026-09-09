@@ -20,8 +20,9 @@ import org.hibernate.type.SqlTypes;
 
 /**
  * 감사 로그 (AC-07·11) — 각 도메인이 이벤트를 발행하고 B의 리스너가 적재한다.
- * payload 규약: 변경된 필드만 {"field": {"before": .., "after": ..}} · 비밀번호·토큰·해시 저장 금지
- * · 견적·주문 이벤트에는 dealId 필수 (AC-06 타임라인 병합 키).
+ * payload 규약: 변경된 필드는 changes 안에, 표시용 부가 필드는 최상위에 둔다 (06 v1.6.7 · 08 v1.6.21).
+ * {"dealId": "…", "changes": {"stage": {"before": .., "after": ..}}} — 발생형은 changes 키가 없다.
+ * 비밀번호·토큰·해시 저장 금지 · 견적·주문 이벤트에는 dealId 필수 (AC-06 타임라인 병합 키).
  */
 @Getter
 @Entity
