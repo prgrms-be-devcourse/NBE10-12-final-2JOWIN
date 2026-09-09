@@ -669,7 +669,8 @@ export interface DashboardSummaryResponse {
 export interface DashboardWaitingQuote {
   quoteId: string
   quoteNo: string
-  customerName: string
+  /** 서버가 아직 null을 준다 — B의 회사 스코프 이름 조회 창구 대기 (#218) */
+  customerName: string | null
   sentAt: string
   firstViewedAt: string | null
   validUntil: string
