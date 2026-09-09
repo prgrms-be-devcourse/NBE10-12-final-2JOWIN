@@ -30,8 +30,10 @@ const BY_DOMAIN: Record<string, RequestHandler[]> = {
   customer: customerHandlers,
   product: productHandlers,
   deal: dealHandlers,
-  // 고객 열람(/public/api/v1/quotes)은 견적과 같은 자원이라 quote와 함께 켜고 끈다
-  quote: [...quoteHandlers, ...publicQuoteHandlers],
+  quote: quoteHandlers,
+  // 고객 열람(/public/api/v1/quotes — 조회·승인·반려·문의)은 같은 자원이지만 소유가 D(#156)라 따로 켜고 끈다 —
+  // 구성원 견적(C)만 실 API로 두고 고객 링크 화면을 목으로 볼 수 있어야 한다 (둘 다 실 API인 지금은 둘 다 뺀다)
+  publicQuote: publicQuoteHandlers,
   order: orderHandlers,
   activity: [...activityHandlers, ...auditHandlers],
   notification: notificationHandlers,

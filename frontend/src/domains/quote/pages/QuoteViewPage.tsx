@@ -19,8 +19,11 @@ import { QuoteDocument } from '../components/QuoteDocument'
  * 문서 자체는 `QuoteDocument` — 구성원 미리보기(QT-12)와 같은 컴포넌트다.
  *
  * 화면이 지는 책임:
- *  - 응답 완료·정지 회사면 버튼을 막고 이유를 말한다 (AP-11, SC-10)
+ *  - 응답 완료·정지 회사면 버튼을 막고 이유를 말한다 (AP-11, SC-10). 문의는 응답 완료 뒤에도 되지만
+ *    정지 회사는 서버가 409 COMPANY_SUSPENDED라 같이 막는다 (07 §D) — 응답에 사유 필드가 없어
+ *    "발송됨·열람됨인데 respondable=false"를 정지로 읽는다 (조립기 assembleForView와 같은 축)
  *  - 만료 링크는 410 — 재발송을 요청하라고 안내한다 (AP-05)
+ *  - 실패는 모달 안에 보여주고 닫지 않는다 — 입력한 사유를 잃지 않게. 링크·견적 상태가 바뀐 실패(409·410)면 다시 조회한다
  */
 
 type Action =
@@ -58,7 +61,15 @@ export function QuoteViewPage() {
       setDone(action.kind === 'approve' ? 'approved' : action.kind === 'reject' ? 'rejected' : 'inquired')
       queryClient.invalidateQueries({ queryKey: ['quote', 'public', token] })
     },
+    // 다른 탭에서 먼저 응답했거나 링크가 닫힌 경우 — 화면의 버튼 상태도 서버 기준으로 다시 맞춘다
+    onError: (e) => {
+      if (codeOf(e) !== 'VALIDATION_FAILED') queryClient.invalidateQueries({ queryKey: ['quote', 'public', token] })
+    },
   })
+  const openDialog = (kind: NonNullable<typeof dialog>) => (open: boolean) => {
+    setDialog(open ? kind : null)
+    if (!open) mutation.reset()
+  }
 
   if (isPending) return <QuoteSkeleton />
 
@@ -74,30 +85,25 @@ export function QuoteViewPage() {
   }
 
   const vatExcluded = quote.vatMode === 'EXCLUDED'
+  // 발송됨·열람됨인데 응답 불가 = 발송 회사 정지 (SC-10, Q-27). 그 밖의 respondable=false는 응답 완료다
+  const suspended = !quote.respondable && (quote.status === 'SENT' || quote.status === 'VIEWED')
 
   return (
     <>
       {done && <ResponseNotice kind={done} />}
-      {mutation.error && !dialog && (
-        <Callout.Root color="red" mb="4" className="no-print">
-          <Callout.Text>{messageOf(codeOf(mutation.error))}</Callout.Text>
-        </Callout.Root>
-      )}
 
       <QuoteDocument quote={quote} showRemaining={quote.respondable}>
         {!quote.respondable && !done && (
           <Callout.Root color="gray" mt="4">
             <Callout.Text>
-              {quote.status === 'SENT' || quote.status === 'VIEWED'
-                ? messageOf('COMPANY_SUSPENDED')
-                : '이미 응답이 완료된 견적입니다. 내용은 계속 확인하실 수 있습니다.'}
+              {suspended ? messageOf('COMPANY_SUSPENDED') : '이미 응답이 완료된 견적입니다. 내용은 계속 확인하실 수 있습니다.'}
             </Callout.Text>
           </Callout.Root>
         )}
 
         {/* 승인이 solid·가장 넓게, 나머지는 surface. 모두 size 3(40px) */}
         <Flex gap="2" mt="5" wrap="wrap" className="no-print">
-          <Button size="3" variant="surface" color="gray" onClick={() => setDialog('inquiry')}>
+          <Button size="3" variant="surface" color="gray" disabled={suspended} onClick={() => setDialog('inquiry')}>
             문의 남기기
           </Button>
           <Button size="3" variant="surface" color="red" disabled={!quote.respondable} onClick={() => setDialog('reject')}>
@@ -115,12 +121,13 @@ export function QuoteViewPage() {
 
       <ApproveDialog
         open={dialog === 'approve'}
-        onOpenChange={(open) => setDialog(open ? 'approve' : null)}
+        onOpenChange={openDialog('approve')}
         companyName={quote.companyName}
         quoteNo={quote.quoteNo}
         totalAmount={quote.totalAmount}
         vatExcluded={vatExcluded}
         loading={mutation.isPending}
+        error={mutation.error}
         onConfirm={(responder) =>
           mutation.mutate({ kind: 'approve', body: { responderName: responder.name, responderTitle: responder.title || undefined } })
         }
@@ -128,8 +135,9 @@ export function QuoteViewPage() {
 
       <RejectDialog
         open={dialog === 'reject'}
-        onOpenChange={(open) => setDialog(open ? 'reject' : null)}
+        onOpenChange={openDialog('reject')}
         loading={mutation.isPending}
+        error={mutation.error}
         onConfirm={(responder, reason) =>
           mutation.mutate({ kind: 'reject', body: { reason, responderName: responder.name, responderTitle: responder.title || undefined } })
         }
@@ -137,8 +145,9 @@ export function QuoteViewPage() {
 
       <InquiryDialog
         open={dialog === 'inquiry'}
-        onOpenChange={(open) => setDialog(open ? 'inquiry' : null)}
+        onOpenChange={openDialog('inquiry')}
         loading={mutation.isPending}
+        error={mutation.error}
         onSubmit={(content) => mutation.mutate({ kind: 'inquiry', body: { content } })}
       />
     </>

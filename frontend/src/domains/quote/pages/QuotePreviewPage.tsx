@@ -31,6 +31,17 @@ export function QuotePreviewPage() {
         <QuoteSkeleton />
       ) : error || !data ? (
         <NotFound code={codeOf(error)} backLabel="견적 목록으로" onBack={() => navigate('/quotes')} onRetry={() => refetch()} />
+      ) : !data.companyName || !data.assignee ? (
+        // #114 전까지 서버 미리보기는 boundary PublicQuoteView 모양이라 회사·담당자 블록이 없다 — 크래시 대신 안내.
+        // #114가 머지되면 이 분기와 함께 지운다
+        <Callout.Root color="amber" size="2">
+          <Callout.Text>
+            미리보기 응답이 아직 고객 화면 형식이 아닙니다 (백엔드 #114 대기). 금액·항목은 견적 상세에서 확인해 주세요.
+          </Callout.Text>
+          <Flex justify="center" mt="3" className="no-print">
+            <Button size="2" variant="soft" onClick={() => navigate(`/quotes/${id}`)}>견적으로 돌아가기</Button>
+          </Flex>
+        </Callout.Root>
       ) : (
         <QuoteDocument quote={data} showRemaining={data.status === 'DRAFT' || data.status === 'SENT' || data.status === 'VIEWED'}>
           <Flex justify="center" mt="5" className="no-print">
