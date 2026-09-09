@@ -39,7 +39,14 @@ services:
       DOMAIN: ${DOMAIN:?DOMAIN 이 .env 에 없다}
       ACME_EMAIL: ${ACME_EMAIL:?ACME_EMAIL 이 .env 에 없다}
     volumes:
-      - ../caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      # 파일 하나가 아니라 디렉터리를 붙인다. 파일 단위 바인드 마운트는
+      # 경로가 아니라 inode 에 묶인다. deploy.sh 의 s3 sync 는 파일을
+      # 덮어쓰지 않고 새로 만들어 바꿔치우므로 inode 가 달라지고,
+      # 컨테이너는 재생성 전까지 영원히 옛 파일을 본다.
+      #
+      # 그래서 caddy reload 가 성공하는데도 내용이 그대로였다. 설정 번들이
+      # 서버까지는 갔지만 컨테이너 안까지는 못 갔다.
+      - ../caddy:/etc/caddy:ro
       # 발급받은 인증서가 여기 있다. 잃으면 재발급해야 한다.
       - caddy-data:/data
       - caddy-config:/config
