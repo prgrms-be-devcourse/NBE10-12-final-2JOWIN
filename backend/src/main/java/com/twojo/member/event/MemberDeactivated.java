@@ -2,6 +2,7 @@ package com.twojo.member.event;
 
 import com.twojo.boundary.AuditActor;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 
 /**
@@ -15,12 +16,24 @@ import java.util.UUID;
  * 넘어가지 않았는데 넘겼다는 기록이 남는다. 값이 {@code null}이면 "대상을 안 보냈다"가 아니라
  * <b>"넘어간 Deal이 없다"</b>는 뜻이다.
  *
+ * <p>{@code dealIds}는 Deal 하나하나가 아니라 <b>이 한 건에 묶어</b> 남기는 이관 내역이다 (Q-48).
+ * 구독자가 {@code deal}을 읽지 못해, 여기 없으면 어느 Deal이 넘어갔는지 어디서도 복구되지 않는다.
+ * 빈 목록일 수는 있어도 {@code null}일 수는 없다.
+ *
  * @param memberId 비활성화된 구성원 — 감사 기록의 대상
  * @param actor 실행한 관리자
+ * @param dealIds 실제로 넘어간 Deal id — 이관이 없었으면 빈 목록
  */
 public record MemberDeactivated(
         UUID companyId,
         UUID memberId,
         AuditActor actor,
         Instant occurredAt,
-        UUID transferToMemberId) {}
+        UUID transferToMemberId,
+        List<UUID> dealIds) {
+
+    /** 리스너가 별도 스레드에서 읽으므로 발행 시점에 복사해 고정한다. null이면 여기서 터진다. */
+    public MemberDeactivated {
+        dealIds = List.copyOf(dealIds);
+    }
+}

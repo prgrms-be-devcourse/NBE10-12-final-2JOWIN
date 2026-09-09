@@ -94,8 +94,12 @@ public class MemberAdminService {
      * 생긴다 (Q-48).
      *
      * <p>이미 비활성인 구성원을 다시 불러도 막지 않는다. 이 흐름은 몇 번을 돌아도 결과가 같고,
-     * 05에 그 경우를 막는 전이가 없다. 다만 <b>이벤트는 상태가 실제로 바뀐 호출에서만</b> 나간다 —
-     * 재호출까지 발행하면 아무 일도 없었던 호출이 감사 기록에 비활성화로 쌓인다.
+     * 05에 그 경우를 막는 전이가 없다. 다만 <b>이벤트는 실제로 무언가 일어난 호출에서만</b> 나간다 —
+     * 아무것도 바뀌지 않은 재호출까지 발행하면 없던 일이 감사 기록에 비활성화로 쌓인다.
+     *
+     * <p>상태가 이미 비활성이어도 <b>Deal이 넘어갔다면 발행한다.</b> 배정에 잠금이 없어 비활성
+     * 담당자에게 Deal이 남을 수 있고({@code DealCommand.reassignOpenDeals}의 v1 공백), 그 이관은
+     * 다른 어떤 이벤트도 싣지 않는다 — 여기서 빠뜨리면 어디에도 남지 않는다.
      *
      * <p>세션 폐기와 이벤트가 같은 시각을 쓴다. {@code Instant.now()}를 각자 부르면 두 기록의
      * 시각이 갈려, 나중에 감사 로그와 세션 이력을 맞춰 볼 때 같은 사건인지 판단할 근거가 흐려진다.
@@ -110,17 +114,18 @@ public class MemberAdminService {
             throw new BusinessException(ErrorCode.LAST_ADMIN_PROTECTED);
         }
         boolean wasActive = member.isActive();
-        UUID transferredTo = transferOpenDeals(ctx, member, request.transferToMemberId());
+        List<UUID> movedDeals = transferOpenDeals(ctx, member, request.transferToMemberId());
 
         member.deactivate();
         Instant occurredAt = Instant.now();
         sessionRevoker.revokeOnDeactivation(memberId, occurredAt);
 
-        if (wasActive) {
+        if (wasActive || !movedDeals.isEmpty()) {
+            UUID transferredTo = movedDeals.isEmpty() ? null : request.transferToMemberId();
             eventPublisher.publishEvent(new MemberDeactivated(
                     ctx.companyId(), memberId,
                     AuditActor.member(ctx.memberId()), occurredAt,
-                    transferredTo));
+                    transferredTo, movedDeals));
         }
         return MemberResponse.of(member);
     }
@@ -145,23 +150,20 @@ public class MemberAdminService {
      * <p>넘긴 건수가 처음 센 건수와 다르면 그 사이 배정이 바뀐 것이다. 지금은 잠금이 없어 드물게
      * 생길 수 있고, 남은 Deal은 관리자가 담당자 변경으로 바로잡는다.
      *
-     * @return 실제로 Deal을 넘겨받은 구성원. 한 건도 넘어가지 않았으면 {@code null}이다 —
-     *     받은 인자를 그대로 돌려주지 않는 이유는, 넘길 Deal이 없어 이관을 건너뛴 경우에도
-     *     요청에는 대상이 실려 올 수 있어서다. 호출자가 이 값을 감사 기록에 싣는다.
+     * @return 실제로 넘어간 Deal id. 이관을 건너뛰었으면 빈 목록이다 — 넘길 Deal이 없어 건너뛴
+     *     경우에도 요청에는 대상이 실려 올 수 있으므로, 요청값이 아니라 이 결과가 무엇이 일어났는지를
+     *     말한다. 호출자가 이 목록을 감사 기록에 싣는다 (Q-48).
      */
-    private UUID transferOpenDeals(AccessContext ctx, Member member, UUID transferToMemberId) {
+    private List<UUID> transferOpenDeals(AccessContext ctx, Member member, UUID transferToMemberId) {
         if (dealQuery.countOpenAssigned(ctx.companyId(), member.getId()) == 0) {
-            return null;
+            return List.of();
         }
         if (transferToMemberId == null) {
             throw new BusinessException(ErrorCode.MEMBER_INACTIVE_TRANSFER_REQUIRED);
         }
         requireTransferTarget(ctx, member, transferToMemberId);
 
-        List<UUID> moved =
-                dealCommand.reassignOpenDeals(ctx.companyId(), member.getId(), transferToMemberId);
-
-        return moved.isEmpty() ? null : transferToMemberId;
+        return dealCommand.reassignOpenDeals(ctx.companyId(), member.getId(), transferToMemberId);
     }
 
     /**
