@@ -33,7 +33,8 @@ export function MePage() {
           </Tabs.List>
           <Box pt="5">
             <Tabs.Content value="profile">
-              <ProfileForm key={session.memberId + session.name + (session.phone ?? '')} />
+              {/* key는 계정 단위만 — 이름·연락처까지 넣으면 저장 성공 직후 리마운트되어 "저장되었습니다"가 뜨기도 전에 사라진다 */}
+              <ProfileForm key={session.memberId} />
             </Tabs.Content>
             <Tabs.Content value="password">
               <PasswordForm />

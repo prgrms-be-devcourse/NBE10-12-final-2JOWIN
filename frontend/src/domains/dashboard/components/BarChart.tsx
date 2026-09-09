@@ -1,5 +1,6 @@
 import { Box, Flex, Text, Tooltip } from '@radix-ui/themes'
 import type { ReactNode } from 'react'
+import { Link } from 'react-router'
 
 export interface BarRow {
   key: string
@@ -72,9 +73,10 @@ export function BarChart({ rows, color = 'var(--accent-9)', max, labelWidth = 72
         return (
           <Tooltip key={row.key} content={row.tooltip} side="top">
             {row.href ? (
-              <a href={row.href} style={{ color: 'inherit', textDecoration: 'none', display: 'block' }}>
+              // SPA 이동 — <a href>는 전체 리로드라 액세스 토큰(메모리)과 목 store가 날아간다
+              <Link to={row.href} style={{ color: 'inherit', textDecoration: 'none', display: 'block' }}>
                 {bar}
-              </a>
+              </Link>
             ) : (
               <div>{bar}</div>
             )}

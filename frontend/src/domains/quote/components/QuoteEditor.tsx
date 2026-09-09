@@ -1,13 +1,14 @@
 import { useMemo, useState } from 'react'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Badge, Button, Callout, Card, Flex, Grid, IconButton, Select, Separator, Table, Text, TextArea, TextField, Tooltip } from '@radix-ui/themes'
 import { ArrowDownIcon, ArrowUpIcon, EyeOpenIcon, InfoCircledIcon, PaperPlaneIcon, Pencil2Icon, PlusIcon, TrashIcon } from '@radix-ui/react-icons'
 import { ApiError } from '../../../shared/api/client'
 import { ErrorCallout, Field, Money } from '../../../shared/ui'
 import { VAT_MODES, VAT_MODE_LABEL, type VatMode } from '../../../shared/ui/status'
+import { date } from '../../../shared/lib/format'
 import type { ProductResponse, QuoteDetailResponse, UpdateQuoteRequest } from '../../../shared/api/types'
 import { fetchProducts } from '../../product/api'
-import { useUpdateQuote } from '../hooks'
+import { quoteKeys, useUpdateQuote } from '../hooks'
 
 /**
  * 견적 편집기 (10 §5.4 · QT-02~11·23·24) — 작성 중(DRAFT)에만 나타난다. 발송 뒤에는 읽기 전용 (QT-16).
@@ -17,6 +18,7 @@ import { useUpdateQuote } from '../hooks'
  *  - 금액은 입력 중 클라이언트가 미리 계산하되, 저장 후 서버 값으로 덮어쓴다 (QT-08·22)
  *  - 전체 갱신(PUT)이므로 항목 편집은 로컬에서 모으고 저장 때 한 번에
  *  - 순서는 위/아래 버튼 (드래그 핸들 대신 — QT-07의 순서 변경은 만족한다)
+ *  - 409 STALE_VERSION은 [새로고침]으로 상세를 재조회한다 — 호출부가 version을 key로 쓰므로 편집기가 서버 값으로 다시 마운트된다 (12 §6.3-4)
  */
 
 interface Row {
@@ -59,6 +61,7 @@ export function QuoteEditor({ quote, onSend, onPreview }: Props) {
   const [rows, setRows] = useState<Row[]>(() => toRows(quote))
   const [catalogPick, setCatalogPick] = useState('')
   const update = useUpdateQuote(quote.id)
+  const queryClient = useQueryClient()
 
   // 판매 중지 상품은 선택 목록에 나타나지 않는다 (PR-06)
   const products = useQuery({ queryKey: ['product', 'list', { status: 'ACTIVE', size: 100 }], queryFn: () => fetchProducts({ status: 'ACTIVE', size: 100 }) })
@@ -80,7 +83,8 @@ export function QuoteEditor({ quote, onSend, onPreview }: Props) {
   )
   const dirty = JSON.stringify(body) !== JSON.stringify(saved)
   const amounts = preview(rows)
-  const today = new Date().toISOString().slice(0, 10)
+  // 유효기간 비교·date min은 KST 오늘 기준 — UTC 자정 전후(한국 아침 9시 전)에 하루가 어긋난다
+  const today = date(new Date().toISOString())
   const canSubmit = rows.length > 0 && validUntil > today && rows.every((r) => r.name.trim() && r.unit.trim() && r.quantity > 0 && r.unitPrice >= 0)
   const apiError = update.error instanceof ApiError ? update.error : null
 
@@ -253,7 +257,9 @@ export function QuoteEditor({ quote, onSend, onPreview }: Props) {
         </Flex>
       </Grid>
 
-      {apiError && apiError.code !== 'VALIDATION_FAILED' && <ErrorCallout code={apiError.code} />}
+      {apiError && apiError.code !== 'VALIDATION_FAILED' && (
+        <ErrorCallout code={apiError.code} onRetry={() => queryClient.invalidateQueries({ queryKey: quoteKeys.detail(quote.id) })} />
+      )}
       {apiError?.code === 'VALIDATION_FAILED' && apiError.reasonOf('items') && <ErrorCallout code="VALIDATION_FAILED" />}
 
       <Flex justify="end" gap="2" mt="4" align="center" wrap="wrap">
