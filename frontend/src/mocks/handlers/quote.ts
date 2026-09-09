@@ -295,7 +295,7 @@ export const quoteHandlers = [
     deal.wonAmount = db.orders.filter((o) => o.dealId === deal.id).reduce((acc, o) => acc + o.totalAmount, 0) // DL-18
     recordAudit({ entityType: 'ORDER', entityId: order.id, eventType: 'ORDER_CREATED', actorType: 'MEMBER', actorId: member.id, changes: { orderNo: { before: null, after: order.orderNo } } })
     recordAuto(deal.id, `주문으로 전환했습니다 — ${order.orderNo}`, member.id)
-    const body: OrderDetailResponse = { ...order, items: db.orderItems.get(order.id) ?? [] }
+    const body: OrderDetailResponse = { ...order, dealStage: deal.stage, items: db.orderItems.get(order.id) ?? [] }
     return HttpResponse.json(body, { status: 201 })
   }),
 ]
