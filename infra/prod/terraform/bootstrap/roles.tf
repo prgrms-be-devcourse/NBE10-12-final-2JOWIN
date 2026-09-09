@@ -136,6 +136,10 @@ data "aws_iam_policy_document" "gha_deploy" {
       "ecr:UploadLayerPart",
       "ecr:CompleteLayerUpload",
       "ecr:PutImage",
+      # 태그가 이미 있는지 먼저 본다. ECR 이 IMMUTABLE 이라 같은 태그를
+      # 다시 밀면 거부되는데, 배포가 push 뒤에 실패하면 재실행이 거기서
+      # 막힌다 (#258). 읽기 전용이고 이 저장소로만 좁혀져 있다.
+      "ecr:DescribeImages",
     ]
     resources = [local.ecr_repo_arn]
   }
