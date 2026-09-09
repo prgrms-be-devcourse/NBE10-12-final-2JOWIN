@@ -105,6 +105,11 @@ public class SecurityConfig {
         return stateless(http)
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers("/actuator/health/**", "/actuator/info").permitAll()
+                        // Prometheus 가 도커 네트워크 안에서 backend:8080 을 직접 스크레이프한다.
+                        // 여기서 막으면 403 이 나가 JVM·HikariCP 지표가 통째로 사라지고,
+                        // 그 지표에 걸린 알람은 영원히 발화하지 않는다.
+                        // 공개망에서는 Caddy 가 /actuator/* 를 404 로 막는다 (infra/prod/caddy/Caddyfile).
+                        .requestMatchers("/actuator/prometheus").permitAll()
                         // Swagger — API 테스트용. TODO(A): 운영 프로필에서는 차단
                         .requestMatchers("/swagger-ui/**", "/v3/api-docs/**").permitAll()
                         // 미처리 예외를 서블릿이 여기로 포워딩한다. 막으면 500이 403으로 둔갑한다

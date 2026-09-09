@@ -60,6 +60,14 @@ management:
     health:
       probes:
         enabled: true
+  # Boot 4 부터 지표 내보내기가 옵트인이다. 이 줄이 없으면
+  # management.defaults.metrics.export.enabled 가 false 로 평가되어
+  # PrometheusMeterRegistry 빈이 아예 만들어지지 않고,
+  # exposure 에 prometheus 를 적어도 /actuator/prometheus 는 404 다 (#221).
+  prometheus:
+    metrics:
+      export:
+        enabled: true
 
 ---
 # 로컬 개발 — infra/dev/docker-compose.yml의 PostgreSQL 사용
