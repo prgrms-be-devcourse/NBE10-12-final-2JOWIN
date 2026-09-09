@@ -10,7 +10,7 @@
 # 이건 'AWS 를 만지는 것'을 막는다.
 #
 # 설계 근거: cd.md
-name: deploy
+name: Backend CD
 
 on:
   push:
@@ -18,7 +18,7 @@ on:
     paths:
       - 'backend/**'
       - 'infra/prod/docker/**'
-      - '.github/workflows/deploy.yml'
+      - '.github/workflows/backend-cd.yml'
       - '.github/actions/remote-deploy/**'
   workflow_dispatch:
     inputs:
@@ -44,7 +44,7 @@ env:
 
 jobs:
   preflight:
-    name: preflight
+    name: 사전 점검
     runs-on: ubuntu-latest
     outputs:
       ready: ${{ steps.gate.outputs.ready }}
@@ -64,7 +64,7 @@ jobs:
         run: echo "ready=${HAS_ALL}" >> "$GITHUB_OUTPUT"
 
   deploy:
-    name: deploy
+    name: 배포
     needs: preflight
     if: needs.preflight.outputs.ready == 'true'
 
@@ -91,27 +91,31 @@ jobs:
       id-token: write # OIDC
 
     steps:
-      - uses: actions/checkout@v4
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
 
-      - uses: actions/setup-java@v4
+      - name: Java 준비
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Gradle 준비
+        uses: gradle/actions/setup-gradle@v4
 
       # CI 가 PR 에서 이미 테스트까지 통과시켰다. 여기서는 jar 만 만든다.
-      - name: bootJar
+      - name: 1. jar 빌드
         if: ${{ !inputs.config_only }}
         working-directory: backend
         run: ./gradlew bootJar
 
-      - uses: aws-actions/configure-aws-credentials@v6
+      - name: AWS 자격 취득 (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
         with:
           role-to-assume: ${{ secrets.AWS_GHA_DEPLOY_ROLE_ARN }}
           aws-region: ${{ env.AWS_REGION }}
 
       - id: ecr
-        name: ECR 로그인
+        name: 2. ECR 로그인
         run: |
           set -euo pipefail
           account="$(aws sts get-caller-identity --query Account --output text)"
@@ -123,7 +127,7 @@ jobs:
 
       # 태그는 git SHA 뿐이다. latest 를 쓰지 않아 ECR 이 IMMUTABLE 일 수 있고,
       # 그래서 "직전 SHA 로 롤백"이 언제나 같은 이미지를 가리킨다.
-      - name: 이미지 빌드 · push
+      - name: 3. 이미지 빌드 · 푸시
         if: ${{ !inputs.config_only }}
         run: |
           set -euo pipefail
@@ -143,7 +147,7 @@ jobs:
       # 뒤라 ECR 에 그 태그가 없어 manifest unknown 으로 죽었다.
       # 여기서 A 는 언제나 빈 문자열이므로 관용구를 고쳐 쓸 여지가 없다.
       - id: target
-        name: 배포할 이미지 결정
+        name: 4. 배포할 이미지 결정
         env:
           CONFIG_ONLY: ${{ inputs.config_only }}
           ECR_IMAGE: ${{ steps.ecr.outputs.image }}
@@ -162,7 +166,7 @@ jobs:
       # continue-on-error 인 이유: 실패해도 Discord 통보까지는 가야 한다.
       # job 성패는 맨 아래에서 종료 코드로 다시 판정한다.
       - id: deploy
-        name: 배포 (SSH)
+        name: 5. 배포 (SSH)
         continue-on-error: true
         uses: ./.github/actions/remote-deploy
         with:
@@ -176,7 +180,7 @@ jobs:
 
       # deploy.sh 의 종료 코드가 그대로 메시지가 된다.
       # 분기 로직을 워크플로에 다시 쓰지 않는다.
-      - name: Discord 통보
+      - name: 6. Discord 통보
         if: always()
         env:
           DISCORD_WEBHOOK_URL: ${{ secrets.DISCORD_WEBHOOK_URL }}
@@ -219,7 +223,7 @@ jobs:
 
       # continue-on-error 로 넘어온 실패를 여기서 job 실패로 되돌린다.
       # 75(다른 배포 진행 중)는 실패가 아니다 — 줄 서서 기다렸을 뿐이다.
-      - name: 배포 결과 판정
+      - name: 7. 결과 판정
         if: always()
         env:
           RC: ${{ steps.deploy.outputs.rc }}
