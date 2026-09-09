@@ -65,7 +65,7 @@
       "id": 2,
       "title": "요청률",
       "description": "지표 스크레이프(handler=metrics)와 HTTPS 리다이렉트(static_response)는 뺀다. 실제 API 트래픽만 센다.",
-      "gridPos": { "h": 5, "w": 9, "x": 6, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 6, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -92,7 +92,7 @@
       "id": 3,
       "title": "5xx 비율",
       "description": "엣지 기준이다. 앱이 죽으면 백엔드 지표는 아예 안 나오지만 Caddy 는 그때도 502 를 센다.",
-      "gridPos": { "h": 5, "w": 9, "x": 15, "y": 1 },
+      "gridPos": { "h": 5, "w": 6, "x": 12, "y": 1 },
       "datasource": { "type": "prometheus", "uid": "prometheus" },
       "targets": [
         {
@@ -120,6 +120,41 @@
         "overrides": []
       },
       "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true } }
+    },
+
+    {
+      "type": "timeseries",
+      "id": 13,
+      "title": "응답시간 p95",
+      "description": "5xx 가 0 이어도 여기가 느리면 장애다. Caddy 히스토그램 기준 — 앱이 답을 못 해도 엣지는 잰다.",
+      "gridPos": { "h": 5, "w": 6, "x": 18, "y": 1 },
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "prometheus", "uid": "prometheus" },
+          "editorMode": "code",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(caddy_http_request_duration_seconds_bucket{handler!=\"metrics\"}[5m])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "min": 0,
+          "custom": { "fillOpacity": 10, "lineWidth": 2, "showPoints": "never" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.5 },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom", "showLegend": false } }
     },
 
     {
@@ -445,6 +480,42 @@
           }
         },
         "overrides": []
+      }
+    },
+
+    {
+      "type": "row",
+      "id": 500,
+      "title": "로그",
+      "collapsed": false,
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 27 },
+      "panels": []
+    },
+    {
+      "type": "logs",
+      "id": 14,
+      "title": "에러 로그",
+      "description": "ERROR 는 알람이 아니라 패널이다 (monitoring.md §4.2). 지표가 이상하면 바로 아래에서 로그를 본다 — Explore 로 넘어가지 않는다.\n\n라벨이 아니라 본문을 훑는다. level 라벨은 JSON 으로 찍는 컨테이너에만 붙어서, 평문으로 찍는 백엔드 로그가 통째로 빠진다.",
+      "gridPos": { "h": 10, "w": 24, "x": 0, "y": 28 },
+      "datasource": { "type": "loki", "uid": "loki" },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": { "type": "loki", "uid": "loki" },
+          "editorMode": "code",
+          "expr": "{job=\"docker\", env=\"prod\"} |~ \"(?i)(error|exception|fatal)\"",
+          "queryType": "range"
+        }
+      ],
+      "options": {
+        "showTime": true,
+        "showLabels": false,
+        "showCommonLabels": false,
+        "wrapLogMessage": true,
+        "prettifyLogMessage": false,
+        "enableLogDetails": true,
+        "dedupStrategy": "none",
+        "sortOrder": "Descending"
       }
     }
   ]
