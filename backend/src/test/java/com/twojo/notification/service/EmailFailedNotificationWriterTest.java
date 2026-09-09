@@ -84,4 +84,15 @@ class EmailFailedNotificationWriterTest {
         assertThatThrownBy(() -> writer.write(event())).isInstanceOf(RuntimeException.class);
         then(notificationCommand).shouldHaveNoInteractions();
     }
+
+    @Test
+    @DisplayName("QUOTE_SENT가 아닌 이벤트면 정합 깨짐 - IllegalStateException (notifiesInApp ↔ write 방어선)")
+    void QUOTE_SENT가_아니면_IllegalStateException() {
+        EmailDeliveryFailedEvent wrong = new EmailDeliveryFailedEvent(
+                EMAIL_LOG_ID, MailCommand.TemplateType.PASSWORD_RESET, COMPANY_ID, TOKEN_ID);
+
+        assertThatThrownBy(() -> writer.write(wrong)).isInstanceOf(IllegalStateException.class);
+        then(viewTokenQuery).shouldHaveNoInteractions();
+        then(notificationCommand).shouldHaveNoInteractions();
+    }
 }

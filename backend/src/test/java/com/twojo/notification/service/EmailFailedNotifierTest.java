@@ -13,6 +13,8 @@ import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -44,10 +46,11 @@ class EmailFailedNotifierTest {
         then(writer).should().write(e);
     }
 
-    @Test
-    @DisplayName("QUOTE_SENT가 아닌 실패는 무시한다 (v1 스코프)")
-    void 다른_template은_무시한다() {
-        notifier.on(event(MailCommand.TemplateType.PASSWORD_RESET));
+    @ParameterizedTest
+    @EnumSource(value = MailCommand.TemplateType.class, names = "QUOTE_SENT", mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("QUOTE_SENT가 아닌 template 실패는 writer에 위임하지 않는다 (notifiesInApp이 걸러낸다)")
+    void QUOTE_SENT가_아니면_무시한다(MailCommand.TemplateType type) {
+        notifier.on(event(type));
 
         then(writer).should(never()).write(any());
     }

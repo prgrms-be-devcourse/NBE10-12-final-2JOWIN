@@ -1,5 +1,6 @@
 package com.twojo.notification.service;
 
+import com.twojo.boundary.MailCommand;
 import com.twojo.boundary.NotificationCommand;
 import com.twojo.boundary.NotificationCommand.NotificationType;
 import com.twojo.boundary.QuoteQuery;
@@ -36,6 +37,12 @@ class EmailFailedNotificationWriter {
 
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void write(EmailDeliveryFailedEvent event) {
+        if (event.templateType() != MailCommand.TemplateType.QUOTE_SENT) {
+            // notifiesInApp이 통과시켰는데 write()가 처리법을 모르는 조합 — 정합이 깨졌다.
+            // NT-06에서 이 자리가 switch(templateType) { QUOTE_SENT / QUOTE_EXPIRING; default -> throw }로 바뀐다.
+            throw new IllegalStateException(
+                    "EmailFailedNotificationWriter는 QUOTE_SENT만 처리한다 - notifiesInApp과 어긋남: " + event.templateType());
+        }
         UUID quoteId = viewTokenQuery.quoteIdOf(event.refId()).orElse(null);
         if (quoteId == null) {
             log.warn("EMAIL_FAILED 알림 건너뜀 - 토큰 행 없음, emailLogId={}", event.emailLogId());
