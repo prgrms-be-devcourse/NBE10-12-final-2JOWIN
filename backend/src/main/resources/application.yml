@@ -68,6 +68,14 @@ management:
     metrics:
       export:
         enabled: true
+  # 모든 지표에 application 라벨을 붙인다. 커뮤니티 대시보드(JVM 4701 등)가
+  # 이 라벨로 앱을 고르므로, 없으면 패널이 전부 빈 화면으로 뜬다.
+  #
+  # 값이 하나뿐이라 시계열이 늘지 않는다 — job 라벨과 같은 성격이다
+  # (monitoring.md §3.5 카디널리티).
+  metrics:
+    tags:
+      application: ${spring.application.name}
 
 ---
 # 로컬 개발 — infra/dev/docker-compose.yml의 PostgreSQL 사용
