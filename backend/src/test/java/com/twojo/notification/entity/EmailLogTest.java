@@ -82,23 +82,33 @@ class EmailLogTest {
     }
 
     @Test
-    @DisplayName("markFailed()는 SCHEDULED를 FAILED로 전이한다")
+    @DisplayName("markFailed()는 SCHEDULED를 FAILED로 전이하고 true를 반환한다")
     void markFailed_fromScheduled() {
         EmailLog log = scheduled();
 
-        log.markFailed();
+        boolean transitioned = log.markFailed();
 
+        assertThat(transitioned).isTrue();
         assertThat(log.getStatus()).isEqualTo(Status.FAILED);
     }
 
     @Test
-    @DisplayName("이미 SENT면 markFailed()는 실패로 뒤집지 않는다")
+    @DisplayName("이미 FAILED면 markFailed()는 false를 반환한다 (전이 없음 — 중복 알림 방지)")
+    void markFailed_falseWhenAlreadyFailed() {
+        EmailLog log = scheduled();
+        log.markFailed();
+
+        assertThat(log.markFailed()).isFalse();
+        assertThat(log.getStatus()).isEqualTo(Status.FAILED);
+    }
+
+    @Test
+    @DisplayName("이미 SENT면 markFailed()는 실패로 뒤집지 않고 false를 반환한다")
     void markFailed_noOpWhenSent() {
         EmailLog log = scheduled();
         log.markSent(Instant.now());
 
-        log.markFailed();
-
+        assertThat(log.markFailed()).isFalse();
         assertThat(log.getStatus()).isEqualTo(Status.SENT);
     }
 }
