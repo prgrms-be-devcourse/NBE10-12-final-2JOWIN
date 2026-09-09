@@ -56,6 +56,19 @@ jobs:
       - name: 의존성 설치
         run: npm ci
 
+      # 빠르게 실패하는 것부터 앞에 둔다 — lint 수 초 · 테스트 2초 · 빌드가 가장 길다.
+      # 앞에서 걸리면 뒤는 안 돌아 피드백이 그만큼 빨라진다.
+      #
+      # 셋 다 한 잡 안에 있는 이유: 잡 이름 frontend 가 required check 라
+      # 나누면 룰셋을 함께 고쳐야 하고, npm ci 를 그만큼 반복하게 된다.
+      - name: lint
+        run: npm run lint
+
+      # 테스트 파일이 10개 있는데 CI 가 한 번도 돌리지 않고 있었다.
+      # 통과 여부를 아무도 몰랐고 마침 통과하고 있었을 뿐이다 (#251 2단계).
+      - name: 테스트
+        run: npm test
+
       # 타입 검사는 build 안에 있다 (tsc -b && vite build).
       - name: 빌드 (타입 검사 포함)
         run: npm run build
