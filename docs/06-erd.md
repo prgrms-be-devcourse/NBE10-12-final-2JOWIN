@@ -1,4 +1,4 @@
-# 데이터 모델(ERD) — v1.6.6
+# 데이터 모델(ERD) — v1.6.7
 
 > 🧭 [문서 지도](README.md) · ← [05 상태 전이표](05-state-transitions.md) · [07 API 명세서](07-api-spec.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 | 근거 |
 | --- | --- | --- |
+| v1.6.7 | **audit_log payload 봉투 명시(2026-09-09)** — 변경 필드를 `changes`로 감싸고 부가 필드는 최상위에 둔다. 두 종류가 최상위에 섞이면 "값이 바뀐 것"과 "표시용으로 딸려온 값"을 구별할 수 없어, 감사 상세의 `changes`에 무엇을 담을지가 값 모양 추측에 걸린다. 08이 위임한 이벤트 포맷 정의(이슈 #22 §2)가 이미 이 형태이고 발행 쪽도 그대로 구현돼 있는데 문서에만 없었다. 스키마 변경 없음 — 컬럼은 그대로 `jsonb`다 | #244 · AC-11 |
 | v1.6.6 | **activity 관리자 범위 색인 추가(2026-09-08)** — `activity(company_id, occurred_at)`. 대시보드 최근 활동(DB-04)의 기업 관리자 범위 조회는 회사로 좁혀 미삭제 행을 최신순으로 읽는데, V1의 activity 색인은 `ix_activity_deal (deal_id)` 하나뿐이라 회사 조건이 색인을 타지 못했다. 같은 대시보드의 `task`는 v1.6.5에서 `task(company_id, done_at)`을 넣어 회사 조건이 색인을 타는데 activity만 못 타는 비대칭이었다. 부분 색인(`WHERE deleted_at IS NULL`)은 넣지 않는다 — 삭제 행이 소수라 이득이 없다. **마이그레이션은 `V202`(B 번호대)** | #177 · DB-04 |
 | v1.6.5 | **task.company_id 추가(2026-09-02)** — `task`에 `company_id NOT NULL` + 복합 FK `(company_id, deal_id) → deal(company_id, id)`. activity와 같은 형태로 통일. 사유: 할 일은 Deal의 자식이지만 **딜과 무관하게 독립 조회되는 대상**(DB-05 후속 필요 · "내 할 일")이라 기업 관리자(COMPANY_ALL) 범위 조회에 회사 축이 필요하고, 격리 2중 방어(서비스 스코프 + 복합 FK)가 activity에만 걸려 있던 비대칭을 없앤다. 관리자 조회용 인덱스 `task(company_id, done_at)` 추가. **마이그레이션은 `V2xx` ALTER(B 번호대)** — V1 베이스라인은 수정하지 않는다 (11 §1.2) | PR #32 논의 · PR #51 · SC-01 |
 | v1.6.4 | **NT-14 반영(2026-09-02)** — `email_log.template_type`의 값 집합에 NT-14(비밀번호 재설정 안내) 추가. 컬럼은 `VARCHAR(30)`에 CHECK가 없어 **스키마 변경은 없다** — 값 목록 주석만 갱신한다 | NT-14 (03 v1.6.4), AU-05 |
@@ -429,7 +430,7 @@ erDiagram
 | event_type | varchar | NOT NULL | STAGE_MOVED 등 + 인증 6종: PASSWORD_CHANGED · PASSWORD_RESET · SESSION_REVOKED · MEMBER_DEACTIVATED · MEMBER_REACTIVATED · ROLE_CHANGED |
 | actor_type / actor_id | varchar / uuid | NOT NULL / NULL | MEMBER/PLATFORM_ADMIN/CUSTOMER_LINK/SYSTEM |
 | occurred_at | timestamptz | NOT NULL |  |
-| payload | jsonb |  | **비밀번호·토큰·해시 저장 금지** — 인증 이벤트 포함으로 더 중요해짐 · 견적·주문 이벤트에는 **dealId 포함**(AC-06 Deal 타임라인 병합 키, v1.6.1) |
+| payload | jsonb |  | **비밀번호·토큰·해시 저장 금지** — 인증 이벤트 포함으로 더 중요해짐 · 견적·주문 이벤트에는 **dealId 포함**(AC-06 Deal 타임라인 병합 키, v1.6.1) · **변경된 필드는 `changes` 안에, 표시용 부가 필드는 최상위에** — `{"dealId": …, "changes": {"stage": {"before": …, "after": …}}}`. 발생형 이벤트는 `changes` 키가 없다 (v1.6.7) |
 
 ### notification (인앱 알림) · email_log (메일 발송 기록)
 

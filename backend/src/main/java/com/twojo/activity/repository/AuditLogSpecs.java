@@ -2,6 +2,7 @@ package com.twojo.activity.repository;
 
 import com.twojo.activity.entity.AuditLog;
 import java.time.Instant;
+import java.util.UUID;
 import org.springframework.data.jpa.domain.Specification;
 
 /**
@@ -26,7 +27,7 @@ final class AuditLogSpecs {
      * @param from       null이면 시작 제한 없음. 기준은 사건이 일어난 시각이다 (기록 시각이 아니다)
      * @param to         null이면 끝 제한 없음. 경계를 포함한다
      */
-    static Specification<AuditLog> search(java.util.UUID companyId, String entityType,
+    static Specification<AuditLog> search(UUID companyId, String entityType,
                                           Instant from, Instant to) {
         Specification<AuditLog> spec = inCompany(companyId);
         if (entityType != null) {
@@ -42,7 +43,7 @@ final class AuditLogSpecs {
     }
 
     /** 기반 조건 — 회사 스코프. 어떤 목록 조회도 이걸 건너뛰지 않는다 (SC-01) */
-    private static Specification<AuditLog> inCompany(java.util.UUID companyId) {
+    private static Specification<AuditLog> inCompany(UUID companyId) {
         return (root, query, cb) -> cb.equal(root.get("companyId"), companyId);
     }
 }

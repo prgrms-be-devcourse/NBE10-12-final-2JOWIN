@@ -8,6 +8,7 @@ import com.twojo.global.response.PageResponse;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
@@ -44,8 +45,8 @@ public class AuditLogController {
     public PageResponse<AuditLogResponse> list(
             AccessContext ctx,
             @RequestParam(required = false) String entityType,
-            @RequestParam(required = false) Instant from,
-            @RequestParam(required = false) Instant to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE_TIME) Instant to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return auditLogService.list(ctx, entityType, from, to, pageable(page, size));

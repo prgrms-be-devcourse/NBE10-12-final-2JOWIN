@@ -154,4 +154,43 @@ class AuditLogServiceTest {
         assertThat(auditLogService.get(ADMIN, logId).actorName()).isNull();
         then(memberQuery).should(never()).get(any());
     }
+
+    @Test
+    @DisplayName("영업 담당자의 상세 조회도 403이다 — 목록만 막으면 우회된다 (AC-11)")
+    void detail_salesRep_forbidden() {
+        assertThatThrownBy(() -> auditLogService.get(SALES, UUID.randomUUID()))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.FORBIDDEN);
+        then(auditLogRepository).should(never()).findByIdAndCompanyId(any(), any());
+    }
+
+    @Test
+    @DisplayName("보낸 필터는 그대로 넘어간다 — 서비스가 값을 바꾸거나 떨어뜨리지 않는다")
+    void list_filtersPassedThrough() {
+        Instant from = Instant.parse("2026-08-25T00:00:00Z");
+        Instant to = Instant.parse("2026-08-26T00:00:00Z");
+        given(auditLogRepository.search(eq(COMPANY_ID), eq("QUOTE"), eq(from), eq(to), any()))
+                .willReturn(new PageImpl<>(List.of()));
+
+        auditLogService.list(ADMIN, "QUOTE", from, to, PageRequest.of(0, 20));
+
+        then(auditLogRepository).should().search(eq(COMPANY_ID), eq("QUOTE"), eq(from), eq(to), any());
+    }
+
+    @Test
+    @DisplayName("행위자를 못 찾아도 그 행만 이름이 비고 조회는 성공한다 — actor_id 에 FK 가 없다")
+    void detail_missingActor_nameOnlyBlank() {
+        UUID logId = UUID.randomUUID();
+        AuditLog 구성원_로그 = AuditLog.of(COMPANY_ID, "MEMBER", UUID.randomUUID(), "MEMBER_DEACTIVATED",
+                AuditActor.member(ACTOR_ID), OCCURRED, "{}");
+        given(auditLogRepository.findByIdAndCompanyId(logId, COMPANY_ID))
+                .willReturn(Optional.of(구성원_로그));
+        given(memberQuery.get(ACTOR_ID)).willThrow(new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+
+        AuditLogDetailResponse response = auditLogService.get(ADMIN, logId);
+
+        assertThat(response.actorName()).isNull();
+        assertThat(response.actorType()).isEqualTo("MEMBER");
+    }
 }

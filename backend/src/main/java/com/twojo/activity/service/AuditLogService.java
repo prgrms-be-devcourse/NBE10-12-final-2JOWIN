@@ -19,6 +19,7 @@ import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,6 +30,7 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>역할 위반은 403 {@code FORBIDDEN}이다 (09 구현 위치, Q-43). 리소스 범위가 아니라
  * 행위 자체가 역할로 갈리므로 존재를 숨길 이유가 없다.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
@@ -55,7 +57,7 @@ public class AuditLogService {
 
         return new AuditLogDetailResponse(log.getId(), log.getEntityType(), log.getEntityId(),
                 log.getEventType(), log.getActorType().name(), log.getActorId(),
-                actorName(log), changesOf(log.getPayload()), log.getOccurredAt());
+                actorName(log), changesOf(log.getPayload(), log.getId()), log.getOccurredAt());
     }
 
     /**
@@ -65,11 +67,20 @@ public class AuditLogService {
      * 이름 컬럼 자체가 없다({@code PlatformAdminQuery} — "관리자에게는 이름 컬럼이 없다").
      * 그래서 나머지 셋은 이름을 채울 원천이 없다.
      */
-    private String actorName(AuditLog log) {
-        if (log.getActorType() != AuditActorType.MEMBER || log.getActorId() == null) {
+    private String actorName(AuditLog auditLog) {
+        if (auditLog.getActorType() != AuditActorType.MEMBER || auditLog.getActorId() == null) {
             return null;
         }
-        return memberQuery.get(log.getActorId()).name();
+        try {
+            return memberQuery.get(auditLog.getActorId()).name();
+        } catch (BusinessException e) {
+            // audit_log.actor_id 에는 FK 가 없다 (V1:361). 고객사 상세가 memberQuery 를 그냥 부를 수
+            // 있는 것은 created_by_member_id 가 NOT NULL FK 라서인데 여기엔 그 보증이 없다 —
+            // 한 행의 구성원이 없으면 목록 전체가 404 가 된다. 이름만 비우고 나머지 행을 살린다.
+            log.warn("감사 로그 {}의 행위자 {}를 찾지 못해 이름을 비운다",
+                    auditLog.getId(), auditLog.getActorId(), e);
+            return null;
+        }
     }
 
     /**
@@ -81,7 +92,7 @@ public class AuditLogService {
      * <p>payload 자체가 비었거나 형태가 어긋나도 조회는 끝까지 간다 — 감사 기록을 보러 온
      * 화면이 데이터 한 줄 때문에 통째로 막히면 안 된다.
      */
-    private Map<String, AuditLogDetailResponse.FieldChange> changesOf(String payload) {
+    private Map<String, AuditLogDetailResponse.FieldChange> changesOf(String payload, UUID auditLogId) {
         if (payload == null || payload.isBlank()) {
             return Map.of();
         }
@@ -94,14 +105,20 @@ public class AuditLogService {
                             value(entry.getValue().path("after")))));
             return result;
         } catch (JacksonException e) {
+            // 깨진 payload 와 정상 발생형 이벤트가 응답에서 똑같이 빈 맵이다 — 로그가 없으면 구별할 수 없다
+            log.warn("감사 로그 {}의 payload 를 읽지 못해 변경 내역을 비운다", auditLogId, e);
             return Map.of();
         }
     }
 
-    /** 값 타입이 제각각이라 JSON 그대로 살린다. 없는 키는 null이다. */
-    private static Object value(JsonNode node) {
-        return node.isMissingNode() || node.isNull() ? null
-                : node.isTextual() ? node.asText() : (Object) node;
+    /**
+     * 값 타입이 제각각이라 자바 원시값으로 되돌린다. 없는 키는 null이다.
+     *
+     * <p>{@code JsonNode}를 그대로 담으면 Jackson 타입이 응답 JSON 에 실려 나간다 —
+     * 직렬화 결과가 라이브러리 구현에 묶인다.
+     */
+    private Object value(JsonNode node) {
+        return node.isMissingNode() || node.isNull() ? null : objectMapper.convertValue(node, Object.class);
     }
 
     private AuditLogResponse toResponse(AuditLog log) {
