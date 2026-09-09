@@ -11,12 +11,14 @@ import com.twojo.customer.dto.UpdateCustomerRequest;
 import com.twojo.customer.service.CustomerService;
 import com.twojo.global.response.PageResponse;
 import jakarta.validation.Valid;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -77,6 +79,13 @@ public class CustomerController {
         return customerService.update(ctx, customerId, request);
     }
 
+    /** 삭제 (CU-07) — 소프트 삭제. 진행 중 Deal이 있으면 409 (CU-08) */
+    @DeleteMapping("/{customerId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(AccessContext ctx, @PathVariable UUID customerId) {
+        customerService.delete(ctx, customerId, Instant.now());
+    }
+
     /** 담당자 추가 (CU-09·10) — 그 고객사의 첫 담당자면 대표가 된다 (이슈 #107 설계 결정 1) */
     @PostMapping("/{customerId}/contacts")
     @ResponseStatus(HttpStatus.CREATED)
@@ -91,6 +100,14 @@ public class CustomerController {
                                          @PathVariable UUID contactId,
                                          @Valid @RequestBody UpdateContactRequest request) {
         return customerService.updateContact(ctx, customerId, contactId, request);
+    }
+
+    /** 담당자 삭제 — 대표(422)와 발송 이력 있는 담당자(409)는 막는다 (CU-11·14) */
+    @DeleteMapping("/{customerId}/contacts/{contactId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void deleteContact(AccessContext ctx, @PathVariable UUID customerId,
+                              @PathVariable UUID contactId) {
+        customerService.deleteContact(ctx, customerId, contactId);
     }
 
     /**
