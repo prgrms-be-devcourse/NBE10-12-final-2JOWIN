@@ -138,6 +138,8 @@ class OrderConversionConcurrencyTest {
         jdbc.update("delete from deal where id = ?", dealId);
         jdbc.update("delete from customer where id = ?", customerId);
         jdbc.update("delete from member where id = ?", memberId);
+        // 감사 로그는 리스너가 만든 행이다 — 회사보다 먼저 지운다 (#287)
+        jdbc.update("delete from audit_log where company_id = ?", companyId);
         jdbc.update("delete from company where id = ?", companyId);
         jdbc.update("delete from application where id = ?", applicationId);
     }
