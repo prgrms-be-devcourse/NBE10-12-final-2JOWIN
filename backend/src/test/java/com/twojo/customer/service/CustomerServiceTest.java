@@ -136,7 +136,7 @@ class CustomerServiceTest {
         given(contactRepository.findByCustomerIdOrderByIsPrimaryDescNameAsc(CUSTOMER_ID))
                 .willReturn(List.of(담당자("이수정")));
         given(dealQuery.summariesByCustomer(CUSTOMER_ID)).willReturn(List.of(
-                new DealQuery.DealSummary(UUID.randomUUID(), "본사 사옥 비품", "NEGOTIATION",
+                new DealQuery.DealSummary(UUID.randomUUID(), CUSTOMER_ID, "본사 사옥 비품", "NEGOTIATION",
                         5_000_000L, null, Instant.now())));
         given(memberQuery.get(MEMBER_ID)).willReturn(new MemberQuery.MemberSummary(MEMBER_ID, "한상민", true));
 

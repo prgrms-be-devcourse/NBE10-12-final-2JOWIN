@@ -1,7 +1,7 @@
 package com.twojo.quote.controller;
 
 import com.twojo.boundary.AccessContext;
-import com.twojo.boundary.QuoteQuery;
+import com.twojo.boundary.PublicQuoteResponse;
 import com.twojo.global.response.PageResponse;
 import com.twojo.quote.dto.QuoteRequests;
 import com.twojo.quote.dto.QuoteResponses;
@@ -125,11 +125,14 @@ public class QuoteController {
     }
 
     /**
-     * 발송 전 미리보기 (QT-12) — 고객 열람 페이지와 <b>같은 데이터</b>를 돌려준다.
-     * 응답 모양이 {@code PublicQuoteView}인 것은 그 때문이다 (내부 상세와 필드가 다르다).
+     * 발송 전 미리보기 (QT-12) — 고객 열람 페이지와 <b>같은 응답</b>을 돌려준다.
+     *
+     * <p>응답이 {@code PublicQuoteResponse}인 것은 08 §C의 규약이다 — 미리보기가 고객 화면보다
+     * 적게 보여주면 확인해 주는 것이 없어진다. 내부 식별자({@code dealId}·{@code companyId})는
+     * 이 모양에 실리지 않는다.
      */
     @GetMapping("/{quoteId}/preview")
-    public QuoteQuery.PublicQuoteView preview(AccessContext ctx, @PathVariable UUID quoteId) {
+    public PublicQuoteResponse preview(AccessContext ctx, @PathVariable UUID quoteId) {
         return quoteService.preview(ctx, quoteId);
     }
 

@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.22
+# DTO 설계서 — v1.6.23
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.23 | **딜·주문 응답 `customerName` nullable 명시(2026-09-10)** — `DealResponse`·`DealDetailResponse`·`OrderResponse`·`OrderDetailResponse` 네 곳. 목록이 고객사 이름을 배치 창구(`CustomerQuery.namesByIds`)로 받게 되면서(#273) **지워진 고객사는 그 줄만 이름이 빈다** — 예전 단건 `get`은 없으면 던져 한 줄이 목록 전체를 404로 만들었다. 고객사 삭제는 <b>진행 중</b> 딜만 막으므로(`hasOpenDeals`) 성사된 딜의 주문이 남은 채 고객사만 지워질 수 있어 실제로 도달한다. 주문 상세·전환은 404 → 200(null)로 바뀐다 — 목록과 상세가 이름을 다르게 얻으면 "목록엔 있는데 상세엔 없는" 차이가 생겨 통일했다(D 확인). 프론트 타입도 `string | null`로 맞췄다. 응답 대기(DB-03)는 해당 없음 — 딜이 진행 중이라 삭제가 막힌다 |
 | v1.6.22 | **§B `audit_log` payload 봉투 명시(2026-09-09)** — 변경 필드를 `changes`로 감싸고 부가 필드는 최상위에 둔다. 종전 주석의 예시는 `{"stage": …}` 하나뿐이라 봉투 전체로 읽히는데, 같은 예시에 `dealId`가 없어 06(견적·주문 이벤트 `dealId` 필수)과 어긋났다. 08이 "B가 이벤트 포맷 정의 시 준수"로 위임한 그 정의가 이슈 #22 §2인데 문서에는 담기지 않았다. 적재 리스너가 아직 없어 실데이터가 쌓이기 전인 지금이 맞추는 시점이다. `changes` 자리가 없으면 "값이 바뀐 것"과 "표시용으로 딸려온 값"을 구별할 수 없다. 발견 경로: 감사 로그 조회 구현(#244) |
 | v1.6.21 | **§C `OrderScheduleRequest`가 §B PATCH 규약의 예외임을 명시(2026-09-09)** — 착수일·납기는 **두 날짜를 함께 덮어써서 `null`이 "미변경"이 아니라 "지움"**이다(`Order.updateSchedule`). record가 필드만 적고 있어 §B의 "안 보내면 미변경"이 여기에도 걸리는 것으로 읽혔다. 프론트 목이 실제로 그렇게 받고 있어 목으로 개발하면 통과하고 실 API에서 값이 사라졌다 — 주문 실 API 전환(#248)에서 서버에 `deliveryDate`를 빼고 PATCH해 확인했다. 규약 문장 자체는 여기가 정본이고 11 §1.3은 포인터만 갖는다(#233) |
 | v1.6.20 | **§B `channel` 값 검증 신설(2026-09-09)** — `CreateActivityRequest`·`UpdateActivityRequest`의 `channel`이 `@NotBlank`·공백 검사뿐이라 `"카카오톡"`이 Bean Validation을 통과한다. 값 집합은 03 AC-02와 06 CHECK(`CALL`·`MEETING`·`EMAIL`)로 이미 확정돼 있는데 DTO만 강제하지 않았다. 서비스에서 `BusinessException.invalidEnumField`로 400을 낼 수도 있지만(`role`·`Entry.type`이 그 형태다), **경계에서 막는 쪽을 택한다** — 08은 그대로 복사해 쓰는 문서라 제약이 record에 보이는 편이 낫고, 서비스 작성자가 파싱을 기억해야 하는 구조를 만들지 않는다. **DTO를 enum으로 받는 방식은 택하지 않는다** — `Activity.Channel`은 엔티티 중첩 enum이라 §0 "엔티티를 API에 직접 노출 금지"에 걸리고, Jackson 파싱 실패는 `handleHttpMessageNotReadable` override가 없어 `code` 없는 RFC 7807로 나가 프론트 공통 에러 핸들러가 알아보지 못한다. 프론트 목(`isChannel`)과 타입(`ActivityChannel`)은 이미 이 형태다. v1.6.8(#68)이 "길이가 아니라 값 검증 문제라 별건"으로 미뤄둔 자리다 |
@@ -307,14 +308,14 @@ public record DealResponse(                    // 목록·보드 공용
         UUID id, String title, String stage,
         Long expectedAmount,
         Long wonAmount,                        // DL-18: 주문 합계, 주문 없으면 null. 표시: 성사 전 expected, 성사 후 won
-        UUID customerId, String customerName,
+        UUID customerId, String customerName,                          // customerName은 고객사 삭제 시 null (v1.6.23)
         UUID assigneeMemberId, String assigneeMemberName,
         LocalDate dueDate, Integer version, Instant createdAt) {}
 
 public record DealDetailResponse(
         UUID id, String title, String stage,
         Long expectedAmount, Long wonAmount,
-        UUID customerId, String customerName,
+        UUID customerId, String customerName,                          // customerName은 고객사 삭제 시 null (v1.6.23)
         UUID assigneeMemberId, String assigneeMemberName,
         LocalDate dueDate, String lostReason,
         List<QuoteSummary> quotes,             // DL-15
@@ -392,7 +393,7 @@ public record OrderResponse(
         UUID id, String orderNo,
         UUID quoteId, String quoteNo,
         UUID dealId, String dealTitle,     // quote 조인 제공 — orders에 deal_id 컬럼 없음
-        UUID customerId, String customerName,
+        UUID customerId, String customerName,                          // customerName은 고객사 삭제 시 null (v1.6.23)
         Long supplyAmount, Long vatAmount, Long totalAmount,          // 스냅샷 (OD-04)
         LocalDate startDate, LocalDate deliveryDate,                  // OD-10
         Instant createdAt) {}
@@ -401,7 +402,7 @@ public record OrderDetailResponse(
         UUID id, String orderNo, UUID quoteId, String quoteNo,
         UUID dealId, String dealTitle,
         String dealStage,                                             // 전환 직후엔 항상 WON (OD-06 자동 성사 확인용)
-        UUID customerId, String customerName,
+        UUID customerId, String customerName,                          // customerName은 고객사 삭제 시 null (v1.6.23)
         Long supplyAmount, Long vatAmount, Long totalAmount,
         List<ItemResponse> items,
         LocalDate startDate, LocalDate deliveryDate, Instant createdAt) {

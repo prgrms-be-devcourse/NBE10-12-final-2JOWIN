@@ -88,7 +88,8 @@ class DashboardServiceTest {
     }
 
     private static DealQuery.DealSummary deal(UUID id, String title) {
-        return new DealQuery.DealSummary(id, title, "QUOTE", 1_000_000L, null, Instant.parse("2026-08-01T00:00:00Z"));
+        return new DealQuery.DealSummary(id, UUID.randomUUID(), title, "QUOTE", 1_000_000L, null,
+                Instant.parse("2026-08-01T00:00:00Z"));
     }
 
     private static SalesStatsQuery.MemberPerformance perf(String name, long wonAmount) {

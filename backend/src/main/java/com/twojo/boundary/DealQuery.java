@@ -96,6 +96,13 @@ public interface DealQuery {
      */
     long countOpenAssigned(UUID companyId, UUID memberId);
 
-    record DealSummary(UUID id, String title, String stage,
+    /**
+     * @param customerId 고객사 id — <b>이름이 아니라 id다.</b> 고객사는 B 소유라 이 계약이 이름을 실을 수
+     *                   없고, 호출자가 이 id를 모아 {@link CustomerQuery#namesByIds}로 <b>한 번에</b>
+     *                   받는다. 이 필드가 없으면 목록 한 줄마다 {@code customerIdOf}를 다시 불러
+     *                   배치 창구를 써도 N+1이 절반만 풀린다 (#273)
+     * @param wonAmount  성사 금액 — 성사 전에는 null이다 (DL-18)
+     */
+    record DealSummary(UUID id, UUID customerId, String title, String stage,
                        Long expectedAmount, Long wonAmount, Instant createdAt) {}
 }
