@@ -15,7 +15,10 @@ import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
 import java.time.Instant;
+import java.util.Collection;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
@@ -70,13 +73,17 @@ public class DealService {
                                                      UUID assigneeId, UUID customerId, Pageable pageable) {
         UUID scopedAssigneeId = ctx.scope() == AccessScope.OWNED_ONLY ? ctx.memberId() : assigneeId;
 
-        Page<DealResponses.DealItem> page = dealRepository
-                .search(ctx.companyId(), stage, scopedAssigneeId, customerId, pageable)
-                .map(deal -> DealResponses.DealItem.of(deal,
-                        customerQuery.get(ctx, deal.getCustomerId()).name(),
-                        memberQuery.get(deal.getAssigneeMemberId()).name()));
+        Page<Deal> deals = dealRepository.search(ctx.companyId(), stage, scopedAssigneeId, customerId, pageable);
 
-        return PageResponse.from(page);
+        // 고객사 이름은 배치로 한 번에 받는다 (#273) — 줄마다 부르면 20건짜리 목록에 조회가 20번이다.
+        // 담당자 이름은 아직 줄마다다: MemberQuery에 이름 배치 창구가 없고, findAllActive로는
+        // 비활성 담당자의 이름이 사라진다(MB-14로 이관되는 것은 진행 중 딜뿐이다). A 창구가 열리면 여기도 고친다.
+        Map<UUID, String> customerNames = customerNamesOf(ctx.companyId(),
+                deals.getContent().stream().map(Deal::getCustomerId).toList());
+
+        return PageResponse.from(deals.map(deal -> DealResponses.DealItem.of(deal,
+                customerNames.get(deal.getCustomerId()),
+                memberQuery.get(deal.getAssigneeMemberId()).name())));
     }
 
     /** 상세 (DL-15·18) — 견적·주문 요약은 조회 창구가 정해질 때까지 빈 목록이다 */
@@ -171,6 +178,17 @@ public class DealService {
         return DealResponses.DealItem.of(deal,
                 customerQuery.get(ctx, deal.getCustomerId()).name(),
                 memberQuery.get(deal.getAssigneeMemberId()).name());
+    }
+
+    /**
+     * 고객사 id 묶음 → 이름 (SC-01). <b>지워진 고객사는 결과에서 빠져 그 줄만 이름이 null이 된다</b> —
+     * 목록 한 줄 때문에 전체가 404가 되지 않게 하는 것이 {@code namesByIds}의 계약이다 (B javadoc).
+     * 단건 경로({@code create}·{@code update} 등)는 그대로 {@code get}이다 — 거기서는 없으면 404가 맞다.
+     */
+    private Map<UUID, String> customerNamesOf(UUID companyId, Collection<UUID> customerIds) {
+        return customerQuery.namesByIds(companyId, customerIds.stream().distinct().toList()).stream()
+                .collect(Collectors.toMap(CustomerQuery.CustomerSummary::id,
+                        CustomerQuery.CustomerSummary::name));
     }
 
     /**

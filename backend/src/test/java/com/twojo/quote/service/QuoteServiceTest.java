@@ -80,7 +80,8 @@ class QuoteServiceTest {
     @InjectMocks private QuoteService quoteService;
 
     private static DealQuery.DealSummary dealSummary() {
-        return new DealQuery.DealSummary(DEAL_ID, "한빛 사무가구 30석", "QUOTE", 5_000_000L, null, Instant.now());
+        return new DealQuery.DealSummary(DEAL_ID, UUID.randomUUID(), "한빛 사무가구 30석", "QUOTE", 5_000_000L, null,
+                Instant.now());
     }
 
     /**

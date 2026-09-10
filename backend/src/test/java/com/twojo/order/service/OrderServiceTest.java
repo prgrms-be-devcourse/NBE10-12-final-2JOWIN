@@ -94,7 +94,7 @@ class OrderServiceTest {
     }
 
     private static DealQuery.DealSummary 딜(String stage) {
-        return new DealQuery.DealSummary(DEAL_ID, "도담 사무가구", stage, 1_000_000L, null, Instant.now());
+        return new DealQuery.DealSummary(DEAL_ID, CUSTOMER_ID, "도담 사무가구", stage, 1_000_000L, null, Instant.now());
     }
 
     private static ConversionSnapshot 스냅샷() {
@@ -120,8 +120,8 @@ class OrderServiceTest {
         전환_가능한_견적();
         given(dealQuery.summariesByIds(COMPANY_ID, List.of(DEAL_ID)))
                 .willReturn(List.of(딜("NEGOTIATION")), List.of(딜("WON")));   // markWon 뒤 다시 읽는다
-        given(dealQuery.customerIdOf(DEAL_ID)).willReturn(CUSTOMER_ID);
-        given(customerQuery.get(ctx, CUSTOMER_ID)).willReturn(new CustomerQuery.CustomerSummary(CUSTOMER_ID, "도담산업"));
+        given(customerQuery.namesByIds(COMPANY_ID, List.of(CUSTOMER_ID)))
+                .willReturn(List.of(new CustomerQuery.CustomerSummary(CUSTOMER_ID, "도담산업")));
         given(documentNumberService.next(COMPANY_ID, DocType.ORDER)).willReturn("O-2609-001");
         given(orderRepository.save(any(Order.class))).willAnswer(call -> call.getArgument(0));
 
@@ -150,9 +150,8 @@ class OrderServiceTest {
         전환_가능한_견적();
         given(dealQuery.summariesByIds(COMPANY_ID, List.of(DEAL_ID)))
                 .willReturn(List.of(딜("NEGOTIATION")), List.of(딜("WON")));
-        given(dealQuery.customerIdOf(DEAL_ID)).willReturn(CUSTOMER_ID);
-        given(customerQuery.get(ctx, CUSTOMER_ID))
-                .willReturn(new CustomerQuery.CustomerSummary(CUSTOMER_ID, "도담산업"));
+        given(customerQuery.namesByIds(COMPANY_ID, List.of(CUSTOMER_ID)))
+                .willReturn(List.of(new CustomerQuery.CustomerSummary(CUSTOMER_ID, "도담산업")));
         given(documentNumberService.next(COMPANY_ID, DocType.ORDER)).willReturn("O-2609-001");
         given(orderRepository.save(any(Order.class))).willAnswer(call -> call.getArgument(0));
 

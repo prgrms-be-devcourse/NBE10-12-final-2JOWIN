@@ -1,5 +1,7 @@
 package com.twojo.quote.service;
 
+import com.twojo.boundary.CustomerQuery;
+import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
@@ -9,7 +11,9 @@ import com.twojo.quote.repository.QuoteRepository;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +39,8 @@ public class QuoteQueryImpl implements QuoteQuery {
             List.of(Quote.Status.SENT, Quote.Status.VIEWED);
 
     private final QuoteRepository quoteRepository;
+    private final DealQuery dealQuery;
+    private final CustomerQuery customerQuery;
 
     /**
      * 응답 대기 견적 (NT-05 리마인드 · DB-03 카드) — 발송됨·열람됨.
@@ -43,24 +49,40 @@ public class QuoteQueryImpl implements QuoteQuery {
      * 여기서 SC-02를 판정할 수 없고, 그래서 계약이 {@code dealId}를 함께 준다 —
      * 대시보드가 그 축으로 직접 거른다 (계약 javadoc, 2026-09-08 C·D 합의).
      *
-     * <p><b>{@code customerName}은 아직 null이다.</b> 고객사는 B 소유 테이블이라 이 모듈이 직접 읽을 수 없고
-     * ({@code ModularityTests}), {@code CustomerQuery.get}은 {@code AccessContext}를 요구하는데
-     * 배치 경로에는 그것이 없다. <b>회사 스코프만으로 이름을 얻는 창구가 B 계약에 없다</b> —
-     * 그 한 칸이 열리면 여기서 채운다. 그때까지 이름이 필요한 화면은 호출자가 자기 ctx로 조회한다.
+     * <p><b>{@code customerName}은 두 홉을 거쳐 채운다</b> — 견적에는 고객사 id가 없어
+     * {@code deal}을 지나야 하고, 고객사는 B 소유라 {@code CustomerQuery}를 거쳐야 한다 (#273).
+     * 둘 다 <b>배치 창구</b>라 줄 수와 무관하게 조회는 각각 한 번이다.
+     * {@code CustomerQuery.get}이 아니라 {@code namesByIds}를 쓰는 이유는 배치 경로에
+     * {@code AccessContext}가 없기 때문이다 — 회사 스코프만으로 판정이 끝난다 (SC-01).
+     *
+     * <p><b>이름이 비는 줄이 생길 수 있다.</b> 고객사나 Deal이 소프트 삭제되면 배치 결과에서 빠지고
+     * 그 줄의 이름만 null이 된다. 목록 전체를 실패시키지 않는 것이 {@code namesByIds}의 계약이고
+     * (B javadoc), 리마인드 배치가 고객사 하나 때문에 통째로 멈추면 안 된다.
      */
     @Override
     public List<QuoteSummary> findAwaitingResponse(UUID companyId) {
-        return quoteRepository
-                .findByCompanyIdAndStatusInOrderBySentAtAsc(companyId, AWAITING_RESPONSE)
+        List<Quote> quotes = quoteRepository
+                .findByCompanyIdAndStatusInOrderBySentAtAsc(companyId, AWAITING_RESPONSE);
+
+        Map<UUID, UUID> customerByDeal = dealQuery
+                .summariesByIds(companyId, quotes.stream().map(Quote::getDealId).distinct().toList())
                 .stream()
-                .map(QuoteQueryImpl::toSummary)
+                .collect(Collectors.toMap(DealQuery.DealSummary::id, DealQuery.DealSummary::customerId));
+        Map<UUID, String> nameById = customerQuery
+                .namesByIds(companyId, customerByDeal.values().stream().distinct().toList())
+                .stream()
+                .collect(Collectors.toMap(CustomerQuery.CustomerSummary::id,
+                        CustomerQuery.CustomerSummary::name));
+
+        return quotes.stream()
+                .map(quote -> toSummary(quote, nameById.get(customerByDeal.get(quote.getDealId()))))
                 .toList();
     }
 
-    /** 엔티티 → 요약. {@code customerName}은 위 javadoc의 이유로 아직 채우지 못한다 */
-    private static QuoteSummary toSummary(Quote quote) {
+    /** 엔티티 → 요약. {@code customerName}은 지워진 고객사·Deal이면 null이다 */
+    private static QuoteSummary toSummary(Quote quote, String customerName) {
         return new QuoteSummary(quote.getId(), quote.getQuoteNo(), quote.getDealId(), quote.getCompanyId(),
-                null, quote.getSentAt(), quote.getFirstViewedAt(), quote.getValidUntil());
+                customerName, quote.getSentAt(), quote.getFirstViewedAt(), quote.getValidUntil());
     }
 
     @Override
