@@ -113,10 +113,14 @@ public class QuoteQueryImpl implements QuoteQuery {
     }
 
     /**
-     * 엔티티 → 열람 데이터. {@code QuoteService}의 미리보기(QT-12)도 이걸 쓴다 —
-     * <b>미리보기와 고객이 실제로 보는 화면이 갈리면 미리보기의 의미가 없다.</b>
+     * 엔티티 → 열람 데이터 — 이 계약이 돌려주는 <b>quote 소유분</b>이다.
+     *
+     * <p><b>이것만으로는 고객 화면이 되지 않는다.</b> 회사 정체성·담당자·{@code respondable}은
+     * 다른 모듈에서 오고, 그 조립은 {@code PublicQuoteAssembler}가 한다. 예전에 미리보기(QT-12)가
+     * 이 값을 그대로 응답으로 내보내 프론트가 크래시했다 — boundary 계약과 API 응답을 같은 것으로
+     * 본 실수였다 (#114). 그래서 모듈 밖으로 열지 않는다.
      */
-    public static PublicQuoteView toPublicView(Quote quote) {
+    private static PublicQuoteView toPublicView(Quote quote) {
         return new PublicQuoteView(
                 quote.getId(), quote.getQuoteNo(), quote.getStatus().name(),
                 quote.getVatMode().name(), quote.getTerms(), quote.getValidUntil(),

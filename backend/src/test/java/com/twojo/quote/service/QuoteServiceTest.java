@@ -15,6 +15,8 @@ import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.ProductQuery;
+import com.twojo.boundary.PublicQuoteAssembler;
+import com.twojo.boundary.PublicQuoteResponse;
 import com.twojo.boundary.Role;
 import com.twojo.boundary.ViewTokenCommand;
 import com.twojo.global.error.BusinessException;
@@ -76,6 +78,7 @@ class QuoteServiceTest {
     @Mock private DealCommand dealCommand;
     @Mock private CustomerQuery customerQuery;
     @Mock private ViewTokenCommand viewTokenCommand;
+    @Mock private PublicQuoteAssembler publicQuoteAssembler;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private QuoteService quoteService;
 
@@ -553,18 +556,51 @@ class QuoteServiceTest {
                     .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
         }
 
+        /**
+         * 미리보기는 <b>고객 열람과 같은 조립기</b>를 탄다 (#114). 여기서 따로 조립하면 같은 화면을
+         * 두 벌로 만들게 되고, 실제로 그렇게 두었더니 회사 정체성·담당자가 빠져 프론트가 크래시했다.
+         */
         @Test
-        @DisplayName("미리보기는 고객이 볼 것과 같은 데이터를 돌려준다 (QT-12)")
+        @DisplayName("미리보기는 D의 조립기를 거쳐 고객 화면 응답을 돌려준다 (QT-12)")
         void 미리보기() {
             given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
                     .willReturn(Optional.of(draft()));
             dealIsVisibleTo(SALES_ID);
+            given(publicQuoteAssembler.assembleForPreview(QUOTE_ID)).willReturn(조립된_응답());
 
-            var view = quoteService.preview(SALES, QUOTE_ID);
+            PublicQuoteResponse view = quoteService.preview(SALES, QUOTE_ID);
 
             assertThat(view.quoteNo()).isEqualTo("Q-2609-001");
-            assertThat(view.companyId()).isEqualTo(COMPANY_ID);   // D가 회사 축으로 쓴다
-            assertThat(view.dealId()).isEqualTo(DEAL_ID);         // D가 현재 담당자를 찾는 축 (AP-18)
+            assertThat(view.companyName()).isEqualTo("한빛오피스");        // 프론트가 slice하던 자리
+            assertThat(view.companyBusinessNo()).isEqualTo("123-45-67890");
+            assertThat(view.assignee().name()).isEqualTo("박지훈");         // AP-18 — Deal의 현재 담당자
+            assertThat(view.respondable()).isFalse();                      // 발송 전이라 링크가 없다
+        }
+
+        /**
+         * <b>스코프 판정은 조립기가 아니라 여기서 한다</b> — 계약이 그렇게 정하고 있다.
+         * 남의 담당 딜인데 조립기가 불리면 404여야 할 요청이 200으로 나간다 (SC-02·09).
+         */
+        @Test
+        @DisplayName("남의 담당 딜 견적이면 조립기를 부르기 전에 404다 (SC-02·09)")
+        void 미리보기_범위_밖() {
+            given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
+                    .willReturn(Optional.of(draft()));
+            dealIsVisibleTo(UUID.randomUUID());   // 남의 담당
+
+            assertThatThrownBy(() -> quoteService.preview(SALES, QUOTE_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteServiceTest::errorOf)
+                    .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+
+            then(publicQuoteAssembler).shouldHaveNoInteractions();
+        }
+
+        private static PublicQuoteResponse 조립된_응답() {
+            return new PublicQuoteResponse("Q-2609-001", "DRAFT", "한빛오피스", "123-45-67890",
+                    new PublicQuoteResponse.AssigneeInfo("박지훈", "jihun@hanbit.co.kr", "010-1234-5678"),
+                    "EXCLUDED", null, LocalDate.now().plusDays(30),
+                    300_000L, 30_000L, 330_000L, List.of(), false);
         }
     }
 }
