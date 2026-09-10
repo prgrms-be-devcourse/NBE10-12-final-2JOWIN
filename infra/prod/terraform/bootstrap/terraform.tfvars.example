@@ -8,4 +8,5 @@
 # aws_region       = "ap-northeast-2"
 # project          = "2jo"
 # github_repo      = "prgrms-be-devcourse/NBE10-12-final-2JOWIN"
-# prod_environment = "prod"
+# prod_environment  = "infra-apply"
+# deploy_environment = "backend-deploy"
