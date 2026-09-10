@@ -7,8 +7,6 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.Role;
 import com.twojo.order.dto.OrderResponses;
 import com.twojo.order.service.OrderService;
-import jakarta.persistence.EntityManager;
-import jakarta.persistence.PersistenceContext;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
@@ -48,9 +46,6 @@ class OrderItemOrderIntegrationTest {
     private OrderService orderService;
     @Autowired
     private JdbcTemplate jdbc;
-    @PersistenceContext
-    private EntityManager entityManager;
-
     private UUID applicationId;
     private UUID companyId;
     private UUID memberId;
@@ -132,10 +127,11 @@ class OrderItemOrderIntegrationTest {
         assertThat(전환직후.items()).extracting(OrderResponses.OrderDetail.Line::name)
                 .containsExactlyElementsOf(견적_순서);
 
-        // 첫 항목을 갱신해 힙 뒤로 보낸다 — 물리적 순서가 sortOrder와 어긋나는 상태를 만든다
+        // 첫 항목을 갱신해 힙 뒤로 보낸다 — 물리적 순서가 sortOrder와 어긋나는 상태를 만든다.
+        // 판별력은 여기서 나온다: @OrderBy가 없으면 이 교란 뒤의 조회가 삽입 순서를 잃는다.
+        // 별도 트랜잭션의 UPDATE라 아래 조회는 새 영속성 컨텍스트에서 시작한다.
         jdbc.update("update order_item set amount = amount where order_id = ? and sort_order = 0",
                 전환직후.id());
-        entityManager.clear();   // 1차 캐시를 비운다 — 여기서부터가 진짜 검증이다
 
         OrderResponses.OrderDetail 재조회 = orderService.get(ctx, 전환직후.id());
 
