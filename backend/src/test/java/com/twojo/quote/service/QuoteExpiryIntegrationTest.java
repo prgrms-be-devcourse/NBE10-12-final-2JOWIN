@@ -46,6 +46,7 @@ class QuoteExpiryIntegrationTest {
     private UUID memberId;
     private UUID customerId;
     private UUID dealId;
+    private UUID contactId;
 
     @BeforeEach
     void 회사와_딜을_심는다() {
@@ -54,6 +55,7 @@ class QuoteExpiryIntegrationTest {
         memberId = UUID.randomUUID();
         customerId = UUID.randomUUID();
         dealId = UUID.randomUUID();
+        contactId = UUID.randomUUID();
         String businessNo = applicationId.toString().substring(0, 13);
 
         jdbc.update("insert into application (id, company_name, business_no, email, applicant_name, status) "
@@ -69,6 +71,28 @@ class QuoteExpiryIntegrationTest {
         jdbc.update("insert into deal (id, company_id, customer_id, assignee_member_id, title, stage, version) "
                         + "values (?, ?, ?, ?, ?, 'QUOTE', 0)",
                 dealId, companyId, customerId, memberId, "도담 사무가구");
+        jdbc.update("insert into customer_contact (id, customer_id, name, email, is_primary) "
+                        + "values (?, ?, '이수정', ?, true)",
+                contactId, customerId, "sujeong-" + contactId + "@dodam.test");
+    }
+
+    /** 활성 열람 링크를 심는다 — 견적당 하나뿐이다 (uk_quote_view_token_active 부분 유니크) */
+    private UUID 활성_링크(UUID quoteId, LocalDate validUntil) {
+        UUID tokenId = UUID.randomUUID();
+        jdbc.update("insert into quote_view_token (id, quote_id, recipient_contact_id, token_hash, "
+                        + "status, expires_at) values (?, ?, ?, ?, 'ACTIVE', ?)",
+                tokenId, quoteId, contactId, "hash-" + tokenId,
+                java.sql.Timestamp.valueOf(validUntil.atTime(23, 59, 59)));
+        return tokenId;
+    }
+
+    private String 링크_상태(UUID tokenId) {
+        return jdbc.queryForObject("select status from quote_view_token where id = ?", String.class, tokenId);
+    }
+
+    private String 링크_사유(UUID tokenId) {
+        return jdbc.queryForObject("select expired_reason from quote_view_token where id = ?",
+                String.class, tokenId);
     }
 
     private UUID 견적(String quoteNo, String status, LocalDate validUntil) {
@@ -196,12 +220,64 @@ class QuoteExpiryIntegrationTest {
         assertThat(rows).anySatisfy(row -> assertThat(row.companyId()).isEqualTo(companyId));
     }
 
+    /**
+     * <b>견적만 닫히고 링크가 살아 있으면 고객이 만료된 견적을 계속 열람한다.</b>
+     * 워커가 두 전이를 한 트랜잭션(REQUIRES_NEW)에 묶는 이유이고, 목으로는
+     * "불렀는가"까지만 볼 수 있어 실제 DB로 고정한다.
+     */
+    @Test
+    @DisplayName("견적이 닫히면 고객 링크도 TIME으로 닫힌다 — 둘이 갈리면 만료된 견적이 계속 열린다")
+    void 링크도_함께_닫힌다() {
+        LocalDate 지난날 = 오늘.minusDays(2);
+        UUID quoteId = 견적("Q-8060", "SENT", 지난날);
+        UUID tokenId = 활성_링크(quoteId, 지난날);
+
+        batch.run(오늘);
+
+        assertThat(상태(quoteId)).isEqualTo("EXPIRED");
+        assertThat(링크_상태(tokenId)).isEqualTo("EXPIRED");
+        assertThat(링크_사유(tokenId)).isEqualTo("TIME");
+    }
+
+    /**
+     * 아직 유효한 견적의 링크를 건드리면 고객이 열람 중인 링크가 죽는다 —
+     * 날짜 경계가 링크까지 전파되는지 함께 본다.
+     */
+    @Test
+    @DisplayName("아직 유효한 견적의 링크는 살아 있다 — 경계가 링크까지 전파된다")
+    void 유효한_링크는_남는다() {
+        UUID quoteId = 견적("Q-8061", "SENT", 오늘);
+        UUID tokenId = 활성_링크(quoteId, 오늘);
+
+        batch.run(오늘);
+
+        assertThat(상태(quoteId)).isEqualTo("SENT");
+        assertThat(링크_상태(tokenId)).isEqualTo("ACTIVE");
+        assertThat(링크_사유(tokenId)).isNull();
+    }
+
+    /**
+     * 링크가 없는 견적도 견적 자체는 닫혀야 한다 — {@code ViewTokenCommand.expire}가
+     * 멱등이라(계약 javadoc: "활성 링크 없는 견적도 no-op") 호출자가 분기를 두지 않는다.
+     * 수동 만료(AP-14) 뒤 방치된 견적이 이 경우다.
+     */
+    @Test
+    @DisplayName("활성 링크가 없어도 견적은 닫힌다 — expire가 멱등이라 분기가 없다")
+    void 링크가_없어도_견적은_닫힌다() {
+        UUID quoteId = 견적("Q-8062", "VIEWED", 오늘.minusDays(4));
+
+        batch.run(오늘);
+
+        assertThat(상태(quoteId)).isEqualTo("EXPIRED");
+    }
+
     @AfterEach
     void 지운다() {
         jdbc.update("delete from quote_view_token where quote_id in (select id from quote where company_id = ?)",
                 companyId);
         jdbc.update("delete from quote where company_id = ?", companyId);
         jdbc.update("delete from deal where id = ?", dealId);
+        jdbc.update("delete from customer_contact where customer_id = ?", customerId);
         jdbc.update("delete from customer where id = ?", customerId);
         jdbc.update("delete from member where id = ?", memberId);
         jdbc.update("delete from company where id = ?", companyId);
