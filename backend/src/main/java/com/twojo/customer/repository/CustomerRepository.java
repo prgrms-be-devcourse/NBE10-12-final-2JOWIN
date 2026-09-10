@@ -1,6 +1,8 @@
 package com.twojo.customer.repository;
 
 import com.twojo.customer.entity.Customer;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -16,6 +18,9 @@ public interface CustomerRepository extends JpaRepository<Customer, UUID> {
 
     /** 회사 스코프 + 미삭제. 조건에 맞지 않으면 빈 Optional — 호출부에서 404로 변환한다 (SC-09). */
     Optional<Customer> findByIdAndCompanyIdAndDeletedAtIsNull(UUID id, UUID companyId);
+
+    /** id 묶음 배치 조회 — 회사 스코프 밖·삭제된 고객사는 결과에서 빠진다. */
+    List<Customer> findByCompanyIdAndIdInAndDeletedAtIsNull(UUID companyId, Collection<UUID> ids);
 
     /**
      * 목록·검색 (CU-03·04) — 회사 스코프와 미삭제는 항상 걸고, keyword·industry는 null이면 조건에서 빠진다.
