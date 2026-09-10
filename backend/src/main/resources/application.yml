@@ -84,7 +84,9 @@ notification:
     zone: "Asia/Seoul"        # cron 해석 시간대
     after-days: 3             # 발송 후 이 일수(경과 시간, 24h 단위)가 지나도록 무응답이면 리마인드 (sentAt 기준)
   expiring:
-    cron: "0 0 9 * * *"       # 매일 09:00 (zone 기준)
+    cron: "-"                 # 비활성 — C의 QuoteQuery.findExpiringUntil 실구현 전까지 (NT-06 #249).
+                              # 스텁이 UnsupportedOperationException을 던져 켜면 매일 배치가 실패한다.
+                              # 실구현 머지 시 후속 PR에서 "0 0 9 * * *"로 켠다.
     zone: "Asia/Seoul"        # cron 해석 시간대 · "오늘" 날짜 계산 시간대
     before-days: 3            # valid_until이 오늘 ~ 이 일수 뒤 구간에 들면 임박 (KST 날짜 기준)
 
