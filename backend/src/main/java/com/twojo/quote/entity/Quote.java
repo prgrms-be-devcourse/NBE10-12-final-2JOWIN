@@ -307,6 +307,29 @@ public class Quote extends BaseTimeEntity {
     }
 
     /**
+     * 기간 만료 (Q-37) — 발송됨·열람됨 → 기간 만료(EXPIRED). <b>종결이다.</b>
+     *
+     * <p>전이표 §6의 "유효기간 경과 · Deal 실패(DL-10)" 행이다. 주체가 <b>시스템</b>이라
+     * 담당자 행위가 아니고, 링크도 함께 닫힌다 — 그쪽은 서비스가
+     * {@code ViewTokenCommand.expire(TIME)}로 처리한다 (사유가 갈리므로 견적은 사유를 갖지 않는다).
+     *
+     * <p><b>예외를 던지지 않고 전이 여부를 돌려준다.</b> 배치가 부르는 자리라 "이미 닫혀 있음"이
+     * 오류가 아니다 — 같은 날 두 번 돌거나, 배치 직전에 담당자가 회수했거나, 고객이 승인한
+     * 경우가 정상적으로 생긴다. {@code withdraw}가 예외를 던지는 것과 갈리는 이유는
+     * <b>호출자가 사람이 아니기 때문</b>이다. 멱등이라 재실행이 안전하다
+     * ({@code ViewTokenCommand.expire}가 멱등인 것과 같은 이유).
+     *
+     * @return 이 호출로 실제 전이가 일어났으면 {@code true}
+     */
+    public boolean expire() {
+        if (status != Status.SENT && status != Status.VIEWED) {
+            return false;
+        }
+        this.status = Status.EXPIRED;
+        return true;
+    }
+
+    /**
      * 수신인을 바꿔 다시 보낼 수 있는지 (AP-13) — <b>발송됨·열람됨에서만</b>.
      *
      * <p><b>판정 축이 링크가 아니라 견적 상태다</b> ({@code QUOTE_NOT_RESENDABLE} 주석).
