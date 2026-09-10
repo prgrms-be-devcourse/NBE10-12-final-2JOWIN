@@ -22,6 +22,15 @@ class UpdateActivityRequestTest {
         assertThat(VALIDATOR.validate(new UpdateActivityRequest(null, "", null))).hasSize(1);
     }
 
+    /** 값 검증이 공백 검사를 겸한다 — 그래서 이 필드에는 {@code @NotBlank}가 없다 (08 §B v1.6.20). */
+    @Test
+    @DisplayName("상담 기록 — 목록에 없는 수단은 거절한다")
+    void activity_unknownChannel() {
+        assertThat(VALIDATOR.validate(new UpdateActivityRequest("MEETING", null, null))).isEmpty();
+        assertThat(VALIDATOR.validate(new UpdateActivityRequest("카카오톡", null, null))).hasSize(1);
+        assertThat(VALIDATOR.validate(new UpdateActivityRequest("call", null, null))).hasSize(1);
+    }
+
     @Test
     @DisplayName("상담 기록 — 발생 시각만 바꾸는 요청도 통과한다")
     void activity_occurredAtOnly() {
