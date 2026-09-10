@@ -1,6 +1,8 @@
-# 개발 워크플로우 v1.1
+# 개발 워크플로우 v1.2
 
 > 🧭 [문서 지도](README.md) · ← [12 프론트엔드 계획](12-frontend-plan.md) · [14 기술 스택](14-tech-stack.md) →
+
+> v1.2 (2026-09-09) — §3에 **클래스 레벨 `@Transactional(readOnly = true)` 서비스의 쓰기 메서드 규약** 신설 + ArchUnit 도입(#184, #154 후속)
 
 > v1.1 (2026-08-27) — 차수 ↔ 주차 매핑 명시(§5) · PR 셀프 체크리스트에 프론트 2줄 추가(§2)
 
@@ -146,6 +148,24 @@ Closes #
 - 트리거: `pull_request` (develop · release/* · main 대상)
 - DB는 서비스 컨테이너 Postgres에 **Flyway를 실제로 태워** 검증. `ddl-auto`는 기준으로 쓰지 않는다
 - 목표 실행 시간 5분 이내
+
+### 3.1 구조 규약 (ArchUnit)
+
+컴파일도 런타임도 잡지 못하는 규약은 `build` 잡의 테스트로 고정한다. 규칙은
+`backend/src/test/java/com/twojo/global/`에 둔다.
+
+**클래스 레벨 `@Transactional(readOnly = true)`를 쓰는 서비스의 쓰기 메서드는 메서드 레벨
+`@Transactional`로 쓰기 트랜잭션을 열어야 한다.** 빠뜨리면 읽기 전용 트랜잭션에서 돌아 Hibernate가
+flush를 건너뛰고 **변경이 예외도 로그도 없이 버려진다** — 컴파일·테스트·런타임 어디서도 티가 나지 않는다.
+
+- 판정은 **메서드 이름**으로 한다 (`create`·`update`·`send`·`mark`… — 목록은 테스트의
+  `WRITE_PREFIXES`가 정본). 리포지터리 `save` 호출로 판정하면 엔티티를 고치기만 하는
+  더티 체킹 쓰기(`deal.markWon()`)가 통째로 빠진다
+- **새 쓰기 동사를 쓰면 `WRITE_PREFIXES`에 추가한다.** 추가를 잊으면 목록 최신화 테스트가 먼저
+  실패해 알려준다 — 어노테이션을 붙인 메서드의 이름은 전부 목록에 있어야 한다
+- **어노테이션이 붙었는지만으로는 안 된다.** `@Transactional(readOnly = true)`를 복사해 붙이면
+  어노테이션은 있는데 여전히 읽기 전용이라 결과가 같다. 규칙도 `readOnly = false`까지 확인한다
+- 클래스 레벨 `readOnly = true` 자체는 금지하지 않는다. 조회 서비스에서는 유용하다
 
 ---
 

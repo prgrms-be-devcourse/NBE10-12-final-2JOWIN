@@ -13,6 +13,8 @@ import org.junit.jupiter.api.DisplayNameGeneration;
 import org.junit.jupiter.api.DisplayNameGenerator;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.EnumSource;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -34,20 +36,25 @@ class EmailFailedNotifierTest {
         return new EmailDeliveryFailedEvent(EMAIL_LOG_ID, type, COMPANY_ID, REF_ID);
     }
 
-    @Test
-    @DisplayName("QUOTE_SENT 실패면 writer에 위임한다")
-    void QUOTE_SENT면_writer에_위임한다() {
-        EmailDeliveryFailedEvent e = event(MailCommand.TemplateType.QUOTE_SENT);
+    @ParameterizedTest
+    @EnumSource(value = MailCommand.TemplateType.class, names = {"QUOTE_SENT", "QUOTE_REMIND"})
+    @DisplayName("인앱 EMAIL_FAILED 수신자가 있는 template 실패는 writer에 위임한다")
+    void 인앱_수신자_있는_template은_위임한다(MailCommand.TemplateType type) {
+        EmailDeliveryFailedEvent e = event(type);
 
         notifier.on(e);
 
         then(writer).should().write(e);
     }
 
-    @Test
-    @DisplayName("QUOTE_SENT가 아닌 실패는 무시한다 (v1 스코프)")
-    void 다른_template은_무시한다() {
-        notifier.on(event(MailCommand.TemplateType.PASSWORD_RESET));
+    @ParameterizedTest
+    @EnumSource(
+            value = MailCommand.TemplateType.class,
+            names = {"QUOTE_SENT", "QUOTE_REMIND"},
+            mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("인앱 수신자가 없는 template 실패는 writer에 위임하지 않는다 (notifiesInApp이 걸러낸다)")
+    void 인앱_수신자_없는_template은_무시한다(MailCommand.TemplateType type) {
+        notifier.on(event(type));
 
         then(writer).should(never()).write(any());
     }

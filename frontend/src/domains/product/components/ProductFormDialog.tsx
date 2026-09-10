@@ -32,6 +32,7 @@ const toForm = (product?: ProductResponse): Form => ({
  * 상품 등록·수정 (PR-01·02·04 · product/dto Create/UpdateProductRequest).
  * 되돌릴 수 있는 입력이라 Dialog (10 §2.5). 이름 중복(409 PRODUCT_NAME_DUPLICATED)은 폼 안에 표시한다.
  * 단가·이름을 바꿔도 이미 작성된 견적은 움직이지 않는다 (PR-07·08, QT-24) — 사용자가 알아야 할 사실이라 설명에 적는다.
+ * 수정은 PATCH라 null = 미변경이다 (Product.update) — 설명을 비운 건 ''로 보내야 지워진다. 등록은 null이 "없음"이다.
  */
 export function ProductFormDialog({ open, onOpenChange, product, loading, error, onSubmit }: Props) {
   return (
@@ -54,11 +55,12 @@ function ProductForm({ product, loading, error, onSubmit }: Omit<Props, 'open' |
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
+    const description = form.description.trim()
     onSubmit({
       name: form.name.trim(),
       unit: form.unit.trim(),
       unitPrice: priceNumber,
-      description: form.description.trim() || null,
+      description: description || (product ? '' : null),
     })
   }
 

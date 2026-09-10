@@ -1,4 +1,4 @@
-# 상태 전이표 — v1.6.6 (확정)
+# 상태 전이표 — v1.6.7 (확정)
 
 > 🧭 [문서 지도](README.md) · ← [04 사용자 시나리오](04-user-scenarios.md) · [06 ERD](06-erd.md) →
 
@@ -10,6 +10,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.7 | **§11에 NT-05 리마인드 배치 예약 행 추가(2026-09-09, #231)** — `RemindNoResponseBatch`가 발송 후 임계일수(기본 3일, `sentAt` 기준) 지나도록 무응답인 견적을 회사별로 훑어 담당 구성원(Q-26 폴백)에게 인앱 `REMIND_NO_RESPONSE` + 병행 메일(`QUOTE_REMIND`, NT-07 설정 시)을 예약한다. `QUOTE_REMIND`의 `ref_id`는 견적 id로 실행 간 고정 — 배치가 `notification`(해당 견적) 존재로 **견적 전체를 스킵**해 인앱·메일 모두 견적당 1회, 담당자 재배정돼도 재알림 없음. `uk_email_log_dedup`는 정상 흐름에서 미도달하는 백스톱. 정지 회사는 억제(Q-27) |
 | v1.6.6 | **§11 email_log FAILED 전이에 NT-12 인앱 알림 연동(2026-09-09, #212)** — `MailOutcomeWriter`가 SCHEDULED → FAILED로 **실제 전이할 때만** `EmailDeliveryFailedEvent`를 발행하고, notification 모듈 리스너가 AFTER_COMMIT + REQUIRES_NEW로 받아 `QUOTE_SENT` 실패에 한해 담당 구성원(Q-26 폴백)에게 인앱 `EMAIL_FAILED`를 만든다. 알림 쓰기 실패는 커밋된 FAILED를 되돌리지 않는다. 그 외 template은 email_log FAILED만(§2.13). 토큰→견적 되짚기는 `ViewTokenQuery.quoteIdOf` |
 | v1.6.5 | **§6 막히는 것에 `QUOTE_NOT_RESPONDABLE` 추가(2026-09-07)** — 승인·반려는 §6상 **열람됨(VIEWED)에서만** 열리는데, 그 밖의 상태에서 들어온 응답을 가리킬 코드가 표에 없었다. "불가 전이 하나가 에러 코드 하나"라는 이 문서의 원칙에서 빠져 있던 자리다. `COMPANY_SUSPENDED`(회사 정지)·`LINK_ALREADY_RESPONDED`(링크 상태)와 **판정 축이 다르다** | 고객 응답 구현 (#126) |
 | v1.6.4 | **email_log 전이 절 신설(2026-09-03)** — §11. 메일 파이프라인(#67): 예약됨(SCHEDULED) → 발송됨(SENT)/실패(FAILED), 실제 발송은 커밋 후 비동기. 재시도(NT-12)·`발송 중(SENDING)` 클레임 상태는 NT-12/정체 감지 배치 이슈로 유예. `body` 미저장에 따른 유실 한계 명시(14 §2-1·§7.3) |
@@ -192,17 +193,21 @@
 **커밋 후 비동기** 디스패처가 발송됨(SENT)/실패(FAILED)로 닫는다 (Q-40, NT-01~06·10·13·14).
 `ref_id`는 발송이 배달한 토큰 행 id (QUOTE_SENT → `quote_view_token`, PASSWORD_RESET → `password_reset_token`) —
 발송마다 유일하므로 재발송은 기존 행을 덮지 않고 새 행을 만든다.
+단 NT-05 리마인드(`QUOTE_REMIND`)의 `ref_id`는 **견적 id로 배치 재실행 간 고정**이라, 재실행 시엔
+배치의 `notification` 가드가 먼저 걸러 `schedule`에 도달하지 않고 `uk_email_log_dedup`는 백스톱이다
+(아래 "막히는 것").
 
 | 현재 | 행동 | 다음 | 행위자 | 조건 · 효과 |
 | --- | --- | --- | --- | --- |
 | (없음) | 메일 예약 (`MailCommand.schedule`) | 예약됨(SCHEDULED) | 시스템 | 호출자 트랜잭션 합류 — 호출자 롤백 시 행도 사라진다. `MailScheduled` 이벤트를 같은 트랜잭션에서 발행 |
+| (없음) | 리마인드 배치 예약 (`RemindNoResponseBatch` → `MailCommand.schedule`) | 예약됨(SCHEDULED) | 시스템(배치) | `QUOTE_REMIND` · `ref_id` = 견적 id(실행 간 고정). 견적 단위 `REQUIRES_NEW` — 인앱 `REMIND_NO_RESPONSE`와 한 트랜잭션이라 롤백 시 둘 다 사라져 다음 주기 재시도. 정지 회사 억제(Q-27) |
 | 예약됨(SCHEDULED) | 커밋 후 발송 성공 | 발송됨(SENT) | 시스템(비동기) | `sent_at` 기록. 디스패처가 `status ≠ SCHEDULED`면 스킵 (이중 발송 가드) |
 | 예약됨(SCHEDULED) | 발송 실패 · 비동기 제출 실패(큐 포화 · 셧다운 등) | 실패(FAILED) | 시스템(비동기) | FAILED 비율이 발송 실패 운영 지표 (14 §1.5). NT-13(가입 승인)은 인앱 수신자가 없어 이 지표가 **유일한** 감지 경로. 제출 실패는 리스너가 요청 스레드에서 동기로 FAILED 기록. **이 전이가 실제로 일어나면** `EmailDeliveryFailedEvent`가 같은 트랜잭션에서 발행돼 NT-12 인앱 알림으로 이어진다 (`QUOTE_SENT`만, §2.13) |
 | 실패(FAILED) | 재시도 성공 (NT-12) | 발송됨(SENT) | 시스템 | 엔티티 `markSent`가 FAILED → SENT를 허용한다(NT-12 재시도 1회, #112). 재시도 후에도 실패면 담당 구성원에게 인앱 `EMAIL_FAILED` (`QUOTE_SENT` 실패 → 딜 담당자, Q-26 폴백, #212). Deal 컨텍스트 없는 실패(초대 등)·NT-13·14는 인앱 없음 (§2.13) |
 
 | 막히는 것 | 처리 |
 | --- | --- |
-| 같은 `(template_type, ref_id, recipient_email)` 재삽입 (배치 재실행) | `uk_email_log_dedup` UNIQUE가 DB에서 차단 (06 §제약조건). 예외는 `save()`가 아니라 **호출자 커밋 시점**에 전파돼 롤백 |
+| 같은 `(template_type, ref_id, recipient_email)` 재삽입 (NT-05·06 배치 재실행) | `uk_email_log_dedup` UNIQUE가 DB에서 차단 (06 §제약조건). 예외는 `save()`가 아니라 **호출자 커밋 시점**에 전파돼 롤백. NT-05는 그 전에 배치가 `notification`(REMIND_NO_RESPONSE · 해당 견적) 존재를 보고 견적 전체를 건너뛰어 UNIQUE 충돌 자체를 피한다 (견적당 1회, 11 §5) |
 | 발송됨(SENT)을 예약됨·실패로 되돌리기 | 없음 — `markSent`/`markFailed`가 이미 SENT면 무동작 (SENT는 종결) |
 
 > **이 파이프라인이 감수하는 한계** (#67)

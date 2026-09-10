@@ -60,6 +60,29 @@ management:
     health:
       probes:
         enabled: true
+  # Boot 4 부터 지표 내보내기가 옵트인이다. 이 줄이 없으면
+  # management.defaults.metrics.export.enabled 가 false 로 평가되어
+  # PrometheusMeterRegistry 빈이 아예 만들어지지 않고,
+  # exposure 에 prometheus 를 적어도 /actuator/prometheus 는 404 다 (#221).
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  # 모든 지표에 application 라벨을 붙인다. 커뮤니티 대시보드(JVM 4701 등)가
+  # 이 라벨로 앱을 고르므로, 없으면 패널이 전부 빈 화면으로 뜬다.
+  #
+  # 값이 하나뿐이라 시계열이 늘지 않는다 — job 라벨과 같은 성격이다
+  # (monitoring.md §3.5 카디널리티).
+  metrics:
+    tags:
+      application: ${spring.application.name}
+
+# NT-05 무응답 리마인드 배치 (docs/03 §2.13 · docs/14 §1.2 단일 인스턴스 스케줄러)
+notification:
+  remind:
+    cron: "0 0 9 * * *"       # 매일 09:00 (zone 기준)
+    zone: "Asia/Seoul"        # cron 해석 시간대
+    after-days: 3             # 발송 후 이 일수(경과 시간, 24h 단위)가 지나도록 무응답이면 리마인드 (sentAt 기준)
 
 ---
 # 로컬 개발 — infra/dev/docker-compose.yml의 PostgreSQL 사용

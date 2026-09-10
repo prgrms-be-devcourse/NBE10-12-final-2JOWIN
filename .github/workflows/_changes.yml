@@ -1,0 +1,125 @@
+# 무엇이 바뀌었는지 판단하는 곳 — 여기 한 곳뿐이다.
+#
+# infra-ci.yml 과 infra-cd.yml 이 같은 판단을 필요로 한다. 각자 필터를
+# 두면 목록이 두 벌이 되는데, 그것이 #228 의 원인이었다 — 설정 번들
+# 경로를 한쪽에만 추가한 탓에 캐디·모니터링 설정을 고쳐도 apply 가
+# 돌지 않았고, 서버는 계속 옛 파일을 받아갔다.
+#
+# 호출 전용이라 이 파일만으로는 아무것도 트리거되지 않는다.
+name: changes (호출 전용)
+
+on:
+  workflow_call:
+    outputs:
+      infra:
+        value: ${{ jobs.changes.outputs.infra }}
+      scripts:
+        value: ${{ jobs.changes.outputs.scripts }}
+      config:
+        value: ${{ jobs.changes.outputs.config }}
+      workflows:
+        value: ${{ jobs.changes.outputs.workflows }}
+      aws_ready:
+        value: ${{ jobs.changes.outputs.aws_ready }}
+      state_ready:
+        value: ${{ jobs.changes.outputs.state_ready }}
+      infracost_ready:
+        value: ${{ jobs.changes.outputs.infracost_ready }}
+      stack_ready:
+        value: ${{ jobs.changes.outputs.stack_ready }}
+      tfvars_ready:
+        value: ${{ jobs.changes.outputs.tfvars_ready }}
+
+env:
+  TF_ROOT: infra/prod/terraform
+  TF_VERSION: 1.15.8
+  TFLINT_VERSION: v0.64.0
+  TF_IN_AUTOMATION: 'true'
+
+jobs:
+  changes:
+    name: infra-changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      infra: ${{ steps.filter.outputs.infra }}
+      scripts: ${{ steps.filter.outputs.scripts }}
+      config: ${{ steps.filter.outputs.config }}
+      workflows: ${{ steps.filter.outputs.workflows }}
+      aws_ready: ${{ steps.gate.outputs.aws_ready }}
+      state_ready: ${{ steps.gate.outputs.state_ready }}
+      infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
+      stack_ready: ${{ steps.gate.outputs.stack_ready }}
+      tfvars_ready: ${{ steps.gate.outputs.tfvars_ready }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            infra:
+              - 'infra/prod/terraform/**'
+              - '.github/workflows/infra-*.yml'
+              - '.github/workflows/_changes.yml'
+              # terraform apply 가 이 파일들을 S3 config/ 로 올린다
+              # (modules/storage/config_sync.tf 의 config_dirs).
+              # 여기 없으면 파일을 고쳐도 apply 가 돌지 않아 S3 가
+              # 그대로 남고, 서버는 계속 옛 파일을 받아간다.
+              - 'infra/prod/compose/**'
+              - 'infra/prod/caddy/**'
+              - 'infra/prod/scripts/**'
+              - 'infra/prod/monitoring/**'
+              - 'infra/prod/systemd/**'
+            scripts:
+              - 'infra/**/*.sh'
+              - '.github/workflows/infra-*.yml'
+              - '.github/workflows/_changes.yml'
+            config:
+              - 'infra/prod/compose/**'
+              - 'infra/prod/caddy/**'
+              - 'infra/prod/monitoring/**'
+              - 'infra/prod/systemd/**'
+              - 'infra/prod/.env.example'
+              # 앱이 요구하는 키가 늘면 .env.example 도 따라와야 한다
+              - 'backend/src/main/resources/application.yml'
+              - '.github/workflows/infra-*.yml'
+              - '.github/workflows/_changes.yml'
+            workflows:
+              - '.github/workflows/**'
+              - '.github/actions/**'
+
+      # 아직 없는 것들 때문에 CI 가 빨간불로 남지 않게 한다.
+      # bootstrap apply 전에는 OIDC 역할이 없고, 메인 스택 코드도 아직 없다.
+      # 준비되면 시크릿·코드가 생기면서 해당 잡이 저절로 켜진다.
+      - id: gate
+        shell: bash
+        env:
+          HAS_PLAN_ROLE: ${{ secrets.AWS_TF_PLAN_ROLE_ARN != '' }}
+          # backend.tf 에 bucket 이 없다(계정 ID 를 코드에 박지 않는다).
+          # 없으면 terraform init 이 "The attribute bucket is required" 로
+          # 죽는다 — plan·apply 의 첫 줄이다.
+          HAS_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET != '' }}
+          HAS_INFRACOST_KEY: ${{ secrets.INFRACOST_API_KEY != '' }}
+          # key_name·deploy_public_key 는 기본값이 없다. 없는 채로 -input=false
+          # 로 돌면 "No value for required variable" 로 죽는다. 시크릿이 아니라
+          # 공개키와 키페어 이름이므로 variable 로 받는다.
+          HAS_TFVARS: ${{ vars.SSH_KEY_NAME != '' && vars.DEPLOY_PUBLIC_KEY != '' }}
+        run: |
+          set -euo pipefail
+          {
+            echo "aws_ready=${HAS_PLAN_ROLE}"
+            echo "state_ready=${HAS_STATE_BUCKET}"
+            echo "infracost_ready=${HAS_INFRACOST_KEY}"
+            echo "tfvars_ready=${HAS_TFVARS}"
+            # 메인 스택은 TF_ROOT 바로 아래 .tf 파일. bootstrap/ 은 여기 해당 없음
+            if compgen -G "${TF_ROOT}/*.tf" > /dev/null; then
+              echo "stack_ready=true"
+            else
+              echo "stack_ready=false"
+            fi
+          } >> "$GITHUB_OUTPUT"
+
+  # ── 자격증명 없이 도는 검사 3종 ─────────────────────────────────

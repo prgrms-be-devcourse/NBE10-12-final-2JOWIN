@@ -3,7 +3,7 @@
 > 🧭 [문서 지도](README.md) · ← [10 화면 설계](10-screen-design.md) · [12 프론트엔드 계획](12-frontend-plan.md) →
 
 **문서명:** Work Breakdown by Table & Endpoint
-**버전:** v2.0 (2026-08-26) · **v2.0.13** (2026-09-09 — §7.2 `ViewTokenQuery`에 `quoteIdOf`(발송 토큰 id → 견적 id) 추가(#212). NT-12 최종 실패 알림이 `email_log.ref_id`(발송 토큰 id)에서 담당 구성원을 되짚는 통로 — 없으면 `Optional.empty()`) · **v2.0.12** (2026-09-09 — §7.1 `ViewTokenCommand.issue`에 `message`(담당자 한마디, 08 `SendQuoteRequest.message`) 추가 — 발송 모달의 메시지가 안내 메일에 실리도록(#183)) · **v2.0.11** (2026-09-08 — `QuoteQuery.QuoteSummary`에 `dealId`·`companyId` 추가(#205). 배치에는 `AccessContext`가 없어 SC-02를 계약 안에서 판정할 수 없다 — 회사 전체를 돌려주고 호출자가 이 두 축으로 거른다. `findAwaitingResponse`·`SalesStatsQuery.pipeline` 실구현 반영) · **v2.0.10** (2026-09-08 — §7.2 인터페이스 표에 `DealCommand`(promoteToQuoteStage·markWon) 행 추가(#109·#160, 표에 빠져 있었다) · `QuoteCommand`에 `lockApprovedForConversion` · `QuoteQuery`에 `originsByIds`·`quoteIdsByDeals` 반영(#160)) · **v2.0.9** (2026-09-08 — §7.2 인터페이스 표에 `ActivityQuery`(recent — DB-04 최근 활동)·`TaskQuery`(followUps — DB-05 후속 필요) 행 추가(#158·#178) · 계약 javadoc의 summary 규칙·OWNED_ONLY 판정 정정) · **v2.0.8** (2026-09-08 — §7.2 인터페이스 표에 `DealCommand`(promoteToQuoteStage·reassignOpenDeals) 행 추가(#109·#130) · `DealQuery` 행에 customerIdOf·summariesByIds·assignedDealIds·countOpenAssigned 반영(#32·#46·#109·#130)) · **v2.0.7** (2026-09-08 — §7.2 인터페이스 표에 `PublicQuoteAssembler`(assembleForPreview·assembleForView — 고객 화면 조립 통로; QT-12·AP-02) 행 추가(#163)) · **v2.0.6** (2026-09-07 — §7.2 인터페이스 표에 `NotificationSettingQuery`·`NotificationSettingCommand`(settingsOf·replaceSettings) 행 추가(#127)) · **v2.0.5** (2026-09-04 — §7.2 인터페이스 표에 `NotificationCommand`(notify·notifyForDeal) 행 추가(#75)) · **v2.0.4** (2026-09-03 — §7.2 인터페이스 표에 `MailCommand`(schedule) 행 추가(#47) · §2 `MemberQuery`에 A 내부 인터페이스 3건 추가(#40)) · **v2.0.3** (2026-08-27 — 프론트엔드 소유 확정: E가 오너, 플랫폼 + 로그인·고객 열람 담당 / 도메인 화면은 각 백엔드 담당자 · 게이트에 프론트 조건 추가 · Seed=목 픽스처. 상세는 `12-frontend-plan.md`) · **v2.0.2** (화면 설계 공백 반영 — `QuoteCommand.approve/reject`에 응답자 정보(AP-19) · `QuoteQuery` 반환에 첫 열람 시각(GAP-08)) · **검수 보정 v2.0.1** (2026-08-26 — 인터페이스 보강(§4·§5·§7.2: CU-08·12·14와 D 대시보드·배치의 데이터 통로 신설) · NT-12 수신자 규칙 참조 · WON 전이 단계 무관 정합 · AU-09 잠금 판정 문구 정정)
+**버전:** v2.0 (2026-08-26) · **v2.0.17** (2026-09-10 — §2·§7.2 `CustomerQuery`에 `namesByIds`(고객사 id 묶음 → 이름 배치 조회) 추가(#218). `QuoteSummary.customerName`이 `null` 고정이던 원인이 이 창구의 부재였다 — 단건 `get`은 `AccessContext`를 요구하는데 목록 조립 지점에는 그 값이 없고, 줄마다 부르면 N+1이 된다. 소비처는 DB-03 응답 대기 카드와 주문 목록이다. 규약은 `DealQuery.summariesByIds`와 같다 — 순서 보장 없음 · 없는 id는 예외 없이 빠짐 · 소프트 삭제 제외 · 빈 목록이면 빈 목록) · **v2.0.16** (2026-09-09 — §1.3에 PATCH 규약 포인터 한 줄 신설(#233). `null`=미변경 · nullable은 `''`로 비움이 08 §B(v1.6.7)에만 있어, 화면·목을 맞출 때마다 08의 개별 record 주석을 뒤져야 했다(#204에서도 근거를 다시 찾았다). §1은 「공통 개발 컨벤션」의 정본이므로 여기에 **포인터만** 둔다 — 규범 문장을 복제하면 정본이 둘이 되어 갈라진다. 주문 착수일·납기(OD-10)가 이 규약의 예외라는 것도 함께 적는다 — 두 날짜를 함께 덮어써 `null`이 지움이고, 실 API 전환(#248)에서 목이 이것을 미변경으로 받고 있던 것을 찾았다) · **v2.0.15** (2026-09-09 — §5 NT-05·06 배치 규칙에 인앱 레그 서술 보강(#231). 무응답 리마인드 배치(`RemindNoResponseBatch`)는 메일 중복을 `email_log` UNIQUE로, 인앱 중복을 `notification`(REMIND_NO_RESPONSE·해당 견적) 존재 가드로 막아 견적당 1회를 보장한다 — 담당자 재배정 시 재알림하지 않는다) · **v2.0.14** (2026-09-09 — §7.2 인터페이스 표에 `CompanyQuery` 행 신설(#238). 표에 아예 빠져 있던 계약이다. `findActiveIds`(활성 회사 id 전체)를 함께 추가한다 — NT-05·06 배치가 회사 단위로 순회하는 진입점으로, 배치에는 `AccessContext`가 없어 회사 스코프를 인자로 받을 수 없다(v2.0.11 `QuoteSummary`와 같은 자리). 정지 회사는 빠지고(Q-27), 목록은 호출 시점의 스냅샷이라 회사별 처리 직전에 `get`으로 다시 본다) · **v2.0.13** (2026-09-09 — §7.2 `ViewTokenQuery`에 `quoteIdOf`(발송 토큰 id → 견적 id) 추가(#212). NT-12 최종 실패 알림이 `email_log.ref_id`(발송 토큰 id)에서 담당 구성원을 되짚는 통로 — 없으면 `Optional.empty()`) · **v2.0.12** (2026-09-09 — §7.1 `ViewTokenCommand.issue`에 `message`(담당자 한마디, 08 `SendQuoteRequest.message`) 추가 — 발송 모달의 메시지가 안내 메일에 실리도록(#183)) · **v2.0.11** (2026-09-08 — `QuoteQuery.QuoteSummary`에 `dealId`·`companyId` 추가(#205). 배치에는 `AccessContext`가 없어 SC-02를 계약 안에서 판정할 수 없다 — 회사 전체를 돌려주고 호출자가 이 두 축으로 거른다. `findAwaitingResponse`·`SalesStatsQuery.pipeline` 실구현 반영) · **v2.0.10** (2026-09-08 — §7.2 인터페이스 표에 `DealCommand`(promoteToQuoteStage·markWon) 행 추가(#109·#160, 표에 빠져 있었다) · `QuoteCommand`에 `lockApprovedForConversion` · `QuoteQuery`에 `originsByIds`·`quoteIdsByDeals` 반영(#160)) · **v2.0.9** (2026-09-08 — §7.2 인터페이스 표에 `ActivityQuery`(recent — DB-04 최근 활동)·`TaskQuery`(followUps — DB-05 후속 필요) 행 추가(#158·#178) · 계약 javadoc의 summary 규칙·OWNED_ONLY 판정 정정) · **v2.0.8** (2026-09-08 — §7.2 인터페이스 표에 `DealCommand`(promoteToQuoteStage·reassignOpenDeals) 행 추가(#109·#130) · `DealQuery` 행에 customerIdOf·summariesByIds·assignedDealIds·countOpenAssigned 반영(#32·#46·#109·#130)) · **v2.0.7** (2026-09-08 — §7.2 인터페이스 표에 `PublicQuoteAssembler`(assembleForPreview·assembleForView — 고객 화면 조립 통로; QT-12·AP-02) 행 추가(#163)) · **v2.0.6** (2026-09-07 — §7.2 인터페이스 표에 `NotificationSettingQuery`·`NotificationSettingCommand`(settingsOf·replaceSettings) 행 추가(#127)) · **v2.0.5** (2026-09-04 — §7.2 인터페이스 표에 `NotificationCommand`(notify·notifyForDeal) 행 추가(#75)) · **v2.0.4** (2026-09-03 — §7.2 인터페이스 표에 `MailCommand`(schedule) 행 추가(#47) · §2 `MemberQuery`에 A 내부 인터페이스 3건 추가(#40)) · **v2.0.3** (2026-08-27 — 프론트엔드 소유 확정: E가 오너, 플랫폼 + 로그인·고객 열람 담당 / 도메인 화면은 각 백엔드 담당자 · 게이트에 프론트 조건 추가 · Seed=목 픽스처. 상세는 `12-frontend-plan.md`) · **v2.0.2** (화면 설계 공백 반영 — `QuoteCommand.approve/reject`에 응답자 정보(AP-19) · `QuoteQuery` 반환에 첫 열람 시각(GAP-08)) · **검수 보정 v2.0.1** (2026-08-26 — 인터페이스 보강(§4·§5·§7.2: CU-08·12·14와 D 대시보드·배치의 데이터 통로 신설) · NT-12 수신자 규칙 참조 · WON 전이 단계 무관 정합 · AU-09 잠금 판정 문구 정정)
 **상태:** 확정 — **요구사항 · 전이표 · ERD · API · DTO · 권한 매트릭스의 v1.6 계열 최신본 기준** (각 문서 변경 이력 참조)
 
 > ⚠️ v1.0(8/21 Draft)은 구버전 스키마(tenant/app_user/quotation/quote_share 등)와 폐기된 결정(customer.owner_id 신설, Deal 단계 QUALIFIED/PROPOSAL, `/api/platform` 경로 등)을 기준으로 작성되어 있었다. 이 v2.0이 그것을 **전면 대체**한다. v1.0의 "착수 전 확정 사항" 8건은 전부 결정 완료되어 요구사항 정의서 3절(Q-15~35)에 반영됐다 — 정리 내역은 `15-cleanup-report.md` 참조.
@@ -83,6 +83,8 @@ public record ErrorResponse(String code, String message, List<FieldError> fieldE
 **이 문서 §1이 「공통 개발 컨벤션」의 정본이다 (Q-36 확정)** — 부재하던 원본 문서 추적은 중단하고, URL·상태 코드·에러 포맷·페이징·채번 규칙은 여기와 API 명세서를 기준으로 삼는다.
 
 목록 요청 파라미터는 **`?page=0&size=20`**(0-base · 기본 20 · 최대 100), 정렬은 엔드포인트별 기본값 고정 (Q-39).
+
+**PATCH 요청**은 `null`이 미변경이고, nullable 필드는 `''`로 비운다 — **정본은 08 §B** (v1.6.7). 예외가 하나 있다: 주문의 착수일·납기(OD-10)는 두 날짜를 **함께 덮어써서** `null`이 "지움"이다 (08 §C · `Order.updateSchedule`).
 
 > v1.0의 `traceId` 필드는 폐기 — v1.6 계약은 `fieldErrors`다.
 
@@ -184,6 +186,8 @@ public interface CustomerQuery {
     CustomerSummary get(AccessContext ctx, UUID customerId);          // C Deal 생성 검증·표시
     boolean existsContactInCustomer(UUID customerId, UUID contactId); // C의 CONTACT_NOT_IN_CUSTOMER 검증
     ContactSummary getContact(UUID contactId);                        // D 발송 수신자 정보
+    List<CustomerSummary> namesByIds(UUID companyId,                  // 목록 줄마다 붙는 고객사명 (DB-03·주문 목록)
+                                     Collection<UUID> customerIds);   // 순서 보장 없음 · 없는 id는 빠짐 (v2.0.17)
 }
 
 public interface ProductQuery {
@@ -368,7 +372,7 @@ COMMIT
 | 알림 수신자 = 발송 시점 유효 담당자, 비활성이면 기업 관리자 폴백 (`MemberQuery.findAdminIds`) | Q-26 |
 | 회사 정지 중: 열람 허용·응답 차단·배치 알림 중단 (만료 **전이** 배치는 계속) | SC-10, Q-27 |
 | 메일 실패: 재시도 1회 → 실패 시 인앱 EMAIL_FAILED (NT-07로 못 끔) — **수신자는 실패 메일별 규칙(요구사항 §2.13 NT-12 수신자 표). NT-13 실패는 인앱 수신자 없음 → email_log FAILED 지표로 감지** | NT-12, Q-35 |
-| NT-05·06 배치: email_log UNIQUE가 이중 발송 차단 — 수신자 변경 시 키가 달라져 새 담당자에게 정상 발송 | NT-05·06 |
+| NT-05 리마인드 배치: 배치가 `notification`(`REMIND_NO_RESPONSE`·해당 견적) 존재로 **견적 전체를 스킵**해 인앱·메일 모두 견적당 1회 — 담당자가 재배정돼도 재알림 없음. `email_log` UNIQUE는 정상 흐름에서 미도달하는 백스톱. (NT-06 임박 배치는 메일 전용·인앱 가드 없음 — 착수 시 별도 행) | NT-05 |
 | 대시보드 집계는 SC절 범위를 따름 — 영업은 본인 담당 Deal 기준 · **집계·후보 조회는 C의 `SalesStatsQuery`·`QuoteQuery` 경유(deal·quote·orders 직접 조회 금지, v2.0.1)** | DB-01~05, SC-02 |
 
 ---
@@ -409,7 +413,8 @@ C → D: Deal 실패(lose) 시 ViewTokenCommand.expire(DEAL_LOST)   ← 역방�
 | 제공자 | 인터페이스 | 소비자 |
 | --- | --- | --- |
 | A | `MemberQuery` | B, C, D |
-| B | `CustomerQuery` (contact 검증 포함) | C, D |
+| A | `CompanyQuery` (get — 회사명·사업자번호·정지 여부를 한 번에; 08 `LoginResponse.companyName`·07 §D `PublicQuoteResponse.companyName`·SC-10 판정) · **findActiveIds** — 배치의 활성 회사 순회 (NT-05·06, Q-27) (v2.0.14) | C, D |
+| B | `CustomerQuery` (contact 검증 포함 · **namesByIds** — 고객사 id 묶음 → 이름 배치 조회; DB-03 응답 대기 카드·주문 목록의 N+1 해소, `DealQuery.summariesByIds`와 같은 규약) (v2.0.17) | C, D |
 | B | `ProductQuery` | C |
 | B | `ActivityQuery` (recent — DB-04 최근 활동; summary는 content 80자 절단, activity 단일 원천) (v2.0.9) | D |
 | B | `TaskQuery` (followUps — DB-05 후속 필요; 미완료만, 마감 지난 것 포함) (v2.0.9) | D |

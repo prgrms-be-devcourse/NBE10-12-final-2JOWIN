@@ -28,4 +28,11 @@ public interface NotificationRepository extends JpaRepository<Notification, UUID
      */
     Optional<Notification> findByIdAndCompanyIdAndRecipientMemberId(
             UUID id, UUID companyId, UUID recipientMemberId);
+
+    /**
+     * NT-05 리마인드 배치의 멱등 가드 — 이 견적에 이미 리마인드 알림이 있으면 배치가 견적 전체를 건너뛴다
+     * (인앱·메일 두 레그 함께). 수신자를 가리지 않는다 — 담당자가 재배정돼도 재알림하지 않는다
+     * (견적당 1회, docs/11-work-breakdown.md §5).
+     */
+    boolean existsByCompanyIdAndTypeAndRefId(UUID companyId, Notification.Type type, UUID refId);
 }

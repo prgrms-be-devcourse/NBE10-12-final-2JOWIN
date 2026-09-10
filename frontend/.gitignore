@@ -22,3 +22,6 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# CI 가 만드는 테스트 리포트 (잡 요약용, #260)
+vitest-report.json

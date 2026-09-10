@@ -2,11 +2,16 @@ package com.twojo.customer.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.assertj.core.api.Assertions.tuple;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.never;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.Role;
 import com.twojo.customer.entity.Customer;
 import com.twojo.customer.entity.CustomerContact;
@@ -14,6 +19,7 @@ import com.twojo.customer.repository.CustomerContactRepository;
 import com.twojo.customer.repository.CustomerRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -38,6 +44,14 @@ class CustomerQueryImplTest {
     @Mock private CustomerRepository customerRepository;
     @Mock private CustomerContactRepository customerContactRepository;
     @InjectMocks private CustomerQueryImpl customerQuery;
+
+    /** {@code willReturn(...)} 인자 안에서 부르면 중첩 스터빙이 된다 — 먼저 지역 변수로 만든다. */
+    private static Customer customer(UUID id, String name) {
+        Customer customer = mock(Customer.class);
+        given(customer.getId()).willReturn(id);
+        given(customer.getName()).willReturn(name);
+        return customer;
+    }
 
     @Test
     @DisplayName("고객사를 찾으면 id·이름만 담은 요약을 돌려준다")
@@ -100,6 +114,37 @@ class CustomerQueryImplTest {
         assertThat(summary.name()).isEqualTo("이수정");
         assertThat(summary.title()).isEqualTo("총무팀 대리");
         assertThat(summary.email()).isEqualTo("sujeong@dodam.co.kr");
+    }
+
+    @Test
+    @DisplayName("빈 id 묶음이면 조회하지 않고 빈 목록을 돌려준다")
+    void namesByIds_empty_doesNotQuery() {
+        assertThat(customerQuery.namesByIds(CTX.companyId(), List.of())).isEmpty();
+
+        then(customerRepository).should(never())
+                .findByCompanyIdAndIdInAndDeletedAtIsNull(any(), any());
+    }
+
+    /**
+     * 요청한 id 중 조회되지 않은 것은 <b>예외 없이 빠진다</b> — {@code get}이 같은 상황에서 404를
+     * 던지는 것과 갈리는 지점이라 두 축을 한 케이스에서 함께 본다.
+     * 회사 스코프·소프트 삭제 필터 자체는 파생 쿼리 이름이 보증하며 여기서는 실행되지 않는다.
+     */
+    @Test
+    @DisplayName("조회된 것만 id·이름 요약으로 돌려준다 — 빠진 id에 예외를 던지지 않는다")
+    void namesByIds_returnsFoundOnly_withoutException() {
+        UUID alive = UUID.randomUUID();
+        UUID missing = UUID.randomUUID();
+        List<Customer> found = List.of(customer(alive, "도담건설"));
+        given(customerRepository.findByCompanyIdAndIdInAndDeletedAtIsNull(
+                CTX.companyId(), List.of(alive, missing)))
+                .willReturn(found);
+
+        var summaries = customerQuery.namesByIds(CTX.companyId(), List.of(alive, missing));
+
+        assertThat(summaries)
+                .extracting(CustomerQuery.CustomerSummary::id, CustomerQuery.CustomerSummary::name)
+                .containsExactly(tuple(alive, "도담건설"));
     }
 
     @Test

@@ -52,6 +52,8 @@ export const ERROR_MESSAGES = {
   QUOTE_NOT_RESENDABLE: '이 상태의 견적은 재발송할 수 없습니다.',
   QUOTE_VALID_UNTIL_PASSED: '유효기간이 지났습니다. 유효기간을 다시 지정한 뒤 발송해 주세요.',
   QUOTE_DEAL_CLOSED: '종결된 Deal에는 견적을 작성할 수 없습니다. 새 Deal을 만들어 진행해 주세요.',
+  // 링크는 유효한데 견적 상태가 어긋난 응답 — LINK_*와 판정 축이 다르다 (07 v1.6.11)
+  QUOTE_NOT_RESPONDABLE: '이 상태의 견적에는 응답할 수 없습니다.',
   CONTACT_NOT_IN_CUSTOMER: '이 Deal의 고객사에 소속된 담당자만 수신인으로 지정할 수 있습니다.',
   STALE_VERSION: '다른 사용자가 먼저 수정했습니다. 새로고침 후 다시 시도해 주세요.',
   // ── C 주문

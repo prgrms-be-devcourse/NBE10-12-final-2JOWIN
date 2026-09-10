@@ -159,6 +159,7 @@ export function DealDetailPage() {
         deal={deal}
         loading={m.update.isPending}
         error={m.update.error}
+        onRetry={() => refetch()}
         onSubmit={(body) => m.update.mutate(body, { onSuccess: close })}
       />
       <LoseDealDialog

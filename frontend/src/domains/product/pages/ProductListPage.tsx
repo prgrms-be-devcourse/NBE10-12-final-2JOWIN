@@ -145,7 +145,7 @@ export function ProductListPage() {
                     </Table.Cell>
                     <Table.Cell>
                       <Text size="2" color="gray" truncate style={{ maxWidth: 360, display: 'block' }}>
-                        {product.description ?? '—'}
+                        {product.description?.trim() || '—'}
                       </Text>
                     </Table.Cell>
                     <Table.Cell>

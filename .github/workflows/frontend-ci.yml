@@ -1,0 +1,89 @@
+# Frontend CI — 머지 전 검증 (ci-cd.md §6)
+#
+# Vercel 은 머지 "후" 에 빌드한다. 거기서 실패하면 develop 이 이미 깨진
+# 뒤다. 그리고 lint·테스트는 아예 돌리지 않는다. 그 둘을 여기서 막는다.
+#
+# 잡을 하나로 둔다. 이름 frontend 가 required check 라 바꾸면 PR 이
+# 머지 불가로 남고, 잡을 나누면 npm ci 를 그만큼 반복하게 된다.
+name: Frontend CI
+
+on:
+  pull_request:
+    branches: [develop, 'release/**', main]
+
+concurrency:
+  group: frontend-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # 워크플로 레벨 paths 를 쓰지 않는 이유는 backend-ci.yml 과 같다 —
+  # required check 가 pending 으로 남아 머지가 영원히 막힌다.
+  changes:
+    name: changes
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      frontend: ${{ steps.filter.outputs.frontend }}
+    steps:
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            frontend:
+              - 'frontend/**'
+              - '.github/workflows/frontend-ci.yml'
+
+  frontend:
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true'
+    # 이름을 바꾸지 말 것 — 룰셋의 required check 목록에 이 문자열이 있다
+    name: frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # 가장 싸고 가장 조용한 결함을 먼저 막는다. import.meta.env 에는 인덱스
+      # 시그니처가 있어서 선언에 없는 키를 써도 타입 오류가 나지 않는다 —
+      # 빌드는 통과하고 배포 환경에 그 키가 없으면 런타임에 undefined 가 된다.
+      - name: VITE_ 키가 선언되어 있는가
+        working-directory: .
+        run: python3 .github/scripts/check-vite-env-keys.py frontend
+
+      - name: 의존성 설치
+        run: npm ci
+
+      # 빠르게 실패하는 것부터 앞에 둔다 — lint 수 초 · 테스트 2초 · 빌드가 가장 길다.
+      # 앞에서 걸리면 뒤는 안 돌아 피드백이 그만큼 빨라진다.
+      #
+      # 셋 다 한 잡 안에 있는 이유: 잡 이름 frontend 가 required check 라
+      # 나누면 룰셋을 함께 고쳐야 하고, npm ci 를 그만큼 반복하게 된다.
+      - name: lint
+        run: npm run lint
+
+      # 테스트 파일이 10개 있는데 CI 가 한 번도 돌리지 않고 있었다.
+      # 통과 여부를 아무도 몰랐고 마침 통과하고 있었을 뿐이다 (#251 2단계).
+      - name: 테스트
+        run: npm test -- --reporter=default --reporter=json --outputFile.json=vitest-report.json
+
+      # 통과했을 때는 한 줄이면 되고, 실패했을 때 어느 테스트가 깨졌는지를
+      # 스텝을 펼치지 않고 보는 것이 목적이다 (#260).
+      # always() 다 — 실패했을 때야말로 요약이 필요하다.
+      - name: 테스트 결과 요약
+        if: always()
+        working-directory: .
+        run: python3 .github/scripts/vitest-summary.py frontend/vitest-report.json
+
+      # 타입 검사는 build 안에 있다 (tsc -b && vite build).
+      - name: 빌드 (타입 검사 포함)
+        run: npm run build

@@ -1,13 +1,18 @@
 package com.twojo.quote.service;
 
+import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.QuoteCommand;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import com.twojo.quote.QuoteApproved;
+import com.twojo.quote.QuoteRejected;
+import com.twojo.quote.QuoteViewed;
 import com.twojo.quote.entity.Quote;
 import com.twojo.quote.repository.QuoteRepository;
 import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
@@ -48,6 +53,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class QuoteCommandImpl implements QuoteCommand {
 
     private final QuoteRepository quoteRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 고객 첫 열람 (AP-02·07) — <b>멱등</b>. 이미 열람했거나 응답 완료면 아무 일도 하지 않는다.
@@ -56,21 +62,43 @@ public class QuoteCommandImpl implements QuoteCommand {
     @Override
     @Transactional
     public void markViewed(UUID quoteId) {
-        find(quoteId).markViewed(Instant.now());
+        Quote quote = find(quoteId);
+        Quote.Status before = quote.getStatus();
+        Instant now = Instant.now();
+        quote.markViewed(now);
+
+        // 상태가 실제로 움직인 경우 = 첫 열람이다 (AP-07). 재열람·응답 후 열람은 엔티티가 조용히
+        // 무동작하는데, 그때도 발행하면 고객이 링크를 새로고침할 때마다 타임라인이 늘어난다.
+        if (quote.getStatus() != before) {
+            eventPublisher.publishEvent(new QuoteViewed(quote.getCompanyId(), quote.getId(),
+                    quote.getDealId(), quote.getQuoteNo(), AuditActor.customerLink(), now));
+        }
     }
 
     /** 고객 승인 (AP-08·19) — 열람됨에서만. 그 밖의 상태는 {@code QUOTE_NOT_RESPONDABLE} */
     @Override
     @Transactional
     public void approve(UUID quoteId, Responder responder) {
-        find(quoteId).approve(responder.name(), responder.title(), Instant.now());
+        Quote quote = find(quoteId);
+        Instant now = Instant.now();
+        quote.approve(responder.name(), responder.title(), now);   // 열람됨이 아니면 여기서 막힌다
+
+        eventPublisher.publishEvent(new QuoteApproved(quote.getCompanyId(), quote.getId(),
+                quote.getDealId(), quote.getQuoteNo(), responder.name(),
+                AuditActor.customerLink(), now));
     }
 
     /** 고객 반려 (AP-09·10·19) — 사유는 필수다. 08의 {@code @NotBlank}가 웹 계층에서 건다 */
     @Override
     @Transactional
     public void reject(UUID quoteId, String reason, Responder responder) {
-        find(quoteId).reject(reason, responder.name(), responder.title(), Instant.now());
+        Quote quote = find(quoteId);
+        Instant now = Instant.now();
+        quote.reject(reason, responder.name(), responder.title(), now);   // 열람됨이 아니면 여기서 막힌다
+
+        eventPublisher.publishEvent(new QuoteRejected(quote.getCompanyId(), quote.getId(),
+                quote.getDealId(), quote.getQuoteNo(), responder.name(), reason,
+                AuditActor.customerLink(), now));
     }
 
     /**

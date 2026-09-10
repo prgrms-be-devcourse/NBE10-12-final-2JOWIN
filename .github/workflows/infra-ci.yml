@@ -1,34 +1,33 @@
-# 인프라 CI — infra/prod/terraform/** 를 머지 전에 검증한다 (이슈 #88)
+# Infra CI — 머지 전 검증 (이슈 #88 · ci-cd.md §7)
 #
-# 워크플로 레벨 paths 필터를 쓰지 않는다. ci.yml 과 같은 이유 —
-# required check 로 지정되면 워크플로가 아예 안 돈 PR 에서 체크가 pending 으로 남아
-# 머지가 영원히 막힌다. 잡 레벨 if 스킵은 "skipped" 로 보고되어 통과시킨다.
+# 워크플로 레벨 paths 필터를 쓰지 않는다. required check 로 지정되면
+# 워크플로가 아예 안 돈 PR 에서 체크가 pending 으로 남아 머지가 영원히
+# 막힌다. 잡 레벨 if 스킵은 "skipped" 로 보고되어 통과시킨다.
+#
+# 무엇이 바뀌었는지는 _changes.yml 이 판단한다 — 그 목록은 한 벌뿐이다.
 #
 # 잡 구성
 #   terraform-check  fmt · validate         자격증명 불필요
+#   sg-description   보안그룹 설명 문자셋     자격증명 불필요
 #   tflint           프로바이더 규칙 위반    자격증명 불필요
+#   shellcheck       infra/**/*.sh          자격증명 불필요
+#   workflow-lint    actionlint · 액션 run  자격증명 불필요
+#   config-check     서버 설정 파일 실검증   자격증명 불필요
 #   checkov          보안 오설정             자격증명 불필요
 #   infracost        월 비용 한도 게이트      INFRACOST_API_KEY 필요
-#   terraform-plan   PR 에 plan 결과 코멘트   OIDC 역할 필요 (bootstrap apply 이후)
-#   terraform-apply  develop 머지 후 적용     OIDC 역할 + Environment 승인
+#   terraform-plan   PR 에 plan 결과 코멘트   OIDC 역할 필요
 #
-# bootstrap/ 는 plan·apply 대상이 아니다. 사람이 로컬에서 1회 돌리는 스택이고,
+# bootstrap/ 는 plan 대상이 아니다. 사람이 로컬에서 1회 돌리는 스택이고,
 # CI 가 apply 하면 상태 버킷 자체를 CI 가 흔들게 된다. 정적 검사만 받는다.
-name: infra
+name: Infra CI
 
 on:
   pull_request:
     branches: [develop, 'release/**', main]
-  push:
-    branches: [develop]
-    paths:
-      - 'infra/prod/terraform/**'
-      - '.github/workflows/infra.yml'
 
 concurrency:
-  # apply 를 중간에 끊으면 상태가 깨진다. PR 검사만 취소한다.
-  group: infra-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  group: infra-ci-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -41,88 +40,13 @@ env:
 
 jobs:
   changes:
-    name: infra-changes
-    runs-on: ubuntu-latest
+    uses: ./.github/workflows/_changes.yml
+    # 게이트 스텝이 시크릿 유무를 본다. 재사용 워크플로는 자동 상속하지 않는다.
+    secrets: inherit
     permissions:
       contents: read
       pull-requests: read
-    outputs:
-      infra: ${{ steps.filter.outputs.infra }}
-      scripts: ${{ steps.filter.outputs.scripts }}
-      config: ${{ steps.filter.outputs.config }}
-      workflows: ${{ steps.filter.outputs.workflows }}
-      aws_ready: ${{ steps.gate.outputs.aws_ready }}
-      state_ready: ${{ steps.gate.outputs.state_ready }}
-      infracost_ready: ${{ steps.gate.outputs.infracost_ready }}
-      stack_ready: ${{ steps.gate.outputs.stack_ready }}
-      tfvars_ready: ${{ steps.gate.outputs.tfvars_ready }}
-    steps:
-      - uses: actions/checkout@v4
 
-      - uses: dorny/paths-filter@v3
-        id: filter
-        with:
-          filters: |
-            infra:
-              - 'infra/prod/terraform/**'
-              - '.github/workflows/infra.yml'
-              # terraform apply 가 이 파일들을 S3 config/ 로 올린다
-              # (modules/storage/config_sync.tf 의 config_dirs).
-              # 여기 없으면 파일을 고쳐도 apply 가 돌지 않아 S3 가
-              # 그대로 남고, 서버는 계속 옛 파일을 받아간다.
-              - 'infra/prod/compose/**'
-              - 'infra/prod/caddy/**'
-              - 'infra/prod/scripts/**'
-              - 'infra/prod/monitoring/**'
-              - 'infra/prod/systemd/**'
-            scripts:
-              - 'infra/**/*.sh'
-              - '.github/workflows/infra.yml'
-            config:
-              - 'infra/prod/compose/**'
-              - 'infra/prod/caddy/**'
-              - 'infra/prod/monitoring/**'
-              - 'infra/prod/systemd/**'
-              - 'infra/prod/.env.example'
-              # 앱이 요구하는 키가 늘면 .env.example 도 따라와야 한다
-              - 'backend/src/main/resources/application.yml'
-              - '.github/workflows/infra.yml'
-            workflows:
-              - '.github/workflows/**'
-              - '.github/actions/**'
-
-      # 아직 없는 것들 때문에 CI 가 빨간불로 남지 않게 한다.
-      # bootstrap apply 전에는 OIDC 역할이 없고, 메인 스택 코드도 아직 없다.
-      # 준비되면 시크릿·코드가 생기면서 해당 잡이 저절로 켜진다.
-      - id: gate
-        shell: bash
-        env:
-          HAS_PLAN_ROLE: ${{ secrets.AWS_TF_PLAN_ROLE_ARN != '' }}
-          # backend.tf 에 bucket 이 없다(계정 ID 를 코드에 박지 않는다).
-          # 없으면 terraform init 이 "The attribute bucket is required" 로
-          # 죽는다 — plan·apply 의 첫 줄이다.
-          HAS_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET != '' }}
-          HAS_INFRACOST_KEY: ${{ secrets.INFRACOST_API_KEY != '' }}
-          # key_name·deploy_public_key 는 기본값이 없다. 없는 채로 -input=false
-          # 로 돌면 "No value for required variable" 로 죽는다. 시크릿이 아니라
-          # 공개키와 키페어 이름이므로 variable 로 받는다.
-          HAS_TFVARS: ${{ vars.SSH_KEY_NAME != '' && vars.DEPLOY_PUBLIC_KEY != '' }}
-        run: |
-          set -euo pipefail
-          {
-            echo "aws_ready=${HAS_PLAN_ROLE}"
-            echo "state_ready=${HAS_STATE_BUCKET}"
-            echo "infracost_ready=${HAS_INFRACOST_KEY}"
-            echo "tfvars_ready=${HAS_TFVARS}"
-            # 메인 스택은 TF_ROOT 바로 아래 .tf 파일. bootstrap/ 은 여기 해당 없음
-            if compgen -G "${TF_ROOT}/*.tf" > /dev/null; then
-              echo "stack_ready=true"
-            else
-              echo "stack_ready=false"
-            fi
-          } >> "$GITHUB_OUTPUT"
-
-  # ── 자격증명 없이 도는 검사 3종 ─────────────────────────────────
   terraform-check:
     name: terraform-check
     needs: changes
@@ -160,6 +84,7 @@ jobs:
   # 보안그룹 규칙 설명 규칙은 aws 룰셋 0.48.0 에 없다). AWS 가 거부하는
   # 문자가 들어가면 plan 은 통과하고 apply 가 400 으로 죽는다 —
   # 그것도 절반쯤 만들어진 채로.
+
   sg-description:
     name: sg-description
     needs: changes
@@ -222,6 +147,7 @@ jobs:
   #
   # actionlint 는 composite action(action.yml)을 이해하지 못한다 — 워크플로만
   # 본다. 그래서 액션의 run 블록은 따로 뽑아 shellcheck 에 건다.
+
   workflow-lint:
     name: workflow-lint
     needs: changes
@@ -376,6 +302,7 @@ jobs:
   # ── 비용 게이트 — PR 단계에서 월 예상 비용을 막는다 ──────────────
   # 3계층 중 유일하게 "돈이 나가기 전에" 막는다.
   # IAM Deny 는 apply 시점, Budgets 는 이미 쓴 뒤다.
+
   infracost:
     name: infracost
     needs: changes
@@ -436,6 +363,7 @@ jobs:
 
   # ── AWS 자격증명이 필요한 잡 ────────────────────────────────────
   # bootstrap apply 로 OIDC 역할이 생기고 메인 스택 코드가 들어오면 켜진다.
+
   terraform-plan:
     name: terraform-plan
     needs: changes
@@ -497,68 +425,3 @@ jobs:
                 ...context.repo, issue_number: context.issue.number, body,
               });
             }
-
-  terraform-apply:
-    name: terraform-apply
-    needs: changes
-    if: >-
-      github.event_name == 'push' &&
-      needs.changes.outputs.aws_ready == 'true' &&
-      needs.changes.outputs.state_ready == 'true' &&
-      needs.changes.outputs.stack_ready == 'true' &&
-      needs.changes.outputs.tfvars_ready == 'true'
-    runs-on: ubuntu-latest
-    # 승인 게이트. Environment 에 Required reviewers 를 걸면
-    # 승인 전에는 OIDC 토큰 자체가 발급되지 않는다 — 브랜치 기준으로는 안 되는 것
-    environment: prod
-    permissions:
-      contents: read
-      id-token: write
-    env:
-      TF_VAR_key_name: ${{ vars.SSH_KEY_NAME }}
-      TF_VAR_deploy_public_key: ${{ vars.DEPLOY_PUBLIC_KEY }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: aws-actions/configure-aws-credentials@v6
-        with:
-          role-to-assume: ${{ secrets.AWS_TF_APPLY_ROLE_ARN }}
-          aws-region: ap-northeast-2
-      - uses: hashicorp/setup-terraform@v4
-        with:
-          terraform_version: ${{ env.TF_VERSION }}
-          terraform_wrapper: false
-
-      - name: apply
-        working-directory: ${{ env.TF_ROOT }}
-        env:
-          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
-        run: |
-          set -euo pipefail
-          terraform init -input=false -no-color \
-            -backend-config="bucket=${TF_STATE_BUCKET}"
-          terraform apply -input=false -no-color -auto-approve -lock-timeout=300s
-
-      # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면
-      # S3 만 바뀌고 서버는 옛 설정으로 계속 돈다 (cd.md §9.3).
-      #
-      # 이미지는 건드리지 않는 설정 전용 모드다. .env 도 보내지 않는다 —
-      # 이미 서버에 있고, 여기서 다시 보내면 시크릿이 한 경로 더 지나간다.
-      #
-      # 서버가 아직 없으면 접속이 실패하는데 그건 정상이므로 워크플로를
-      # 깨지 않는다(tolerate-missing-host).
-      # secrets 컨텍스트는 스텝 if: 에서 못 쓴다. env 로 한 번 받아 출력으로 넘긴다.
-      - id: sshgate
-        env:
-          OK: ${{ secrets.DEPLOY_HOST != '' && secrets.SSH_PRIVATE_KEY != '' && secrets.SSH_KNOWN_HOSTS != '' }}
-        run: echo "ok=${OK}" >> "$GITHUB_OUTPUT"
-
-      - name: 서버에 설정 재동기화 (설정 전용 배포)
-        if: steps.sshgate.outputs.ok == 'true'
-        uses: ./.github/actions/remote-deploy
-        with:
-          aws-region: ap-northeast-2
-          security-group-name: 2jo-web
-          host: ${{ secrets.DEPLOY_HOST }}
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
-          tolerate-missing-host: 'true'

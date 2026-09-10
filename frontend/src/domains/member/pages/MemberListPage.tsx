@@ -20,8 +20,10 @@ import { InviteDialog } from '../components/InviteDialog'
  *
  * - 구성원 탭: 역할 변경(즉시 PATCH), 비활성화(이관 강제 AlertDialog), 재활성화
  * - 초대 탭: 발송·재발송·취소. 재발송은 기존 초대를 만료시키고 새 행을 만든다 (Q-31)
- * - 마지막 관리자는 비활성화·강등 불가 (MB-11) — 버튼을 비활성 처리하고 이유를 툴팁으로
- * - 본인은 비활성화하지 않는다 — 세션이 즉시 끊겨 화면 위에서 되돌릴 수 없다
+ * - 마지막 관리자는 비활성화·강등 불가 (MB-11) — 버튼을 비활성 처리하고 이유를 툴팁으로.
+ *   disabled 요소는 포인터 이벤트가 없어 Radix Tooltip이 안 뜬다 — span으로 감싸 툴팁은 span이 받게 한다
+ * - 본인은 비활성화하지 않고 역할도 바꾸지 않는다 — 세션이 즉시 끊기거나(비활성화) 이 화면 진입 권한을 잃어(강등)
+ *   화면 위에서 되돌릴 수 없다. 본인 역할은 다른 기업 관리자가 바꾼다
  */
 
 const ALL = '__all__'
@@ -140,22 +142,24 @@ function MembersTab() {
                         {inactive ? (
                           <RoleBadge role={member.role} />
                         ) : (
-                          <Tooltip content={lastAdmin ? '마지막 기업 관리자는 역할을 바꿀 수 없습니다' : '역할 변경'}>
-                            <Select.Root
-                              size="1"
-                              value={member.role}
-                              disabled={lastAdmin || (mutations.changeRole.isPending && mutations.changeRole.variables?.id === member.id)}
-                              onValueChange={(role) => mutations.changeRole.mutate({ id: member.id, role: role as Role })}
-                            >
-                              <Select.Trigger variant="soft" color={member.role === 'COMPANY_ADMIN' ? 'blue' : 'gray'} />
-                              <Select.Content {...SELECT_CONTENT}>
-                                {ROLES.map((r) => (
-                                  <Select.Item key={r} value={r}>
-                                    {ROLE_LABEL[r]}
-                                  </Select.Item>
-                                ))}
-                              </Select.Content>
-                            </Select.Root>
+                          <Tooltip content={me ? '본인 역할은 다른 기업 관리자가 바꿀 수 있습니다' : lastAdmin ? '마지막 기업 관리자는 역할을 바꿀 수 없습니다' : '역할 변경'}>
+                            <span style={{ display: 'inline-flex' }}>
+                              <Select.Root
+                                size="1"
+                                value={member.role}
+                                disabled={me || lastAdmin || (mutations.changeRole.isPending && mutations.changeRole.variables?.id === member.id)}
+                                onValueChange={(role) => mutations.changeRole.mutate({ id: member.id, role: role as Role })}
+                              >
+                                <Select.Trigger variant="soft" color={member.role === 'COMPANY_ADMIN' ? 'blue' : 'gray'} />
+                                <Select.Content {...SELECT_CONTENT}>
+                                  {ROLES.map((r) => (
+                                    <Select.Item key={r} value={r}>
+                                      {ROLE_LABEL[r]}
+                                    </Select.Item>
+                                  ))}
+                                </Select.Content>
+                              </Select.Root>
+                            </span>
                           </Tooltip>
                         )}
                       </Table.Cell>
@@ -179,9 +183,11 @@ function MembersTab() {
                             </Button>
                           ) : me ? null : (
                             <Tooltip content={lastAdmin ? '마지막 기업 관리자는 비활성화할 수 없습니다' : '담당 Deal은 다른 구성원에게 이관됩니다'}>
-                              <Button size="1" variant="soft" color="red" disabled={lastAdmin} onClick={() => setToDeactivate(member)}>
-                                비활성화
-                              </Button>
+                              <span style={{ display: 'inline-flex' }}>
+                                <Button size="1" variant="soft" color="red" disabled={lastAdmin} onClick={() => setToDeactivate(member)}>
+                                  비활성화
+                                </Button>
+                              </span>
                             </Tooltip>
                           )}
                         </Flex>

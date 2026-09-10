@@ -123,4 +123,24 @@ class SecurityChainIntegrationTest {
                 // then — 401 이 아니라 204 다. 체인의 permitAll 목록에서 빠지면 여기서 깨진다
                 .andExpect(status().isNoContent());
     }
+
+    /**
+     * #221 — 이 경로가 막히면 Prometheus 가 403 을 받고, JVM·HikariCP 지표가
+     * 통째로 사라진다. 앱은 정상으로 보이고 알람만 조용해지는 조합이라
+     * 운영에서 19시간 동안 아무도 몰랐다.
+     */
+    @Test
+    void 프로메테우스_지표는_인증_없이_열린다() throws Exception {
+        // when — Prometheus 는 도커 네트워크 안에서 토큰 없이 스크레이프한다
+        mockMvc.perform(get("/actuator/prometheus"))
+                // then — 403 이면 지표가 사라진다
+                .andExpect(status().isOk());
+    }
+
+    /** 지표를 열었다고 나머지 actuator 까지 열리면 안 된다 */
+    @Test
+    void 나머지_actuator_경로는_여전히_막힌다() throws Exception {
+        mockMvc.perform(get("/actuator/env"))
+                .andExpect(status().isForbidden());
+    }
 }

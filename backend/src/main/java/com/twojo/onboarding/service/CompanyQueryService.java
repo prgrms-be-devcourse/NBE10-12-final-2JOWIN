@@ -4,6 +4,7 @@ import com.twojo.boundary.CompanyQuery;
 import com.twojo.global.error.MissingReferenceException;
 import com.twojo.onboarding.entity.Company;
 import com.twojo.onboarding.repository.CompanyRepository;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -24,5 +25,10 @@ public class CompanyQueryService implements CompanyQuery {
                         c.getId(), c.getName(), c.getBusinessNo(),
                         c.getStatus() == Company.Status.ACTIVE))
                 .orElseThrow(() -> new MissingReferenceException("company", companyId));
+    }
+
+    @Override
+    public List<UUID> findActiveIds() {
+        return companyRepository.findIdsByStatus(Company.Status.ACTIVE);
     }
 }

@@ -41,7 +41,8 @@ export function WaitingQuotes({ quotes }: { quotes: DashboardWaitingQuote[] }) {
                 <Flex align="center" justify="between" gap="3" wrap="wrap">
                   <Box minWidth="0">
                     <Text as="div" size="2" weight="medium" truncate>
-                      {quote.customerName}
+                      {/* 서버가 아직 null을 준다 — 아래 견적번호가 줄을 식별한다 (#218) */}
+                      {quote.customerName ?? '—'}
                     </Text>
                     <Text as="div" size="1" color="gray" style={{ fontVariantNumeric: 'tabular-nums' }}>
                       {quote.quoteNo}

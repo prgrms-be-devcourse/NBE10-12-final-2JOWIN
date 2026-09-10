@@ -1,0 +1,148 @@
+# Infra CD — develop 머지 후 반영 (ci-cd.md §7)
+#
+# apply 는 리소스를 지울 수 있다. 승인 화면에서 plan 의 destroy 개수를
+# 확인하는 것이 유일한 방어다 — 그래서 배포와 달리 승인을 유지한다
+# (cd.md §3.3).
+#
+# apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 마지막 스텝이 서버까지
+# 내려보낸다. 이게 없으면 S3 만 바뀌고 서버는 옛 설정으로 계속 돈다.
+#
+# 무엇이 바뀌었는지는 _changes.yml 이 판단한다 — infra-ci.yml 과 같은 판단이다.
+name: Infra CD
+
+on:
+  push:
+    branches: [develop]
+
+concurrency:
+  # apply 를 중간에 끊으면 상태가 깨진다. 취소가 아니라 줄 세우기다.
+  group: infra-cd
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  TF_ROOT: infra/prod/terraform
+  TF_VERSION: 1.15.8
+  TFLINT_VERSION: v0.64.0
+  TF_IN_AUTOMATION: 'true'
+
+jobs:
+  changes:
+    uses: ./.github/workflows/_changes.yml
+    secrets: inherit
+    permissions:
+      contents: read
+      pull-requests: read
+
+  terraform-apply:
+    name: terraform-apply
+    needs: changes
+    # infra 조건이 여기 있어야 한다. 예전에는 워크플로 레벨 paths 가 그 몫을
+    # 대신했는데, 그 목록이 changes 필터와 어긋나 사고가 났다. 이제 판단은
+    # changes 한 곳에서만 한다.
+    if: >-
+      github.event_name == 'push' &&
+      needs.changes.outputs.infra == 'true' &&
+      needs.changes.outputs.aws_ready == 'true' &&
+      needs.changes.outputs.state_ready == 'true' &&
+      needs.changes.outputs.stack_ready == 'true' &&
+      needs.changes.outputs.tfvars_ready == 'true'
+    runs-on: ubuntu-latest
+    # 승인 게이트. Environment 에 Required reviewers 를 걸면
+    # 승인 전에는 OIDC 토큰 자체가 발급되지 않는다 — 브랜치 기준으로는 안 되는 것
+    environment: infra-apply
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      TF_VAR_key_name: ${{ vars.SSH_KEY_NAME }}
+      TF_VAR_deploy_public_key: ${{ vars.DEPLOY_PUBLIC_KEY }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_TF_APPLY_ROLE_ARN }}
+          aws-region: ap-northeast-2
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - name: apply
+        working-directory: ${{ env.TF_ROOT }}
+        env:
+          TF_STATE_BUCKET: ${{ secrets.TF_STATE_BUCKET }}
+        run: |
+          set -euo pipefail
+          terraform init -input=false -no-color \
+            -backend-config="bucket=${TF_STATE_BUCKET}"
+          terraform apply -input=false -no-color -auto-approve -lock-timeout=300s | tee "${RUNNER_TEMP}/apply.log"
+
+      # apply 는 설정 번들을 S3 config/ 에 올릴 뿐이다. 이 단계가 없으면
+      # S3 만 바뀌고 서버는 옛 설정으로 계속 돈다 (cd.md §9.3).
+      #
+      # 이미지는 건드리지 않는 설정 전용 모드다. .env 도 보내지 않는다 —
+      # 이미 서버에 있고, 여기서 다시 보내면 시크릿이 한 경로 더 지나간다.
+      #
+      # 서버가 아직 없으면 접속이 실패하는데 그건 정상이므로 워크플로를
+      # 깨지 않는다(tolerate-missing-host).
+      # secrets 컨텍스트는 스텝 if: 에서 못 쓴다. env 로 한 번 받아 출력으로 넘긴다.
+      - id: sshgate
+        env:
+          OK: ${{ secrets.DEPLOY_HOST != '' && secrets.SSH_PRIVATE_KEY != '' && secrets.SSH_KNOWN_HOSTS != '' }}
+        run: echo "ok=${OK}" >> "$GITHUB_OUTPUT"
+
+      - id: resync
+        name: 서버에 설정 재동기화 (설정 전용 배포)
+        if: steps.sshgate.outputs.ok == 'true'
+        uses: ./.github/actions/remote-deploy
+        with:
+          aws-region: ap-northeast-2
+          security-group-name: 2jo-web
+          host: ${{ secrets.DEPLOY_HOST }}
+          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
+          known-hosts: ${{ secrets.SSH_KNOWN_HOSTS }}
+          tolerate-missing-host: 'true'
+
+      # 승인 화면에서 destroy 개수를 확인하는 것이 유일한 방어인데, 승인한
+      # 뒤에는 결과를 다시 볼 곳이 없었다. 실행 화면 첫 페이지에 올린다 (#260).
+      - name: 반영 요약
+        if: always()
+        env:
+          RC: ${{ steps.resync.outputs.rc }}
+          LOG: ${{ steps.resync.outputs.log }}
+        run: |
+          set -uo pipefail
+          apply="${RUNNER_TEMP}/apply.log"
+
+          {
+            echo "## 인프라 반영"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            if [ -s "$apply" ]; then
+              # 못 찾으면 pipefail 이 스텝을 죽인다 — 요약이 apply 판정을
+              # 뒤엎으면 안 된다.
+              line="$(grep -o "Apply complete.*" "$apply" | tail -1 || true)"
+              echo "| terraform | ${line:-출력을 찾지 못했다} |"
+            else
+              echo "| terraform | 실행되지 않았다 |"
+            fi
+            case "${RC:-}" in
+              0)  echo "| 서버 재동기화 | 완료 |" ;;
+              "") echo "| 서버 재동기화 | 건너뜀 (시크릿 없음 또는 서버 없음) |" ;;
+              *)  echo "| 서버 재동기화 | 실패 — 종료 코드 \`${RC}\` |" ;;
+            esac
+            echo "| 커밋 | \`${GITHUB_SHA:0:7}\` |"
+            echo
+
+            if [ -s "${LOG:-/dev/null}" ]; then
+              echo "### 서버에서 일어난 일"
+              echo
+              echo "\`\`\`"
+              grep "^\[deploy\]" "$LOG" || cat "$LOG"
+              echo "\`\`\`"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"

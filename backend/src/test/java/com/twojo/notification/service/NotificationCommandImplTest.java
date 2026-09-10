@@ -189,6 +189,39 @@ class NotificationCommandImplTest {
     }
 
     @Test
+    @DisplayName("dealRecipients - 담당자가 활성이면 담당자 1명만 (notifyForDeal과 같은 규칙, 저장은 안 함)")
+    void dealRecipients_활성_담당자면_담당자만() {
+        given(dealQuery.assigneeIdOf(DEAL)).willReturn(ASSIGNEE);
+        given(memberQuery.isActive(ASSIGNEE)).willReturn(true);
+
+        assertThat(command.dealRecipients(NotificationType.REMIND_NO_RESPONSE, COMPANY, DEAL))
+                .containsExactly(ASSIGNEE);
+        verify(notificationRepository, never()).save(any());
+    }
+
+    @Test
+    @DisplayName("dealRecipients - 담당자가 비활성이면 기업 관리자 전원 (Q-26 폴백)")
+    void dealRecipients_비활성_담당자면_관리자_폴백() {
+        given(dealQuery.assigneeIdOf(DEAL)).willReturn(ASSIGNEE);
+        given(memberQuery.isActive(ASSIGNEE)).willReturn(false);
+        given(memberQuery.findAdminIds(COMPANY)).willReturn(List.of(ADMIN_1, ADMIN_2));
+
+        assertThat(command.dealRecipients(NotificationType.REMIND_NO_RESPONSE, COMPANY, DEAL))
+                .containsExactly(ADMIN_1, ADMIN_2);
+    }
+
+    @Test
+    @DisplayName("dealRecipients - 담당자 비활성 + 관리자도 없으면 빈 목록")
+    void dealRecipients_수신자가_없으면_빈_목록() {
+        given(dealQuery.assigneeIdOf(DEAL)).willReturn(ASSIGNEE);
+        given(memberQuery.isActive(ASSIGNEE)).willReturn(false);
+        given(memberQuery.findAdminIds(COMPANY)).willReturn(List.of());
+
+        assertThat(command.dealRecipients(NotificationType.REMIND_NO_RESPONSE, COMPANY, DEAL))
+                .isEmpty();
+    }
+
+    @Test
     @DisplayName("message가 500자를 넘으면 499자 + 줄임표로 잘라 저장한다")
     void message_500자_초과면_절삭() {
         given(dealQuery.assigneeIdOf(DEAL)).willReturn(ASSIGNEE);
