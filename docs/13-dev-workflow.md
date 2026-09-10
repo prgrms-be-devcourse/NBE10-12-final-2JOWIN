@@ -15,9 +15,8 @@
 
 | 브랜치 | 용도 | 직접 push |
 | --- | --- | --- |
-| `main` | 최종 제출본 | 금지 |
-| `release/{버전}` | 차수 완료본 — 1·2·3차 → `release/1.0.0` / `1.1.0` / `1.2.0` (현재 기획 1차 = 1.0.0) | 금지 |
-| `develop` | 통합 브랜치 | 금지 (PR만) |
+| `main` | **최종 제출본이자 운영** — 제출 이후 배포는 여기서 나간다 | 금지 |
+| `develop` | 통합 브랜치 · **개발 기간 운영** | 금지 (PR만) |
 | `{타입}/{도메인코드}_{이슈번호}` | 도메인별 개발 (작업 브랜치) | 허용 |
 
 ### 0.2 네이밍
@@ -62,36 +61,66 @@
 ## 1. 브랜치 흐름
 
 ```
-feat/AU_{이슈번호} ─┐
-feat/CU_{이슈번호} ─┼─ PR ─→ develop ── 차수 완료 ─→ release/1.0.0 ── 제출 ─→ main
-feat/QT_{이슈번호} ─┤            ↑                        │
-feat/NT_{이슈번호} ─┘            └──────── 백머지 ────────┘
+━━━━━━━━━━━━━ 개발 기간 ━━━━━━━━━━━━━
+
+  feat/AU_{이슈번호} ─┐
+  fix/QT_{이슈번호}  ─┼─ PR ─→ develop ─→ EC2 (운영)
+  docs/DL_{이슈번호} ─┘   Squash        └─→ Release  v0.x.y-develop.N
+
+━━━━━━━━━━━━━ 제출 시점 · 1회 ━━━━━━━━━
+
+  develop ─ PR ─→ main ─→ EC2 (운영)
+         Merge Commit  └─→ Release  v1.0.0
+
+         develop 배포는 여기서 멈춘다
 ```
 
 | 규칙 | 내용 |
 | --- | --- |
-| release 버그 수정 | release 브랜치에서 수정 → **develop으로 백머지 필수**. hotfix 브랜치 없음 |
 | 차수 완료 판정 | 해당 차수 칸반 이슈 전부 Done + CI 통과 |
-| main 머지 | release → main 단방향. main에서 develop으로 되돌리지 않음 |
+| main 머지 | develop → main 단방향. main에서 develop으로 되돌리지 않음 |
+| **머지 방식** | feature → develop 은 **Squash**, develop → main 은 **Merge Commit** (§1.1) |
+| **배포 출처** | 개발 기간 `develop`, 제출 이후 `main`. **동시에 둘 다 배포하지 않는다** |
+
+> `release/{버전}` 브랜치 단계는 제거했다. EC2 가 한 대라 브랜치별 환경 분리가 성립하지 않고,
+> 차수가 1차 하나뿐이라 안정화 브랜치를 한 번만 쓰게 된다 — 치르는 절차 대비 얻는 것이 적었다.
+
+## 1.1 제출 절차
+
+| # | 할 일 |
+| --- | --- |
+| 1 | 1차 이슈 전부 Done 확인 |
+| 2 | `develop` → `main` PR — **`Create a merge commit` 선택** |
+| 3 | 배포 트리거를 `main` 으로 바꾸는 PR (`backend-cd.yml` · `infra-cd.yml`) |
+| 4 | 환경 브랜치 정책에 `main` 추가 (`backend-deploy` · `infra-apply`) |
+| 5 | `main` 에서 최종 배포 → `v1.0.0` 태그 |
+
+**함정 3개**
+
+| | |
+| --- | --- |
+| **squash 금지** | 2단계에서 기본값이 `Squash and merge` 일 수 있다. 누르면 develop 의 커밋 전부가 커밋 1개로 뭉쳐 **릴리스 노트가 한 줄이 되고 팀원들의 author 기록이 사라진다.** 되돌리려면 `main` 보호 규칙을 풀어야 한다 |
+| **환경 정책** | 4단계를 빠뜨리면 3단계를 해도 배포가 환경 게이트에서 막힌다 (`develop` 전용으로 잠겨 있다) |
+| 새 SHA | 머지 커밋은 새 SHA라 같은 코드로 이미지가 다시 빌드된다. 낭비지만 무해하다 |
 
 ---
 
 ## 2. PR 파이프라인
 
 ```
-push → PR 생성 → CI → 팀원 승인 1인 → Squash merge
+push → PR 생성 → CI → Squash merge
 ```
 
 | 단계 | 차단 여부 | 비고 |
 | --- | --- | --- |
 | CI (빌드·테스트·Flyway) | **차단** | required check |
-| 팀원 승인 | **차단** | 1인 이상. CODEOWNERS 자동 배정 · 리뷰 관점은 §2의 셀프 체크리스트와 동일 |
+| 팀원 승인 | 차단하지 않음 | **개발 속도를 위해 필수 승인을 두지 않기로 팀이 합의했다.** CODEOWNERS 로 리뷰어는 자동 배정되지만 머지를 막지는 않는다 — 리뷰 관점은 §2의 셀프 체크리스트와 동일 |
 
-### 브랜치 보호 규칙 (`main` · `release/*` · `develop`)
+### 브랜치 보호 규칙 (`main` · `develop`)
 
 - 직접 push 금지 · force push 금지 · 브랜치 삭제 금지
 - required check = CI 잡만
-- 승인 1인 이상
+- 필수 승인 없음 (팀 합의) — 차단은 required check 만 한다
 
 ### PR 템플릿 (`.github/PULL_REQUEST_TEMPLATE.md`에 그대로 반영)
 
@@ -145,7 +174,7 @@ Closes #
 | flyway-validate | 적용된 마이그레이션 파일 변경(체크섬) 검사 | 머지 차단 |
 | flyway-version-check | 마이그레이션 버전 번호 중복 검사 | 머지 차단 |
 
-- 트리거: `pull_request` (develop · release/* · main 대상)
+- 트리거: `pull_request` (develop · main 대상)
 - DB는 서비스 컨테이너 Postgres에 **Flyway를 실제로 태워** 검증. `ddl-auto`는 기준으로 쓰지 않는다
 - 목표 실행 시간 5분 이내
 

@@ -9,7 +9,7 @@ name: Backend CI
 
 on:
   pull_request:
-    branches: [develop, 'release/**', main]
+    branches: [develop, main]
 
 concurrency:
   group: ci-${{ github.ref }}
