@@ -3,6 +3,7 @@ package com.twojo.order.repository;
 import com.twojo.order.entity.Order;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.domain.Page;
@@ -26,6 +27,21 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
     default Page<Order> search(UUID companyId, Instant from, Instant toExclusive,
                                Collection<UUID> visibleQuoteIds, Pageable pageable) {
         return findAll(OrderSpecs.search(companyId, from, toExclusive, visibleQuoteIds), pageable);
+    }
+
+    /**
+     * 기간 안에 전환된 주문 전부 (DB-02·06) — 목록과 <b>같은 조건 조립</b>을 페이지 없이 쓴다.
+     *
+     * <p>{@link OrderSpecs}를 다시 쓰는 이유는 <b>빈 컬렉션 처리</b> 때문이다. 거기서 빈 목록을
+     * 거짓 조건으로 바꾸는데, 집계에서 그걸 빠뜨리면 담당 딜이 없는 영업에게 회사 전체 성사액이
+     * 잡힌다 — 같은 규칙을 두 벌로 두지 않는다.
+     *
+     * <p>투영이 아니라 엔티티를 읽는다 — 대시보드 한 달치라 크기가 제한적이고,
+     * 조건 조립을 그대로 재사용하는 쪽이 {@code (:ids is null or ...)} 같은 JPQL 널 바인딩보다 안전하다.
+     */
+    default List<Order> findConverted(UUID companyId, Instant from, Instant toExclusive,
+                                      Collection<UUID> visibleQuoteIds) {
+        return findAll(OrderSpecs.search(companyId, from, toExclusive, visibleQuoteIds));
     }
 
     /**

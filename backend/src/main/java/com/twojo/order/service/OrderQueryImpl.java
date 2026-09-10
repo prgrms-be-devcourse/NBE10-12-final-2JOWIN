@@ -1,0 +1,35 @@
+package com.twojo.order.service;
+
+import com.twojo.boundary.OrderQuery;
+import com.twojo.order.entity.Order;
+import com.twojo.order.repository.OrderRepository;
+import java.time.Instant;
+import java.util.Collection;
+import java.util.List;
+import java.util.UUID;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+
+/**
+ * {@link OrderQuery} 구현 — 계약의 이유는 인터페이스 javadoc에 있다.
+ *
+ * <p><b>범위를 다시 판정하지 않는다.</b> 넘어온 {@code quoteIds}를 그대로 조건에 건다 —
+ * 판정은 축(deal.assignee_member_id)을 가진 호출자 몫이다 (SC-04).
+ * {@code QuoteCommandImpl}의 고객 경로 3종이 회사 스코프를 걸지 않는 것과 같은 구조다.
+ */
+@Service
+@RequiredArgsConstructor
+@Transactional(readOnly = true)
+class OrderQueryImpl implements OrderQuery {
+
+    private final OrderRepository orderRepository;
+
+    @Override
+    public List<QuoteWonTotal> wonTotalsByQuotes(UUID companyId, Collection<UUID> quoteIds,
+                                                 Instant from, Instant toExclusive) {
+        return orderRepository.findConverted(companyId, from, toExclusive, quoteIds).stream()
+                .map(order -> new QuoteWonTotal(order.getQuoteId(), order.getTotalAmount()))
+                .toList();
+    }
+}

@@ -6,7 +6,13 @@ import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.Role;
 import com.twojo.boundary.SalesStatsQuery;
+import com.twojo.boundary.SalesStatsQuery.MemberPerformance;
 import com.twojo.boundary.SalesStatsQuery.StageCount;
+import com.twojo.boundary.SalesStatsQuery.WonStats;
+import java.time.LocalDate;
+import java.time.OffsetDateTime;
+import java.time.YearMonth;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -80,15 +86,40 @@ class SalesStatsIntegrationTest {
                 id, companyId, "sales-" + id + "@twojo.test", name);
     }
 
-    private void 딜(UUID assignee, String stage, Long expected, String deletedAt) {
+    private UUID 딜(UUID assignee, String stage, Long expected, String deletedAt) {
+        UUID id = UUID.randomUUID();
         jdbc.update("insert into deal (id, company_id, customer_id, assignee_member_id, title, stage, "
                         + "expected_amount, deleted_at, version) values (?, ?, ?, ?, ?, ?, ?, "
                         + (deletedAt == null ? "null" : deletedAt) + ", 0)",
-                UUID.randomUUID(), companyId, customerId, assignee, "딜-" + stage, stage, expected);
+                id, companyId, customerId, assignee, "딜-" + stage, stage, expected);
+        return id;
+    }
+
+    /**
+     * 승인 견적 + 그 견적이 만든 주문 하나를 심는다.
+     *
+     * <p>{@code convertedAt}을 직접 넣는 이유는 <b>기간 경계를 시험해야</b> 하기 때문이다 —
+     * {@code orders.created_at}이 전환 시각이고(별도 컬럼이 없다), 기본값 {@code now()}로는
+     * 지난달·이달을 갈라 심을 수 없다.
+     */
+    private void 전환된_주문(UUID dealId, long total, OffsetDateTime convertedAt) {
+        UUID quoteId = UUID.randomUUID();
+        String no = quoteId.toString().substring(0, 8);
+        jdbc.update("insert into quote (id, company_id, deal_id, quote_no, status, vat_mode, "
+                        + "supply_amount, vat_amount, total_amount, valid_until, version) "
+                        + "values (?, ?, ?, ?, 'APPROVED', 'EXCLUDED', ?, ?, ?, ?, 0)",
+                quoteId, companyId, dealId, "Q-" + no,
+                total * 10 / 11, total - total * 10 / 11, total, LocalDate.now().plusDays(30));
+        jdbc.update("insert into orders (id, company_id, quote_id, order_no, supply_amount, "
+                        + "vat_amount, total_amount, created_at) values (?, ?, ?, ?, ?, ?, ?, ?)",
+                UUID.randomUUID(), companyId, quoteId, "O-" + no,
+                total * 10 / 11, total - total * 10 / 11, total, convertedAt);
     }
 
     @AfterEach
     void 지운다() {
+        jdbc.update("delete from orders where company_id = ?", companyId);
+        jdbc.update("delete from quote where company_id = ?", companyId);
         jdbc.update("delete from deal where company_id = ?", companyId);
         jdbc.update("delete from customer where id = ?", customerId);
         jdbc.update("delete from member where id in (?, ?)", 박지훈, 다른영업);
@@ -145,5 +176,132 @@ class SalesStatsIntegrationTest {
         assertThat(rows).extracting(StageCount::stage).doesNotContain("WON", "LOST");
         assertThat(countOf(rows, "QUOTE")).isEqualTo(1);
         assertThat(amountOf(rows, "QUOTE")).isZero();             // expected_amount가 null인 딜 하나뿐
+    }
+
+    // ── 이달 성사 (DB-02) · 담당자별 실적 (DB-06) — #216
+
+    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
+
+    /** 이번 달 안의 KST 시각 하나 — 1일 0시라 월 경계 자체도 이 값으로 시험된다 */
+    private static OffsetDateTime 이달_1일_0시() {
+        return YearMonth.now(SEOUL).atDay(1).atStartOfDay(SEOUL).toOffsetDateTime();
+    }
+
+    private static OffsetDateTime 지난달_마지막_순간() {
+        return YearMonth.now(SEOUL).atDay(1).atStartOfDay(SEOUL).minusSeconds(1).toOffsetDateTime();
+    }
+
+    @Test
+    @DisplayName("이달 성사는 주문 합계다 — 관리자는 회사 전체를 본다 (DB-02, DL-18)")
+    void 이달_성사_관리자() {
+        전환된_주문(딜(박지훈, "WON", null, null), 1_100_000L, 이달_1일_0시());
+        전환된_주문(딜(다른영업, "WON", null, null), 2_200_000L, 이달_1일_0시());
+
+        WonStats won = salesStatsQuery.monthlyWon(
+                new AccessContext(companyId, 박지훈, Role.COMPANY_ADMIN, AccessScope.COMPANY_ALL),
+                YearMonth.now(SEOUL));
+
+        assertThat(won.amount()).isEqualTo(3_300_000L);
+        assertThat(won.count()).isEqualTo(2);
+    }
+
+    @Test
+    @DisplayName("영업은 담당 딜의 주문만 집계된다 — 남의 성사가 섞이면 SC-04가 뚫린다")
+    void 이달_성사_영업() {
+        전환된_주문(딜(박지훈, "WON", null, null), 1_100_000L, 이달_1일_0시());
+        전환된_주문(딜(다른영업, "WON", null, null), 2_200_000L, 이달_1일_0시());
+
+        WonStats won = salesStatsQuery.monthlyWon(
+                new AccessContext(companyId, 박지훈, Role.SALES_REP, AccessScope.OWNED_ONLY),
+                YearMonth.now(SEOUL));
+
+        assertThat(won.amount()).isEqualTo(1_100_000L);
+        assertThat(won.count()).isEqualTo(1);
+    }
+
+    /**
+     * <b>이 테스트가 SC-04의 마지막 방어선이다.</b> 담당 딜이 하나도 없는 영업의 견적 목록은
+     * <b>빈 목록</b>인데, 그것을 "제한 없음(null)"으로 흘리면 회사 전체 성사액이 그대로 보인다.
+     * 빈 목록과 null이 뒤집히는 사고는 조건 조립 한 줄만 바꿔도 일어난다.
+     */
+    @Test
+    @DisplayName("담당 딜이 없는 영업은 0이다 — 빈 목록이 '전부'로 뒤집히면 안 된다 (SC-04)")
+    void 이달_성사_담당딜_없는_영업() {
+        전환된_주문(딜(다른영업, "WON", null, null), 2_200_000L, 이달_1일_0시());
+        UUID 딜_없는_영업 = UUID.randomUUID();
+        구성원(딜_없는_영업, "최민수");
+
+        WonStats won = salesStatsQuery.monthlyWon(
+                new AccessContext(companyId, 딜_없는_영업, Role.SALES_REP, AccessScope.OWNED_ONLY),
+                YearMonth.now(SEOUL));
+
+        assertThat(won.amount()).isZero();     // null이 아니라 0이다 (#85 D 합의)
+        assertThat(won.count()).isZero();
+
+        jdbc.update("delete from member where id = ?", 딜_없는_영업);
+    }
+
+    /**
+     * 월 경계는 <b>한국 날짜</b>로 끊는다. 서버 시간대로 끊으면 자정 부근 전환이 옆 달로 새는데,
+     * 월말 마감 화면에서 바로 드러나는 종류의 오차다.
+     */
+    @Test
+    @DisplayName("지난달 마지막 순간의 전환은 이달에 잡히지 않는다 — 경계는 KST다")
+    void 이달_성사_월경계() {
+        UUID deal = 딜(박지훈, "WON", null, null);
+        전환된_주문(deal, 5_000_000L, 지난달_마지막_순간());
+        전환된_주문(딜(박지훈, "WON", null, null), 1_100_000L, 이달_1일_0시());
+
+        WonStats won = salesStatsQuery.monthlyWon(
+                new AccessContext(companyId, 박지훈, Role.COMPANY_ADMIN, AccessScope.COMPANY_ALL),
+                YearMonth.now(SEOUL));
+
+        assertThat(won.amount()).isEqualTo(1_100_000L);   // 1일 0시는 포함, 그 1초 전은 제외
+        assertThat(won.count()).isEqualTo(1);
+    }
+
+    /**
+     * 실적이 담당자에게 제대로 귀속되는지 본다 — 주문에는 담당자 컬럼이 없어
+     * {@code quote → deal → assignee} 두 홉을 거친다. 한 홉이라도 어긋나면 남의 실적이 붙는다.
+     *
+     * <p>{@code activeDealCount}는 <b>기간과 무관한 현재 스냅샷</b>이다 (D 확정) —
+     * 시드의 진행 중 딜(LEAD 2 · QUOTE 1)이 박지훈에게 3건 잡힌다. 소프트 삭제된 CONSULT는 빠진다.
+     */
+    @Test
+    @DisplayName("담당자별 실적 — 주문이 quote·deal을 거쳐 담당자에게 귀속된다 (DB-06)")
+    void 담당자별_실적() {
+        전환된_주문(딜(박지훈, "WON", null, null), 1_100_000L, 이달_1일_0시());
+        전환된_주문(딜(박지훈, "WON", null, null), 2_200_000L, 이달_1일_0시());
+        전환된_주문(딜(다른영업, "WON", null, null), 500_000L, 이달_1일_0시());
+
+        List<MemberPerformance> rows = salesStatsQuery.performance(
+                companyId, LocalDate.now(SEOUL).withDayOfMonth(1), LocalDate.now(SEOUL));
+
+        assertThat(rows).extracting(MemberPerformance::name)
+                .containsExactly("박지훈", "이서준");   // 성사 금액 내림차순
+
+        assertThat(rows.getFirst().wonAmount()).isEqualTo(3_300_000L);
+        assertThat(rows.getFirst().wonCount()).isEqualTo(2);
+        assertThat(rows.getFirst().activeDealCount()).isEqualTo(3);   // 기간 밖 현재값 (LEAD 2 · QUOTE 1)
+
+        assertThat(rows.getLast().wonAmount()).isEqualTo(500_000L);
+        assertThat(rows.getLast().activeDealCount()).isEqualTo(1);    // 다른영업의 LEAD 1건
+    }
+
+    /**
+     * 실적이 없는 구성원도 0으로 선다 — 빠지면 화면에서 "아직 집계 안 됨"과 구별되지 않는다.
+     */
+    @Test
+    @DisplayName("성사가 없는 구성원도 0으로 목록에 선다")
+    void 실적_없는_구성원도_0으로_선다() {
+        List<MemberPerformance> rows = salesStatsQuery.performance(
+                companyId, LocalDate.now(SEOUL).minusMonths(1), LocalDate.now(SEOUL));
+
+        assertThat(rows).extracting(MemberPerformance::name)
+                .containsExactlyInAnyOrder("박지훈", "이서준");
+        assertThat(rows).allSatisfy(row -> {
+            assertThat(row.wonCount()).isZero();
+            assertThat(row.wonAmount()).isZero();   // null이 아니다 (#85)
+        });
     }
 }
