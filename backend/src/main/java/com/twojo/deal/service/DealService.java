@@ -5,6 +5,7 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
+import com.twojo.boundary.OrderQuery;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.deal.DealStageChanged;
@@ -50,6 +51,7 @@ public class DealService {
     private final CustomerQuery customerQuery;
     private final MemberQuery memberQuery;
     private final QuoteQuery quoteQuery;
+    private final OrderQuery orderQuery;
     private final ApplicationEventPublisher eventPublisher;
 
     /** 생성 (DL-01~04) — 회사의 모든 고객사에 가능하고, 배정 대상은 활성 구성원이다 */
@@ -89,12 +91,36 @@ public class DealService {
                 memberQuery.get(deal.getAssigneeMemberId()).name())));
     }
 
-    /** 상세 (DL-15·18) — 견적·주문 요약은 조회 창구가 정해질 때까지 빈 목록이다 */
+    /**
+     * 상세 (DL-15·18) — 견적·주문 요약과 성사 금액을 함께 싣는다.
+     *
+     * <p><b>세 창구를 지난다</b> — 견적·주문은 C 소유의 다른 모듈이라 직접 읽지 않는다.
+     * {@code briefsByDeals}로 견적을 얻고, 그 id로 {@code briefsByQuotes}를 물어 주문을 얻는다.
+     * 주문에는 {@code deal_id}가 없어 <b>견적을 한 홉 지나야</b> 딜에 닿기 때문이다.
+     *
+     * <p><b>성사 금액은 주문 합계다</b> (DL-18) — 예상 금액이 아니다.
+     * 이미 얻은 주문 줄을 더한다. {@code OrderQuery.wonTotalsByQuotes}를 따로 부르지 않는 이유는
+     * 같은 행을 두 번 읽게 되기 때문이다 — 그 창구는 기간 집계(DB-02·06)가 쓰는 자리다.
+     *
+     * <p><b>성사 전에는 null이다.</b> 화면 규칙이 "성사 전 expectedAmount, 성사 후 wonAmount"라
+     * (08 {@code DealDetail} javadoc), 진행 중인 딜에 0을 넣으면 "주문이 0원"으로 읽힌다.
+     * 성사인데 주문이 없는 경우는 없다 — 성사는 주문 전환만이 만든다 (DL-09).
+     */
     public DealResponses.DealDetail get(AccessContext ctx, UUID dealId) {
         Deal deal = findInScope(ctx, dealId);
+
+        List<QuoteQuery.QuoteBrief> quotes = quoteQuery.briefsByDeals(ctx.companyId(), List.of(dealId));
+        List<OrderQuery.OrderBrief> orders = orderQuery.briefsByQuotes(ctx.companyId(),
+                quotes.stream().map(QuoteQuery.QuoteBrief::id).toList());
+
+        Long wonAmount = deal.getStage() == Deal.Stage.WON
+                ? orders.stream().mapToLong(OrderQuery.OrderBrief::totalAmount).sum()
+                : null;
+
         return DealResponses.DealDetail.of(deal,
                 customerQuery.get(ctx, deal.getCustomerId()).name(),
-                memberQuery.get(deal.getAssigneeMemberId()).name());
+                memberQuery.get(deal.getAssigneeMemberId()).name(),
+                quotes, orders, wonAmount);
     }
 
     /** 제목·예상 금액·마감일 수정 (DL-02·03) — null 필드는 변경하지 않는다 */

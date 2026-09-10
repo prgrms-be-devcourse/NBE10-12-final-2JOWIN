@@ -146,6 +146,21 @@ public class QuoteQueryImpl implements QuoteQuery {
      * <p><b>빈 목록을 넘기면 빈 목록이다</b> — 담당 Deal이 없는 영업에게 회사 전체 주문이
      * 보이는 사고를 여기서 끊는다 ({@code QuoteSpecs.dealIdIn}과 같은 판단).
      */
+    /**
+     * 딜 상세의 견적 목록 (DL-15) — 상태로 거르지 않는다. 회수·반려도 그 딜의 이력이다.
+     * <p>빈 묶음이면 조회하지 않는다 — {@code quoteIdsByDeals}와 같은 규약이다.
+     */
+    @Override
+    public List<QuoteBrief> briefsByDeals(UUID companyId, Collection<UUID> dealIds) {
+        if (dealIds == null || dealIds.isEmpty()) {
+            return List.of();
+        }
+        return quoteRepository.findByCompanyIdAndDealIdIn(companyId, dealIds).stream()
+                .map(quote -> new QuoteBrief(quote.getId(), quote.getDealId(), quote.getQuoteNo(),
+                        quote.getStatus().name(), quote.getTotalAmount(), quote.getSentAt()))
+                .toList();
+    }
+
     @Override
     public List<UUID> quoteIdsByDeals(UUID companyId, Collection<UUID> dealIds) {
         if (dealIds == null || dealIds.isEmpty()) {

@@ -1,5 +1,6 @@
 package com.twojo.boundary;
 
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
@@ -52,5 +53,32 @@ public interface OrderQuery {
      * <p>{@code quoteId}를 함께 싣는 이유는 <b>호출자가 담당자를 되짚기 위해서</b>다 —
      * {@code QuoteQuery.originsByIds}로 딜을 얻고, 딜에서 담당자가 나온다 (DB-06).
      */
+    /**
+     * 딜 상세의 주문 요약 목록 (DL-15) — 견적 묶음이 만든 주문을 한 줄씩.
+     *
+     * <p><b>{@link #wonTotalsByQuotes}와 갈리는 이유는 소비처다.</b> 그쪽은 집계라 금액만
+     * 있으면 되지만, 딜 상세는 화면에 주문번호와 전환 시각을 그린다.
+     *
+     * <p>범위 판정은 여기서 하지 않는다 — 주문에는 담당자 컬럼이 없어 호출자가
+     * {@code QuoteQuery.quoteIdsByDeals}로 좁혀 넘긴다 ({@code wonTotalsByQuotes}와 같은 규약).
+     * <b>빈 묶음이면 빈 목록</b>이다 — 여기서는 "제한 없음"(null)을 받지 않는다.
+     * 딜 상세는 언제나 특정 딜의 견적으로 좁혀진 자리라 전 회사를 물을 일이 없고,
+     * null을 허용하면 실수로 회사 전체 주문이 한 딜에 붙는다.
+     *
+     * <p>순서를 보장하지 않는다 — 호출자가 {@code quoteId}로 묶는다.
+     */
+    List<OrderBrief> briefsByQuotes(UUID companyId, Collection<UUID> quoteIds);
+
     record QuoteWonTotal(UUID quoteId, long totalAmount) {}
+
+    /**
+     * 딜 상세에 그리는 주문 한 줄 (DL-15).
+     *
+     * <p>{@code quoteId}를 함께 싣는 이유는 <b>호출자가 딜로 되짚기 위해서</b>다 —
+     * 주문에는 {@code deal_id}가 없고 견적을 지나야 딜에 닿는다.
+     *
+     * <p>{@code createdAt}이 곧 전환 시각이다 — {@code orders}에 별도 컬럼이 없다
+     * ({@code wonTotalsByQuotes}의 기간 축과 같다).
+     */
+    record OrderBrief(UUID id, UUID quoteId, String orderNo, long totalAmount, Instant createdAt) {}
 }

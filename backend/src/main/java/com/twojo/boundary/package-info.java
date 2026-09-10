@@ -12,7 +12,8 @@
  *   <li>B 한상민 — {@link com.twojo.boundary.CustomerQuery} · {@link com.twojo.boundary.ProductQuery}
  *       · {@link com.twojo.boundary.ActivityQuery} · {@link com.twojo.boundary.TaskQuery} (DB-04·05 통로)</li>
  *   <li>C 최선진 — {@link com.twojo.boundary.QuoteCommand} · {@link com.twojo.boundary.DealQuery}
- *       · {@link com.twojo.boundary.QuoteQuery} · {@link com.twojo.boundary.SalesStatsQuery}</li>
+ *       · {@link com.twojo.boundary.QuoteQuery} · {@link com.twojo.boundary.SalesStatsQuery}
+ *       · {@link com.twojo.boundary.OrderQuery} (주문 집계·요약 통로 — deal이 호출; DB-02·06·DL-15·18)</li>
  *   <li>D 이준형 — {@link com.twojo.boundary.ViewTokenCommand} · {@link com.twojo.boundary.ViewTokenQuery}
  *       · {@link com.twojo.boundary.MailCommand} (메일 예약 통로 — approval·auth가 호출)
  *       · {@link com.twojo.boundary.NotificationCommand} (인앱 알림 쓰기 통로 — approval·notification이 호출)

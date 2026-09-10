@@ -13,10 +13,12 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.AuditActorType;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
+import com.twojo.boundary.OrderQuery;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.deal.DealStageChanged;
 import com.twojo.deal.dto.DealRequests;
+import com.twojo.deal.dto.DealResponses;
 import com.twojo.deal.entity.Deal;
 import com.twojo.deal.repository.DealRepository;
 import com.twojo.global.error.BusinessException;
@@ -63,6 +65,7 @@ class DealServiceTest {
     @Mock private CustomerQuery customerQuery;
     @Mock private MemberQuery memberQuery;
     @Mock private QuoteQuery quoteQuery;
+    @Mock private OrderQuery orderQuery;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private DealService dealService;
 
@@ -227,6 +230,108 @@ class DealServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.STALE_VERSION);
+        }
+    }
+
+    /**
+     * 딜 상세의 견적·주문 탭 (DL-15·18, #304).
+     *
+     * <p>여기서 고정하는 것은 <b>두 홉</b>이다 — 주문에는 {@code deal_id}가 없어 견적을 지나야
+     * 딜에 닿는다. 그 연결이 끊기면 화면의 두 탭이 조용히 0으로 뜬다 (게이트 리허설에서
+     * 실제로 그랬다).
+     */
+    @Nested
+    @DisplayName("상세의 견적·주문 (DL-15·18)")
+    class Detail {
+
+        private static final Instant SENT_AT = Instant.parse("2026-09-05T00:00:00Z");
+        private static final Instant CREATED_AT = Instant.parse("2026-09-08T00:00:00Z");
+
+        private Deal givenDeal(UUID dealId, Deal.Stage stage) {
+            Deal target = deal(dealId, SALES_ID);
+            ReflectionTestUtils.setField(target, "stage", stage);
+            given(dealRepository.findByIdAndCompanyIdAndDeletedAtIsNull(dealId, COMPANY_ID))
+                    .willReturn(Optional.of(target));
+            given(customerQuery.get(eq(SALES), any()))
+                    .willReturn(new CustomerQuery.CustomerSummary(CUSTOMER_ID, "한빛"));
+            given(memberQuery.get(SALES_ID))
+                    .willReturn(new MemberQuery.MemberSummary(SALES_ID, "박지훈", true));
+            return target;
+        }
+
+        @Test
+        @DisplayName("견적 id로 주문을 되짚는다 — 주문에는 deal_id가 없어 견적을 한 홉 지난다")
+        void 두_홉_연결() {
+            UUID dealId = UUID.randomUUID();
+            UUID quoteId = UUID.randomUUID();
+            givenDeal(dealId, Deal.Stage.QUOTE);
+
+            given(quoteQuery.briefsByDeals(COMPANY_ID, List.of(dealId))).willReturn(List.of(
+                    new QuoteQuery.QuoteBrief(quoteId, dealId, "Q-2609-001", "SENT", 1_320_000L, SENT_AT)));
+            given(orderQuery.briefsByQuotes(COMPANY_ID, List.of(quoteId))).willReturn(List.of(
+                    new OrderQuery.OrderBrief(UUID.randomUUID(), quoteId, "O-2609-001", 1_320_000L, CREATED_AT)));
+
+            DealResponses.DealDetail detail = dealService.get(SALES, dealId);
+
+            assertThat(detail.quotes()).extracting(DealResponses.DealDetail.QuoteSummary::quoteNo)
+                    .containsExactly("Q-2609-001");
+            assertThat(detail.orders()).extracting(DealResponses.DealDetail.OrderSummary::orderNo)
+                    .containsExactly("O-2609-001");
+        }
+
+        /**
+         * 성사 금액은 예상 금액이 아니라 <b>주문 합계</b>다 (DL-18). 딜 하나에 주문이 여럿일 수
+         * 있어(승인 견적이 여럿이면, Q-25) 합으로 낸다.
+         */
+        @Test
+        @DisplayName("성사 딜의 wonAmount는 주문 합계다 — 여러 주문이면 더한다 (DL-18)")
+        void 성사_금액은_주문_합계() {
+            UUID dealId = UUID.randomUUID();
+            UUID first = UUID.randomUUID();
+            UUID second = UUID.randomUUID();
+            givenDeal(dealId, Deal.Stage.WON);
+
+            given(quoteQuery.briefsByDeals(COMPANY_ID, List.of(dealId))).willReturn(List.of(
+                    new QuoteQuery.QuoteBrief(first, dealId, "Q-2609-001", "APPROVED", 1_320_000L, SENT_AT),
+                    new QuoteQuery.QuoteBrief(second, dealId, "Q-2609-002", "APPROVED", 680_000L, SENT_AT)));
+            given(orderQuery.briefsByQuotes(COMPANY_ID, List.of(first, second))).willReturn(List.of(
+                    new OrderQuery.OrderBrief(UUID.randomUUID(), first, "O-2609-001", 1_320_000L, CREATED_AT),
+                    new OrderQuery.OrderBrief(UUID.randomUUID(), second, "O-2609-002", 680_000L, CREATED_AT)));
+
+            assertThat(dealService.get(SALES, dealId).wonAmount()).isEqualTo(2_000_000L);
+        }
+
+        /**
+         * 진행 중인 딜에 0을 넣으면 화면이 "주문이 0원"으로 읽는다 — 표시 규칙이
+         * "성사 전 expectedAmount, 성사 후 wonAmount"라 null이어야 갈린다.
+         */
+        @Test
+        @DisplayName("성사 전이면 wonAmount는 null이다 — 0이 아니다")
+        void 성사_전은_null() {
+            UUID dealId = UUID.randomUUID();
+            givenDeal(dealId, Deal.Stage.NEGOTIATION);
+            given(quoteQuery.briefsByDeals(COMPANY_ID, List.of(dealId))).willReturn(List.of());
+            given(orderQuery.briefsByQuotes(COMPANY_ID, List.of())).willReturn(List.of());
+
+            DealResponses.DealDetail detail = dealService.get(SALES, dealId);
+
+            assertThat(detail.wonAmount()).isNull();
+            assertThat(detail.expectedAmount()).isEqualTo(5_000_000L);
+        }
+
+        @Test
+        @DisplayName("견적이 없으면 주문 창구에 빈 묶음을 넘긴다 — 회사 전체가 붙으면 안 된다")
+        void 견적이_없으면_빈_묶음() {
+            UUID dealId = UUID.randomUUID();
+            givenDeal(dealId, Deal.Stage.LEAD);
+            given(quoteQuery.briefsByDeals(COMPANY_ID, List.of(dealId))).willReturn(List.of());
+            given(orderQuery.briefsByQuotes(COMPANY_ID, List.of())).willReturn(List.of());
+
+            DealResponses.DealDetail detail = dealService.get(SALES, dealId);
+
+            assertThat(detail.quotes()).isEmpty();
+            assertThat(detail.orders()).isEmpty();
+            then(orderQuery).should().briefsByQuotes(COMPANY_ID, List.of());
         }
     }
 
