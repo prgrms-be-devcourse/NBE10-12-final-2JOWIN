@@ -19,9 +19,11 @@ const toManual = (a: (typeof db.activities)[number]): ActivityResponse => ({
   authorMemberId: a.authorMemberId, authorMemberName: memberName(a.authorMemberId), authorActive: memberActive(a.authorMemberId),
   occurredAt: a.occurredAt,
 })
+/** 행위자가 SYSTEM·CUSTOMER_LINK면 물을 계정이 없어 작성자가 **null**이다 — 빈 문자열이 아니다 */
 const toAuto = (a: (typeof db.autoActivities)[number]): ActivityResponse => ({
   id: a.id, type: 'AUTO', channel: null, content: a.content,
-  authorMemberId: a.authorMemberId ?? '', authorMemberName: memberName(a.authorMemberId),
+  authorMemberId: a.authorMemberId ?? null,
+  authorMemberName: a.authorMemberId ? memberName(a.authorMemberId) : null,
   authorActive: a.authorMemberId ? memberActive(a.authorMemberId) : true,
   occurredAt: a.occurredAt,
 })
@@ -42,6 +44,10 @@ export const activityHandlers = [
     if (!hit) return notFound()
     const url = new URL(request.url)
     const type = url.searchParams.get('type')
+    // 07에 없는 type은 400이다 — 오타를 전체 조회로 흘리면 필터가 걸린 줄 알고 본다 (서버 requireKnownType)
+    if (type !== null && type !== 'MANUAL' && type !== 'AUTO') {
+      return error('VALIDATION_FAILED', [{ field: 'type', reason: 'MANUAL · AUTO 중 하나여야 합니다' }])
+    }
     const manual = type === 'AUTO' ? [] : db.activities.filter((a) => a.dealId === hit.deal.id && !a.deleted).map(toManual)
     const auto = type === 'MANUAL' ? [] : db.autoActivities.filter((a) => a.dealId === hit.deal.id).map(toAuto)
     const list = [...manual, ...auto].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
@@ -114,7 +120,8 @@ export const activityHandlers = [
     if (body.content !== undefined && !body.content.trim()) return error('VALIDATION_FAILED', [{ field: 'content', reason: '공백일 수 없습니다' }])
     if (body.content !== undefined) task.content = body.content.trim()
     if (body.dueDate !== undefined) task.dueDate = body.dueDate
-    if (body.done !== undefined) task.doneAt = body.done ? new Date().toISOString() : null
+    // done=false는 미변경이다 — 완료 취소는 03·07 어디에도 없다. 완료는 멱등이라 최초 시각이 남는다
+    if (body.done === true && task.doneAt === null) task.doneAt = new Date().toISOString()
     return HttpResponse.json(toTask(task))
   }),
 
@@ -124,18 +131,23 @@ export const activityHandlers = [
     await delay(200)
     const customer = db.customers.find((c) => c.id === params.id && !c.deleted)
     if (!customer) return notFound()
-    return HttpResponse.json(paged(customerActivities(customer.id), new URL(request.url)))
+    return HttpResponse.json(paged(customerActivities(customer.id, currentMember(request)), new URL(request.url)))
   }),
 ]
 
-/** 고객사의 모든 Deal 타임라인(수동 + 자동)을 합친다 — 삭제된 Deal은 제외 */
-function customerActivities(customerId: string): ActivityResponse[] {
-  const dealIds = new Set(db.deals.filter((d) => d.customerId === customerId && !d.deleted).map((d) => d.id))
-  const manual: ActivityResponse[] = db.activities
+/**
+ * 고객사의 Deal에 달린 **수동 기록만** 시각 역순으로 (AC-10).
+ *
+ * 딜 타임라인과 달리 **자동 기록을 섞지 않는다** — 서버가 audit_log를 읽지 않는다.
+ * 범위도 상담 기록의 규칙을 따라 영업은 담당 Deal의 것만 본다 (09 §59) —
+ * 같은 고객사라도 남이 담당하는 Deal의 상담은 보이지 않는다.
+ */
+function customerActivities(customerId: string, member: ReturnType<typeof currentMember>): ActivityResponse[] {
+  const dealIds = new Set(
+    db.deals.filter((d) => d.customerId === customerId && !d.deleted && canSee(member, d)).map((d) => d.id),
+  )
+  return db.activities
     .filter((a) => dealIds.has(a.dealId) && !a.deleted)
-    .map((a) => ({ id: a.id, type: 'MANUAL', channel: a.channel, content: a.content, authorMemberId: a.authorMemberId, authorMemberName: memberName(a.authorMemberId), authorActive: memberActive(a.authorMemberId), occurredAt: a.occurredAt }))
-  const auto: ActivityResponse[] = db.autoActivities
-    .filter((a) => dealIds.has(a.dealId))
-    .map((a) => ({ id: a.id, type: 'AUTO', channel: null, content: a.content, authorMemberId: a.authorMemberId ?? '', authorMemberName: memberName(a.authorMemberId), authorActive: a.authorMemberId ? memberActive(a.authorMemberId) : true, occurredAt: a.occurredAt }))
-  return [...manual, ...auto].sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
+    .map(toManual)
+    .sort((a, b) => b.occurredAt.localeCompare(a.occurredAt))
 }

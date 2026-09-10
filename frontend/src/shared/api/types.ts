@@ -318,8 +318,12 @@ export interface ActivityResponse {
   type: ActivityType
   channel: ActivityChannel | null
   content: string
-  authorMemberId: string
-  authorMemberName: string
+  /**
+   * 자동 기록은 작성자가 없을 수 있다 — 행위자가 SYSTEM·CUSTOMER_LINK면 물을 계정이 없어 둘 다 null이다.
+   * 그때 `authorActive`는 true다(사람이 없는 줄에 "(퇴사)"가 붙으면 안 된다).
+   */
+  authorMemberId: string | null
+  authorMemberName: string | null
   /** 퇴사·비활성 작성자 표시용 */
   authorActive: boolean
   occurredAt: string
