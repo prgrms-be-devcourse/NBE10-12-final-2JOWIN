@@ -113,7 +113,10 @@ export const dashboardHandlers = [
      * 전환율(DB-07) — 목의 단순 계산. 단계 이동 이력이 없으므로 "현재 단계 이상에 도달했다"를 도달로 본다:
      *   도달(S) = 현재 단계 순서가 S 이상인 Deal + 성사(WON) Deal + 실패(LOST)했지만 실패 직전 단계가 S 이상인 Deal
      *   rate(from→to) = 도달(to) / 도달(from)   (도달(from)=0이면 0)
-     * 실제 서버는 audit_log의 STAGE_MOVED로 계산할 수 있어 값이 다를 수 있다.
+     * 실제 서버는 audit_log의 STAGE_MOVED로 계산해야 하는데 그 적재가 아직 없어(#217)
+     * `conversions`를 **빈 배열로 돌려준다**(#216). 즉 이 목을 켜면 전환율 막대가 뜨고,
+     * 실 API에서는 같은 자리가 "집계 준비 중"으로 뜬다 — 화면이 달라지는 유일한 칸이다
+     * (`domains/dashboard/pending.ts`의 CONVERSIONS_PENDING).
      */
     const order = (stage: DealStage) => DEAL_STAGES.indexOf(stage)
     const reachedStage = (d: (typeof deals)[number]): DealStage | null => {
