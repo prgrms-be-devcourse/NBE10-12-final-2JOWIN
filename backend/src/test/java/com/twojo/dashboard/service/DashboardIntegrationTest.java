@@ -32,8 +32,10 @@ import org.springframework.test.context.ActiveProfiles;
  *   <li>B의 {@code ActivityQuery}·{@code TaskQuery}(#178), C의 {@code SalesStatsQuery.pipeline}·
  *       {@code QuoteQuery.findAwaitingResponse}(#207)는 실구현이라 시드한 딜·견적·활동·할 일이
  *       실 JPQL로 조회돼 나온다 (목 테스트로는 쿼리 한 줄도 안 돈다).</li>
- *   <li>C의 {@code monthlyWon}·{@code performance}·{@code conversions}는 아직 자리표시자라
- *       빈 값·0으로 나온다 — 화면은 "0"이 아니라 "집계 준비 중"으로 표시한다.</li>
+ *   <li>C의 {@code monthlyWon}·{@code performance}는 실구현이다 (#216) — 이 시드에는 주문이 없어
+ *       금액이 0으로 나오지만 <b>자리표시자가 아니라 실제 집계 결과</b>다.</li>
+ *   <li>C의 {@code conversions}만 아직 자리표시자라 빈 목록이다 — 화면은 "0%"가 아니라
+ *       "집계 준비 중"으로 표시한다.</li>
  * </ul>
  *
  * <p>클래스에 {@code @Transactional}을 붙이지 않는다 — 붙이면 커밋이 미뤄져 JdbcTemplate이 확정 전
@@ -140,8 +142,8 @@ class DashboardIntegrationTest {
     }
 
     @Test
-    @DisplayName("관리자 summary — 파이프라인·응답 대기·활동·할 일이 실데이터, 이달 성사는 자리표시자(0)")
-    void 관리자_summary는_실데이터와_자리표시자가_섞여_나온다() {
+    @DisplayName("관리자 summary — 파이프라인·응답 대기·활동·할 일·이달 성사가 실데이터")
+    void 관리자_summary는_실데이터로_나온다() {
         DashboardSummaryResponse res = dashboardService.summary(admin(), YearMonth.now());
 
         // DB-01 — 시드 딜(QUOTE 단계)이 QUOTE 버킷에 1건, 나머지 단계는 0으로 채워짐
@@ -169,7 +171,7 @@ class DashboardIntegrationTest {
                 .singleElement()
                 .satisfies(f -> assertThat(f.content()).isEqualTo("재방문 예약"));
 
-        // DB-02 — 자리표시자
+        // DB-02 — 실집계. 이 시드에는 전환된 주문이 없어 0이다 (자리표시자가 아니다)
         assertThat(res.monthWonAmount()).isEqualTo(0L);
         assertThat(res.monthWonCount()).isEqualTo(0);
     }
@@ -186,13 +188,30 @@ class DashboardIntegrationTest {
         assertThat(res.followUps()).hasSize(1);
     }
 
+    /**
+     * {@code members}는 실구현이 됐다 (#216) — 활성 구성원이 전부 서고, 실적이 없으면 0으로 채워진다.
+     * {@code activeDealCount}는 기간과 무관한 현재 스냅샷이라, 시드의 QUOTE 단계 딜이 담당자에게 1건 잡힌다.
+     *
+     * <p>{@code conversions}만 아직 빈 목록이다 — 전이 이력(audit_log STAGE_MOVED) 적재가 선행이다.
+     */
     @Test
-    @DisplayName("관리자 performance — members·conversions는 자리표시자라 빈 목록")
-    void 관리자_performance는_자리표시자로_빈_목록이다() {
+    @DisplayName("관리자 performance — members는 실집계, conversions만 자리표시자로 빈 목록")
+    void 관리자_performance는_구성원별로_나온다() {
         DashboardPerformanceResponse res =
                 dashboardService.performance(admin(), LocalDate.now().minusMonths(1), LocalDate.now());
 
-        assertThat(res.members()).isEmpty();
+        assertThat(res.members())
+                .extracting(DashboardPerformanceResponse.MemberPerformance::name)
+                .containsExactlyInAnyOrder("김서연", "박지훈");
+        assertThat(res.members())
+                .filteredOn(m -> m.name().equals("박지훈"))
+                .singleElement()
+                .satisfies(m -> {
+                    assertThat(m.wonCount()).isZero();
+                    assertThat(m.wonAmount()).isZero();      // 0건이어도 null이 아니다 (#85)
+                    assertThat(m.activeDealCount()).isEqualTo(1);   // 시드의 QUOTE 단계 딜
+                });
+
         assertThat(res.conversions()).isEmpty();
     }
 

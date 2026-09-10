@@ -26,8 +26,8 @@ class OrderTest {
     private static ConversionSnapshot snapshot() {
         return new ConversionSnapshot(QUOTE_ID, "Q-2609-001", UUID.randomUUID(),
                 1_000_000L, 100_000L, 1_100_000L,
-                List.of(new ConversionSnapshot.Line("사무용 의자", "EA", 10, 80_000L, 800_000L),
-                        new ConversionSnapshot.Line("책상", "EA", 2, 100_000L, 200_000L)));
+                List.of(new ConversionSnapshot.Line("사무용 의자", "EA", 10, 80_000L, 800_000L, 0),
+                        new ConversionSnapshot.Line("책상", "EA", 2, 100_000L, 200_000L, 1)));
     }
 
     @Nested
@@ -65,6 +65,22 @@ class OrderTest {
         }
 
         /**
+         * 순서도 값 복사다 (V301). FK가 없어 <b>견적에서 받아 오는 것 말고는 순서를 알 방법이 없고</b>,
+         * 여기서 빠지면 컬럼만 생기고 값이 안 채워져 재조회 순서가 그대로 갈린다.
+         *
+         * <p>정렬 자체가 실제로 도는지는 DB를 왕복해야 보이므로 {@code OrderItemOrderIntegrationTest}가 맡는다 —
+         * 이 테스트는 메모리상 생성만 보기 때문에 삽입 순서와 구별되지 않는다.
+         */
+        @Test
+        @DisplayName("항목 순서(sortOrder)도 함께 복사된다 — 견적 말고는 순서를 알 방법이 없다")
+        void 순서_복사() {
+            Order order = Order.from(COMPANY_ID, snapshot(), "O-2609-001");
+
+            assertThat(order.getItems()).extracting(OrderItem::getSortOrder)
+                    .containsExactly(0, 1);
+        }
+
+        /**
          * <b>스냅샷의 실증</b>이다 (OD-05). 항목 금액의 합(1,000,000)과 견적이 준
          * 공급가액이 우연히 같아 보이는 상황을 피하려고, 여기서는 <b>일부러 어긋난 값</b>을 넣는다.
          * 엔티티가 합계를 다시 계산한다면 이 단언이 깨진다.
@@ -74,7 +90,7 @@ class OrderTest {
         void 합계를_다시_세지_않는다() {
             ConversionSnapshot 어긋난 = new ConversionSnapshot(QUOTE_ID, "Q-2609-001", UUID.randomUUID(),
                     999L, 99L, 1_098L,
-                    List.of(new ConversionSnapshot.Line("사무용 의자", "EA", 10, 80_000L, 800_000L)));
+                    List.of(new ConversionSnapshot.Line("사무용 의자", "EA", 10, 80_000L, 800_000L, 0)));
 
             Order order = Order.from(COMPANY_ID, 어긋난, "O-2609-001");
 

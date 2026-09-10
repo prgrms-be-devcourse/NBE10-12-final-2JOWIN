@@ -31,6 +31,12 @@ public interface QuoteCommand {
      * 풀려 아무것도 막지 못하므로, 조용히 무력해지는 대신 그 자리에서 실패한다
      * ({@code DocumentNumberService.next}와 같은 이유, #72).
      *
+     * <p><b>호출자의 트랜잭션은 쓰기여야 한다.</b> {@code MANDATORY}는 트랜잭션의 <b>존재만</b>
+     * 확인하고 읽기 전용 여부까지 보지 않는다 — 호출자가 {@code @Transactional(readOnly = true)}면
+     * 이 검사를 통과하고, 그 트랜잭션에서 Hibernate가 flush를 건너뛰어 <b>주문 생성이 예외 없이
+     * 사라진다.</b> 클래스 레벨 {@code readOnly} 위에 메서드 레벨 {@code @Transactional}을
+     * 빠뜨린 경우가 특히 그렇다 (PR #197 리뷰).
+     *
      * <p><b>여기서 보는 것은 상태뿐이다</b> — 승인됨(APPROVED)이 아니면
      * {@code QUOTE_NOT_APPROVED}, 없거나 다른 회사면 {@code RESOURCE_NOT_FOUND}.
      * <b>담당 축(SC-04) 판정은 호출자가 먼저 한다</b>: 남의 딜 견적에 409를 돌려주면
@@ -51,7 +57,13 @@ public interface QuoteCommand {
                               Long supplyAmount, Long vatAmount, Long totalAmount,
                               List<Line> items) {
 
-        /** 견적 항목의 값 복사본 — {@code product}·{@code quote_item} 어느 쪽으로도 FK를 걸지 않는다 */
-        public record Line(String name, String unit, int quantity, Long unitPrice, Long amount) {}
+        /**
+         * 견적 항목의 값 복사본 — {@code product}·{@code quote_item} 어느 쪽으로도 FK를 걸지 않는다.
+         *
+         * <p>{@code sortOrder}가 함께 오는 이유: FK가 없으니 <b>순서도 여기서 받지 않으면 알 방법이 없다</b>.
+         * 주문 항목은 이 값으로 정렬되고(QT-07 → OD-04), 없으면 조회할 때마다 순서가 갈린다 (V301).
+         */
+        public record Line(String name, String unit, int quantity,
+                           Long unitPrice, Long amount, int sortOrder) {}
     }
 }

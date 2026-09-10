@@ -254,6 +254,7 @@ erDiagram
         int quantity
         bigint unit_price
         bigint amount
+        int sort_order "견적 항목 순서 값 복사 - CHECK >= 0 (v1.6.7)"
     }
     activity {
         uuid id PK

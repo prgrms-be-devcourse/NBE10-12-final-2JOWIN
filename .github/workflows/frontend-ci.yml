@@ -9,7 +9,7 @@ name: Frontend CI
 
 on:
   pull_request:
-    branches: [develop, 'release/**', main]
+    branches: [develop, main]
 
 concurrency:
   group: frontend-ci-${{ github.ref }}
