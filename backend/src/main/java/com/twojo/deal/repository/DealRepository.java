@@ -109,6 +109,33 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
                                           @Param("assigneeMemberId") UUID assigneeMemberId,
                                           @Param("stages") Collection<Deal.Stage> stages);
 
+    /**
+     * 담당자별 진행 중 딜 수 (DB-06) — 회사 전체를 한 번에 센다.
+     *
+     * <p><b>기간과 무관한 현재 스냅샷이다</b> (2026-09-10 D 확정). "그때 진행 중이었던"을 재구성하려면
+     * 전이 이력이 필요한데 그건 전환율(DB-07)과 같은 블로커이고, 화면 의도도 "지금 몇 건 안고 있나"다.
+     *
+     * <p>담당자별로 한 번씩 세면 구성원 수만큼 쿼리가 나간다 — 그래서 group by로 한 번에 받는다.
+     * 진행 딜이 없는 구성원은 결과에 없으므로 0을 채우는 것은 호출자 몫이다.
+     */
+    @Query("""
+            select d.assigneeMemberId as memberId, count(d) as count
+            from Deal d
+            where d.companyId = :companyId
+              and d.deletedAt is null
+              and d.stage in :stages
+            group by d.assigneeMemberId
+            """)
+    List<AssigneeCount> countOpenByAssignee(@Param("companyId") UUID companyId,
+                                            @Param("stages") Collection<Deal.Stage> stages);
+
+    /** {@link #countOpenByAssignee} 투영 */
+    interface AssigneeCount {
+        UUID getMemberId();
+
+        long getCount();
+    }
+
     /** {@link #aggregateByStage} 투영 — {@code Object[]}로 받으면 호출부가 인덱스로 캐스팅하게 된다 */
     interface StageAggregate {
         Deal.Stage getStage();

@@ -21,7 +21,6 @@ import com.twojo.order.entity.Order;
 import com.twojo.order.repository.OrderRepository;
 import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
@@ -56,9 +55,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 @Transactional(readOnly = true)
 public class OrderService {
-
-    /** 기간 필터는 사람이 읽는 날짜라 한국 날짜로 끊는다 — 채번의 연월 판정과 같은 이유 (#72) */
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final OrderRepository orderRepository;
     private final QuoteQuery quoteQuery;
@@ -132,7 +128,7 @@ public class OrderService {
                 : null;   // null = 제한 없음
 
         Page<Order> page = orderRepository.search(ctx.companyId(),
-                startOfDay(from), startOfNextDay(to), visibleQuoteIds, pageable);
+                OrderPeriod.startOfDay(from), OrderPeriod.startOfNextDay(to), visibleQuoteIds, pageable);
 
         Map<UUID, QuoteQuery.QuoteOrigin> originByQuote = quoteQuery
                 .originsByIds(ctx.companyId(), page.getContent().stream().map(Order::getQuoteId).toList())
@@ -288,12 +284,6 @@ public class OrderService {
         return value;
     }
 
-    private static Instant startOfDay(LocalDate date) {
-        return date == null ? null : date.atStartOfDay(SEOUL).toInstant();
-    }
 
     /** {@code to}는 그날을 <b>포함</b>한다 — 다음 날 0시 미만으로 끊는다 */
-    private static Instant startOfNextDay(LocalDate date) {
-        return date == null ? null : date.plusDays(1).atStartOfDay(SEOUL).toInstant();
-    }
 }
