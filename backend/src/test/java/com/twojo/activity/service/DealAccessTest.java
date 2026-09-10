@@ -72,6 +72,6 @@ class DealAccessTest {
 
     private static DealQuery.DealSummary summary() {
         return new DealQuery.DealSummary(
-                DEAL_ID, "도담건설 신규", "CONSULT", 1_000_000L, null, Instant.now());
+                DEAL_ID, UUID.randomUUID(), "도담건설 신규", "CONSULT", 1_000_000L, null, Instant.now());
     }
 }

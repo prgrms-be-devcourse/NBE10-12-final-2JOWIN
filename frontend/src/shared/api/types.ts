@@ -429,7 +429,8 @@ export interface DealResponse {
   /** DL-18: 주문 합계, 주문 없으면 null. 표시: 성사 전 expected, 성사 후 won */
   wonAmount: number | null
   customerId: string
-  customerName: string
+  /** 고객사가 삭제되면 null — 목록 한 줄 때문에 전체가 실패하지 않는다 (#273). 값을 그대로 렌더할 것 */
+  customerName: string | null
   assigneeMemberId: string
   assigneeMemberName: string
   dueDate: string | null
@@ -445,7 +446,8 @@ export interface DealDetailResponse {
   expectedAmount: number | null
   wonAmount: number | null
   customerId: string
-  customerName: string
+  /** 고객사가 삭제되면 null — 목록 한 줄 때문에 전체가 실패하지 않는다 (#273). 값을 그대로 렌더할 것 */
+  customerName: string | null
   assigneeMemberId: string
   assigneeMemberName: string
   dueDate: string | null
@@ -574,7 +576,8 @@ export interface OrderResponse {
   dealId: string
   dealTitle: string
   customerId: string
-  customerName: string
+  /** 고객사가 삭제되면 null — 목록 한 줄 때문에 전체가 실패하지 않는다 (#273). 값을 그대로 렌더할 것 */
+  customerName: string | null
   supplyAmount: number
   vatAmount: number
   totalAmount: number

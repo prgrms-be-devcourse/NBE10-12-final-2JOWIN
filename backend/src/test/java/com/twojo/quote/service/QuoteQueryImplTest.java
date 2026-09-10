@@ -5,6 +5,8 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 
+import com.twojo.boundary.CustomerQuery;
+import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.quote.entity.Quote;
 import com.twojo.quote.repository.QuoteRepository;
@@ -38,7 +40,19 @@ class QuoteQueryImplTest {
     private static final UUID DEAL_ID = UUID.randomUUID();
 
     @Mock private QuoteRepository quoteRepository;
+    @Mock private DealQuery dealQuery;
+    @Mock private CustomerQuery customerQuery;
     @InjectMocks private QuoteQueryImpl quoteQuery;
+
+    /** deal → customerId → 이름 두 홉을 심는다 (#273) */
+    private void 고객사이름(String name) {
+        UUID customerId = UUID.randomUUID();
+        given(dealQuery.summariesByIds(eq(COMPANY_ID), any())).willReturn(List.of(
+                new DealQuery.DealSummary(DEAL_ID, customerId, "도담 리모델링", "QUOTE",
+                        null, null, Instant.parse("2026-08-01T00:00:00Z"))));
+        given(customerQuery.namesByIds(eq(COMPANY_ID), any())).willReturn(List.of(
+                new CustomerQuery.CustomerSummary(customerId, name)));
+    }
 
     private static Quote quoteAt(Quote.Status status) {
         Quote quote = Quote.draft(COMPANY_ID, DEAL_ID, "Q-2609-001", LocalDate.of(2026, 10, 1));
@@ -73,8 +87,11 @@ class QuoteQueryImplTest {
         given(quoteRepository.findByCompanyIdAndStatusInOrderBySentAtAsc(any(), any()))
                 .willReturn(List.of(quote));
 
+        고객사이름("도담산업");
+
         QuoteQuery.QuoteSummary row = quoteQuery.findAwaitingResponse(COMPANY_ID).getFirst();
 
+        assertThat(row.customerName()).isEqualTo("도담산업");
         assertThat(row.dealId()).isEqualTo(DEAL_ID);
         assertThat(row.companyId()).isEqualTo(COMPANY_ID);
         assertThat(row.quoteNo()).isEqualTo("Q-2609-001");
@@ -96,16 +113,40 @@ class QuoteQueryImplTest {
     }
 
     /**
-     * <b>지금은 null이다.</b> 고객사는 B 소유라 이 모듈이 직접 읽을 수 없고, {@code CustomerQuery.get}은
-     * {@code AccessContext}를 요구하는데 배치에는 그것이 없다. 회사 스코프만으로 이름을 얻는 창구가
-     * 열리면 이 테스트가 <b>먼저 깨져서</b> 채워야 할 자리를 알려준다.
+     * 이 자리는 오래 null이었다 — 회사 스코프만으로 이름을 얻는 창구가 B 계약에 없었기 때문이다.
+     * {@code CustomerQuery.namesByIds}(#269)가 열려 채웠다 (#273).
+     *
+     * <p>견적에는 고객사 id가 없어 <b>deal을 한 번 더 지난다</b>. 두 홉 중 하나라도 어긋나면
+     * 대시보드 응답 대기 카드에 남의 고객사명이 붙는다.
      */
     @Test
-    @DisplayName("customerName은 아직 null — B 계약에 ctx 없는 이름 조회가 없다")
-    void 고객사명_공백() {
+    @DisplayName("customerName이 deal을 거쳐 채워진다 (DB-03)")
+    void 고객사명_채움() {
         given(quoteRepository.findByCompanyIdAndStatusInOrderBySentAtAsc(any(), any()))
                 .willReturn(List.of(quoteAt(Quote.Status.VIEWED)));
+        고객사이름("도담산업");
 
-        assertThat(quoteQuery.findAwaitingResponse(COMPANY_ID).getFirst().customerName()).isNull();
+        assertThat(quoteQuery.findAwaitingResponse(COMPANY_ID).getFirst().customerName())
+                .isEqualTo("도담산업");
+    }
+
+    /**
+     * <b>지워진 고객사는 그 줄만 비운다.</b> {@code namesByIds}는 없는 id를 예외 없이 빠뜨리는데
+     * (B javadoc), 목록 한 줄 때문에 리마인드 배치가 통째로 멈추면 안 되기 때문이다.
+     */
+    @Test
+    @DisplayName("고객사가 지워졌으면 그 줄의 이름만 null — 목록이 실패하지 않는다")
+    void 지워진_고객사() {
+        given(quoteRepository.findByCompanyIdAndStatusInOrderBySentAtAsc(any(), any()))
+                .willReturn(List.of(quoteAt(Quote.Status.VIEWED)));
+        given(dealQuery.summariesByIds(eq(COMPANY_ID), any())).willReturn(List.of(
+                new DealQuery.DealSummary(DEAL_ID, UUID.randomUUID(), "도담 리모델링", "QUOTE",
+                        null, null, Instant.parse("2026-08-01T00:00:00Z"))));
+        given(customerQuery.namesByIds(eq(COMPANY_ID), any())).willReturn(List.of());   // 빠진다
+
+        QuoteQuery.QuoteSummary row = quoteQuery.findAwaitingResponse(COMPANY_ID).getFirst();
+
+        assertThat(row.customerName()).isNull();
+        assertThat(row.quoteNo()).isEqualTo("Q-2609-001");   // 나머지는 정상이다
     }
 }

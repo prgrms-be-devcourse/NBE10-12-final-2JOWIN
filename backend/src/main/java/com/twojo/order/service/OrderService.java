@@ -108,7 +108,9 @@ public class OrderService {
         // 명시적 flush는 필요 없다: dealStage는 엔티티가 아니라 쿼리(summariesByIds)로 읽고,
         // JPA FlushModeType.AUTO가 쿼리 실행 전 flush를 보장한다. 응답을 엔티티에서 만들었던
         // QuoteService.update와는 사정이 다르다 (거기서는 flush가 있어야 version이 최신이 된다).
-        return OrderResponses.OrderDetail.of(order, originOf(ctx, origin, requireDealInScope(ctx, origin.dealId())));
+        DealQuery.DealSummary deal = requireDealInScope(ctx, origin.dealId());
+        return OrderResponses.OrderDetail.of(order, originOf(origin, deal,
+                customerNamesOf(ctx.companyId(), List.of(deal.customerId()))));
     }
 
     /**
@@ -136,13 +138,19 @@ public class OrderService {
                         originByQuote.values().stream().map(QuoteQuery.QuoteOrigin::dealId).distinct().toList())
                 .stream().collect(Collectors.toMap(DealQuery.DealSummary::id, Function.identity()));
 
+        // 고객사 이름도 배치로 한 번에 (#273) — 이제 이 목록의 조회 횟수가 줄 수와 무관해진다.
+        // 관리자는 네 번(주문 페이지 · 견적 출처 · 딜 요약 · 고객사 이름), 영업은 범위를 좁히는
+        // assignedDealIds·quoteIdsByDeals가 앞에 붙어 여섯 번이다.
+        Map<UUID, String> customerNames = customerNamesOf(ctx.companyId(),
+                dealById.values().stream().map(DealQuery.DealSummary::customerId).toList());
+
         return PageResponse.from(page.map(order -> {
             QuoteQuery.QuoteOrigin origin = originByQuote.get(order.getQuoteId());
             if (origin == null) {
                 throw new MissingReferenceException("quote", order.getQuoteId());   // FK가 보장하는 자리 (#167)
             }
             return OrderResponses.OrderRow.of(order,
-                    originOf(ctx, origin, requireFound(dealById.get(origin.dealId()))));
+                    originOf(origin, requireFound(dealById.get(origin.dealId())), customerNames));
         }));
     }
 
@@ -172,7 +180,9 @@ public class OrderService {
         Order order = orderRepository.findWithItemsByIdAndCompanyId(orderId, ctx.companyId())
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
         QuoteQuery.QuoteOrigin origin = originOfOrder(ctx.companyId(), order.getQuoteId());
-        return new ScopedOrder(order, originOf(ctx, origin, requireDealInScope(ctx, origin.dealId())));
+        DealQuery.DealSummary deal = requireDealInScope(ctx, origin.dealId());
+        return new ScopedOrder(order, originOf(origin, deal,
+                customerNamesOf(ctx.companyId(), List.of(deal.customerId()))));
     }
 
     /**
@@ -187,15 +197,28 @@ public class OrderService {
     /**
      * 주문이 스스로 답할 수 없는 값 — 견적번호·딜·고객사.
      *
-     * <p><b>줄마다 고객사를 조회한다</b> (N+1). Deal 목록도 같은 모양이고
-     * ({@code DealService.list}), {@code DealQuery}에 딜→고객사 배치 창구가 없어서다.
-     * 목록 기본 20건이라 지금은 감당되지만, 배치 창구가 생기면 여기부터 고친다.
+     * <p><b>조회를 하지 않는다.</b> 고객사 id는 {@code DealSummary}가 싣고(#273), 이름은 호출자가
+     * {@code namesByIds}로 한 번에 받아 넘긴다. 예전에는 여기서 줄마다 두 번 조회했다 —
+     * {@code customerIdOf}로 딜→고객사를 되짚고 {@code get}으로 이름을 읽었다.
+     *
+     * <p>이름이 <b>null일 수 있다</b> — 지워진 고객사는 배치 결과에서 빠진다. 단건 경로도 같은
+     * 창구를 타므로 상세·전환 응답에서도 그렇다. 주문이 있는데 고객사만 지워진 상태는
+     * 실제로 가능하다 — 삭제는 <b>진행 중</b> 딜만 막고(hasOpenDeals), 성사된 딜은 막지 않는다.
      */
-    private OrderResponses.Origin originOf(AccessContext ctx, QuoteQuery.QuoteOrigin origin,
-                                           DealQuery.DealSummary deal) {
-        UUID customerId = dealQuery.customerIdOf(deal.id());
+    private OrderResponses.Origin originOf(QuoteQuery.QuoteOrigin origin, DealQuery.DealSummary deal,
+                                           Map<UUID, String> customerNames) {
         return new OrderResponses.Origin(origin.quoteNo(), deal.id(), deal.title(), deal.stage(),
-                customerId, customerQuery.get(ctx, customerId).name());
+                deal.customerId(), customerNames.get(deal.customerId()));
+    }
+
+    /**
+     * 고객사 id 묶음 → 이름 (SC-01). 단건 경로는 원소 하나짜리 묶음으로 같은 창구를 탄다 —
+     * 두 경로가 이름을 다르게 얻으면 "목록엔 있는데 상세엔 없는" 차이가 생긴다.
+     */
+    private Map<UUID, String> customerNamesOf(UUID companyId, Collection<UUID> customerIds) {
+        return customerQuery.namesByIds(companyId, customerIds.stream().distinct().toList()).stream()
+                .collect(Collectors.toMap(CustomerQuery.CustomerSummary::id,
+                        CustomerQuery.CustomerSummary::name));
     }
 
     /**

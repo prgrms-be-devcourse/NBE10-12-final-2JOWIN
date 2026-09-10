@@ -31,7 +31,8 @@ import org.springframework.test.context.ActiveProfiles;
  * <ul>
  *   <li>B의 {@code ActivityQuery}·{@code TaskQuery}(#178), C의 {@code SalesStatsQuery.pipeline}·
  *       {@code QuoteQuery.findAwaitingResponse}(#207)는 실구현이라 시드한 딜·견적·활동·할 일이
- *       실 JPQL로 조회돼 나온다 (목 테스트로는 쿼리 한 줄도 안 돈다).</li>
+ *       실 JPQL로 조회돼 나온다 (목 테스트로는 쿼리 한 줄도 안 돈다). 응답 대기의 고객사명도
+ *       실값이다 — B의 namesByIds 창구가 열려 채웠다 (#269 → #273).</li>
  *   <li>C의 {@code monthlyWon}·{@code performance}는 실구현이다 (#216) — 이 시드에는 주문이 없어
  *       금액이 0으로 나오지만 <b>자리표시자가 아니라 실제 집계 결과</b>다.</li>
  *   <li>C의 {@code conversions}만 아직 자리표시자라 빈 목록이다 — 화면은 "0%"가 아니라
@@ -152,12 +153,12 @@ class DashboardIntegrationTest {
                 .singleElement()
                 .satisfies(s -> assertThat(s.count()).isEqualTo(1));
 
-        // DB-03 — 시드한 SENT 견적. customerName은 계약상 아직 null (B 창구 대기)
+        // DB-03 — 시드한 SENT 견적. customerName은 deal을 거쳐 실제로 채워진다 (#273)
         assertThat(res.waitingQuotes())
                 .singleElement()
                 .satisfies(w -> {
                     assertThat(w.quoteNo()).isEqualTo("Q-INT-001");
-                    assertThat(w.customerName()).isNull();
+                    assertThat(w.customerName()).isEqualTo("도담건설");
                 });
 
         // DB-04·05 — 딜 제목까지 조립

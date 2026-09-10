@@ -105,7 +105,7 @@ class DealQueryImpl implements DealQuery {
      * <b>주문 전환 이슈까지 null이다</b> — 소비자(B·D)는 성사 금액을 이 창구로 받지 않는다.
      */
     private static DealSummary toSummary(Deal deal) {
-        return new DealSummary(deal.getId(), deal.getTitle(), deal.getStage().name(),
+        return new DealSummary(deal.getId(), deal.getCustomerId(), deal.getTitle(), deal.getStage().name(),
                 deal.getExpectedAmount(), null, deal.getCreatedAt());
     }
 }

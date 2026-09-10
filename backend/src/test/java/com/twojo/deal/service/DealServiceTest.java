@@ -350,4 +350,72 @@ class DealServiceTest {
             then(eventPublisher).should(never()).publishEvent(any(DealStageChanged.class));
         }
     }
+
+    /**
+     * 목록의 고객사 이름은 <b>배치 한 번</b>으로 받는다 (#273).
+     *
+     * <p>줄마다 {@code get}을 부르던 자리다 — 20건짜리 목록이면 조회도 20번이었다.
+     * "한 번"을 단언하지 않으면 다음 사람이 편의상 다시 줄 안으로 넣어도 아무도 모른다.
+     */
+    @Nested
+    @DisplayName("목록의 고객사 이름 배치 (#273)")
+    class CustomerNameBatch {
+
+        private void 딜_세건() {
+            UUID 다른고객사 = UUID.randomUUID();
+            Deal a = deal(UUID.randomUUID(), SALES_ID);
+            Deal b = deal(UUID.randomUUID(), SALES_ID);
+            Deal c = deal(UUID.randomUUID(), SALES_ID);
+            ReflectionTestUtils.setField(c, "customerId", 다른고객사);
+            given(dealRepository.search(any(), any(), any(), any(), any()))
+                    .willReturn(new PageImpl<>(List.of(a, b, c)));
+            given(memberQuery.get(SALES_ID))
+                    .willReturn(new MemberQuery.MemberSummary(SALES_ID, "박지훈", true));
+            given(customerQuery.namesByIds(eq(COMPANY_ID), any())).willReturn(List.of(
+                    new CustomerQuery.CustomerSummary(CUSTOMER_ID, "한빛오피스"),
+                    new CustomerQuery.CustomerSummary(다른고객사, "도담산업")));
+        }
+
+        @Test
+        @DisplayName("세 줄이어도 고객사 조회는 한 번 — 줄마다 get을 부르지 않는다")
+        void 배치_한_번() {
+            딜_세건();
+
+            dealService.list(SALES, null, null, null, PageRequest.of(0, 20));
+
+            then(customerQuery).should().namesByIds(eq(COMPANY_ID), any());
+            then(customerQuery).should(never()).get(any(), any());   // 줄 안으로 돌아가면 여기서 걸린다
+        }
+
+        @Test
+        @DisplayName("중복 고객사는 한 번만 넘긴다 — 같은 id를 세 번 실어 보내지 않는다")
+        void 중복_제거() {
+            딜_세건();
+
+            dealService.list(SALES, null, null, null, PageRequest.of(0, 20));
+
+            ArgumentCaptor<java.util.Collection<UUID>> ids = ArgumentCaptor.forClass(java.util.Collection.class);
+            then(customerQuery).should().namesByIds(eq(COMPANY_ID), ids.capture());
+            assertThat(ids.getValue()).hasSize(2);   // 딜은 셋인데 고객사는 둘이다
+        }
+
+        /**
+         * 지워진 고객사는 배치 결과에서 빠진다 (B javadoc) — <b>그 줄의 이름만</b> 비어야 하고
+         * 목록 전체가 404가 되면 안 된다. 예전 {@code get}은 없으면 던져서 한 줄이 전체를 막았다.
+         */
+        @Test
+        @DisplayName("지워진 고객사가 섞여도 목록은 살아남는다 — 그 줄의 이름만 null")
+        void 지워진_고객사는_그_줄만_빈다() {
+            given(dealRepository.search(any(), any(), any(), any(), any()))
+                    .willReturn(new PageImpl<>(List.of(deal(UUID.randomUUID(), SALES_ID))));
+            given(memberQuery.get(SALES_ID))
+                    .willReturn(new MemberQuery.MemberSummary(SALES_ID, "박지훈", true));
+            given(customerQuery.namesByIds(eq(COMPANY_ID), any())).willReturn(List.of());   // 빠진다
+
+            var page = dealService.list(SALES, null, null, null, PageRequest.of(0, 20));
+
+            assertThat(page.content()).singleElement()
+                    .satisfies(row -> assertThat(row.customerName()).isNull());
+        }
+    }
 }
