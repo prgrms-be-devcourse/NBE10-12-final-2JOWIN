@@ -58,15 +58,10 @@ data "aws_iam_policy_document" "trust_env_prod" {
 
     # 인프라 apply 환경만이다. 배포 환경 이름을 여기 섞으면 배포
     # 워크플로가 AdministratorAccess 를 얻는다 — 분리한 이유가 사라진다.
-    #
-    # 옛 이름은 이름 교체가 끝나면 뺀다 (#270 5단계).
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
-      values = [
-        "${var.github_sub_prefix}:environment:${var.prod_environment}",
-        "${var.github_sub_prefix}:environment:${var.prod_environment_legacy}",
-      ]
+      values   = ["${var.github_sub_prefix}:environment:${var.prod_environment}"]
     }
   }
 }
@@ -220,15 +215,12 @@ data "aws_iam_policy_document" "trust_env_deploy" {
     # 두 환경을 다 받는다. 인프라 apply 쪽은 승인이 걸려 더 엄격하므로
     # 남겨둬도 위험하지 않고, 워크플로 전환 중에 배포가 끊기지 않는다.
     #
-    # _legacy 두 줄은 이름 교체 중에만 있는다 (#270 5단계에서 삭제).
     condition {
       test     = "StringEquals"
       variable = "${local.oidc_host}:sub"
       values = [
         "${var.github_sub_prefix}:environment:${var.prod_environment}",
         "${var.github_sub_prefix}:environment:${var.deploy_environment}",
-        "${var.github_sub_prefix}:environment:${var.prod_environment_legacy}",
-        "${var.github_sub_prefix}:environment:${var.deploy_environment_legacy}",
       ]
     }
   }

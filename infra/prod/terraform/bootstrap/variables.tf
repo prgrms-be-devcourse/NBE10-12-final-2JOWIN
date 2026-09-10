@@ -47,28 +47,6 @@ variable "prod_environment" {
   default     = "infra-apply"
 }
 
-# ── 이름 교체 중에만 쓰는 변수 2종 (#270) ────────────────────────
-# 환경 이름은 OIDC 토큰의 sub 에 들어가 IAM 권한 경계가 된다. GitHub 에
-# 이름 변경 기능이 없어 「새로 만들고 옛것을 지우는」 방식이 되는데, 그
-# 사이 배포가 끊기지 않도록 옛 이름을 함께 받는다.
-#
-# 존재하지 않는 환경을 허용해도 권한은 늘지 않는다 — 환경이 없으면 그
-# sub 를 가진 토큰 자체가 발급되지 않는다.
-#
-# 교체가 끝나면 이 두 변수와 참조를 지운다 (#270 5단계).
-
-variable "prod_environment_legacy" {
-  description = "교체 전 인프라 apply 환경 이름. 5단계에서 삭제한다"
-  type        = string
-  default     = "prod"
-}
-
-variable "deploy_environment_legacy" {
-  description = "교체 전 백엔드 배포 환경 이름. 5단계에서 삭제한다"
-  type        = string
-  default     = "prod-deploy"
-}
-
 variable "ecr_repository_name" {
   description = "배포 역할이 push 할 수 있는 유일한 ECR 리포지토리. storage 모듈이 실제로 만든다"
   type        = string
