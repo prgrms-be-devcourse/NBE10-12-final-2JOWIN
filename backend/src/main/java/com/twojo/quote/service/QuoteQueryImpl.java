@@ -126,7 +126,6 @@ public class QuoteQueryImpl implements QuoteQuery {
                 customerName, quote.getSentAt(), quote.getFirstViewedAt(), quote.getValidUntil());
     }
 
-
     /**
      * 주문 조회가 쓰는 견적 출처 (OD-08·09) — 회사 스코프가 걸린다 (SC-01).
      * <p>빈 목록이면 조회하지 않는다. 없는 id는 결과에서 빠진다 — 계약대로 예외가 아니다.
