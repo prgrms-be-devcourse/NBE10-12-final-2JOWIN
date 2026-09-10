@@ -1,0 +1,160 @@
+# 릴리스 태그·노트 자동 생성 (이슈 #280)
+#
+# 지금까지 "서버에 뭐가 떠 있나" 의 답이 40자 SHA 뿐이었다. 자동 롤백은
+# 직전 SHA 로 잘 돌아가지만, 사람이 "두 개 전으로" 라고 말할 이름이 없었다.
+#
+# 버전  v0.<minor>.<patch>-develop.<실행번호>
+#   0.<minor>.<patch>  커밋 규약에서 계산 (feat -> minor, 나머지 -> patch)
+#   -develop           develop 에서 나온 빌드. 최종은 제출 때 main 의 v1.0.0
+#   .<실행번호>         단조 증가
+#
+# AWS 를 만지지 않는다. 실패해도 배포에 영향이 없다.
+#
+# 설계 근거: docs/13-dev-workflow.md §1 · 이슈 #280
+name: Release
+
+on:
+  push:
+    branches: [develop]
+
+# 두 실행이 겹치면 같은 태그를 놓고 다툰다. 취소가 아니라 줄 세우기다 —
+# 건너뛴 머지는 릴리스가 없는 채로 남는다.
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+permissions:
+  contents: write # 태그·릴리스 생성
+
+jobs:
+  release:
+    name: 릴리스
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - name: 소스 체크아웃
+        uses: actions/checkout@v4
+        with:
+          # 태그와 커밋 이력이 있어야 직전 릴리스 이후를 볼 수 있다.
+          fetch-depth: 0
+
+      - id: version
+        name: 1. 버전 계산
+        run: |
+          set -euo pipefail
+
+          # 가장 최근 릴리스 태그. 버전 정렬(-v:refname)을 쓰지 않는 이유는
+          # prerelease 접미사가 붙으면 정렬 결과가 versionsort.suffix 설정에
+          # 좌우되기 때문이다. 우리 태그는 시간순으로만 늘어나므로 생성 시각이
+          # 더 단순하고 틀릴 여지가 없다.
+          last="$(git tag --list 'v*' --sort=-creatordate | head -1)"
+
+          if [ -n "$last" ]; then
+            base="$(printf %s "$last" | sed -E 's/^v//; s/-.*$//')"
+            subjects="$(git log --format=%s "${last}..HEAD")"
+            bodies="$(git log --format=%B "${last}..HEAD")"
+            echo "이전 태그: ${last} (기준 ${base})"
+          else
+            base="0.0.0"
+            subjects="$(git log --format=%s)"
+            bodies="$(git log --format=%B)"
+            echo "이전 태그가 없다 — 0.0.0 에서 시작한다"
+          fi
+
+          # 규약을 따르는 커밋만 본다. 규약 밖(`[A] …` 형식)은 자동으로
+          # patch 로 떨어진다 — 틀린 버전이 나오지는 않고 정확도만 낮아진다.
+          # 지금 develop 커밋의 43% 가 규약 밖이다 (#280).
+          bump="patch"
+          if printf '%s\n' "$subjects" | grep -qE '^feat(\([^)]*\))?:'; then
+            bump="minor"
+          fi
+
+          # 0.x 에서는 breaking 도 minor 로 본다. major 를 올리면
+          # v1.0.0-develop.N 이 되어 제출용 v1.0.0 을 미리 써버린다
+          # (docs/13-dev-workflow.md §1.1).
+          if printf '%s\n' "$subjects" | grep -qE '^[a-z]+(\([^)]*\))?!:' \
+            || printf '%s\n' "$bodies" | grep -q 'BREAKING CHANGE'; then
+            echo "::notice::breaking 표기를 찾았다 — 0.x 라 minor 로 올린다"
+            bump="minor"
+          fi
+
+          IFS=. read -r ma mi pa <<< "$base"
+          case "$bump" in
+            minor) mi=$((mi + 1)); pa=0 ;;
+            patch) pa=$((pa + 1)) ;;
+          esac
+
+          version="v${ma}.${mi}.${pa}-develop.${GITHUB_RUN_NUMBER}"
+          echo "판정: ${bump} → ${version}"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+          echo "bump=${bump}" >> "$GITHUB_OUTPUT"
+
+      - id: publish
+        name: 2. 태그 · 릴리스 생성
+        uses: actions/github-script@v7
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        with:
+          script: |
+            const version = process.env.VERSION;
+
+            // 재실행하면 실행 번호가 그대로라 같은 태그가 된다. 이미 있는
+            // 것을 실패로 보지 않는다 — 밀려던 것이 이미 거기 있다는 뜻이다.
+            // ECR IMMUTABLE 에서 같은 판단을 한다 (#258 · #265).
+            try {
+              await github.rest.git.createRef({
+                ...context.repo,
+                ref: `refs/tags/${version}`,
+                sha: context.sha,
+              });
+              core.info(`태그 생성: ${version}`);
+            } catch (e) {
+              if (e.status !== 422) throw e;
+              core.notice(`태그가 이미 있다 — 재실행으로 본다 (${version})`);
+            }
+
+            // generate_release_notes 가 직전 릴리스 이후의 커밋·PR 을 모아
+            // 노트를 만든다. 우리가 형식을 관리하지 않아도 된다.
+            //
+            // prerelease 로 표시하지 않는 이유: v1.0.0 이 나오기 전까지는
+            // 이것이 유일한 산출물이라, Releases 화면에 Latest 가 하나도
+            // 없는 것보다 최신 develop 빌드가 Latest 인 편이 쓸모 있다.
+            try {
+              const r = await github.rest.repos.createRelease({
+                ...context.repo,
+                tag_name: version,
+                name: version,
+                generate_release_notes: true,
+                prerelease: false,
+              });
+              core.info(`릴리스 생성: ${r.data.html_url}`);
+              core.setOutput('url', r.data.html_url);
+            } catch (e) {
+              if (e.status !== 422) throw e;
+              core.notice(`릴리스가 이미 있다 — 재실행으로 본다 (${version})`);
+            }
+
+      # 로그를 펼쳐야 보이는 정보는 못 본 정보다 (#260).
+      - name: 릴리스 요약
+        if: always()
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+          BUMP: ${{ steps.version.outputs.bump }}
+          URL: ${{ steps.publish.outputs.url }}
+        run: |
+          set -uo pipefail
+          {
+            echo "## 릴리스"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| 버전 | \`${VERSION:-계산 실패}\` |"
+            echo "| 올린 자리 | ${BUMP:-?} |"
+            echo "| 커밋 | \`${GITHUB_SHA:0:7}\` |"
+            if [ -n "${URL:-}" ]; then
+              echo "| 릴리스 | ${URL} |"
+            else
+              echo "| 릴리스 | 이미 있어 새로 만들지 않았다 |"
+            fi
+          } >> "$GITHUB_STEP_SUMMARY"
