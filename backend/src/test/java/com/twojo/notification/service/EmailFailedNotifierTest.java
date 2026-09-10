@@ -37,7 +37,7 @@ class EmailFailedNotifierTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = MailCommand.TemplateType.class, names = {"QUOTE_SENT", "QUOTE_REMIND"})
+    @EnumSource(value = MailCommand.TemplateType.class, names = {"QUOTE_SENT", "QUOTE_REMIND", "QUOTE_EXPIRING"})
     @DisplayName("인앱 EMAIL_FAILED 수신자가 있는 template 실패는 writer에 위임한다")
     void 인앱_수신자_있는_template은_위임한다(MailCommand.TemplateType type) {
         EmailDeliveryFailedEvent e = event(type);
@@ -50,7 +50,7 @@ class EmailFailedNotifierTest {
     @ParameterizedTest
     @EnumSource(
             value = MailCommand.TemplateType.class,
-            names = {"QUOTE_SENT", "QUOTE_REMIND"},
+            names = {"QUOTE_SENT", "QUOTE_REMIND", "QUOTE_EXPIRING"},
             mode = EnumSource.Mode.EXCLUDE)
     @DisplayName("인앱 수신자가 없는 template 실패는 writer에 위임하지 않는다 (notifiesInApp이 걸러낸다)")
     void 인앱_수신자_없는_template은_무시한다(MailCommand.TemplateType type) {
