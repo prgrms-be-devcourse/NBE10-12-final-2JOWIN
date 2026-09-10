@@ -145,6 +145,10 @@ class QuoteSendTransactionTest {
         return jdbc.queryForObject("select stage from deal where id = ?", String.class, dealId);
     }
 
+    private int quoteVersion() {
+        return jdbc.queryForObject("select version from quote where id = ?", Integer.class, quoteId);
+    }
+
     private int activeLinkCount() {
         return jdbc.queryForObject(
                 "select count(*) from quote_view_token where quote_id = ? and status = 'ACTIVE'",
@@ -158,7 +162,7 @@ class QuoteSendTransactionTest {
 
         assertThat(result.status()).isEqualTo("SENT");
         assertThat(result.dealStage()).isEqualTo("QUOTE");        // 자동 승급이 응답에 반영됐다 (Q-25)
-        assertThat(result.version()).isNotNull();
+        assertThat(result.version()).isEqualTo(quoteVersion());   // 08 검증 노트 #4
 
         assertThat(quoteStatus()).isEqualTo("SENT");
         assertThat(dealStage()).isEqualTo("QUOTE");
@@ -187,6 +191,35 @@ class QuoteSendTransactionTest {
         assertThat(quoteStatus()).isEqualTo("DRAFT");   // 발송되지 않았다
         assertThat(dealStage()).isEqualTo("LEAD");      // 단계도 그대로다
         assertThat(activeLinkCount()).isZero();         // 링크도 남지 않았다 — 이게 핵심이다
+    }
+
+    /**
+     * <b>판별력이 없다 — 불변식을 고정하는 자리다.</b> 이 테스트는 {@code flush()} 없이도 통과한다.
+     *
+     * <p>#182는 "딜이 이미 견적 단계면 승급이 무동작이라 auto-flush가 걸리지 않고, 응답에는 0이
+     * DB에는 1이 남는다"를 재현 경로로 제시했다. <b>실제로는 재현되지 않는다</b> — 견적 단계에서도
+     * 마지막 Deal 조회가 quote 갱신까지 함께 flush시켜 응답이 1이다. 그 조회를 제거하면 0으로
+     * 떨어지는 것까지 실험으로 확인했다. 이 클래스는 롤백 경계를 보려고 {@code @Transactional}을
+     * 일부러 빼서 <b>커밋 후만 관찰</b>하므로, 애초에 응답과 DB가 갈릴 수 없는 자리이기도 하다
+     * (E 리뷰, #278).
+     *
+     * <p>그럼에도 남기는 이유는 <b>08 검증 노트 #4("Response는 항상 최신 version")를 규약으로
+     * 못박기 위해서</b>다. 지금 값이 맞는 것은 Hibernate가 쿼리 대상 테이블을 계산하는 방식에
+     * 딸린 우연이고, Deal 조회가 빠지거나 순서가 바뀌면 조용히 어긋난다.
+     *
+     * <p>딜이 이미 견적 단계인 경로는 실제로 흔하다 — 딜 하나에 견적을 여러 건 만들 수 있어(QT-18)
+     * 두 번째 견적을 발송할 때가 그렇다.
+     */
+    @Test
+    @DisplayName("이미 견적 단계인 딜에 발송해도 응답 version이 DB와 같다 (08 검증 노트 #4)")
+    void 승급이_무동작이어도_최신_version이_실린다() {
+        jdbc.update("update deal set stage = 'QUOTE' where id = ?", dealId);
+
+        var result = quoteService.send(ctx, quoteId, new QuoteRequests.SendQuote(contactId, null));
+
+        assertThat(result.dealStage()).isEqualTo("QUOTE");   // 무동작이지만 단계는 견적 그대로다
+        assertThat(quoteVersion()).isEqualTo(1);             // markSent가 DB에 반영됐다
+        assertThat(result.version()).isEqualTo(quoteVersion());
     }
 
     @Test

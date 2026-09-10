@@ -171,6 +171,13 @@ public class QuoteService {
         // 승급이 반영된 단계를 다시 읽는다 — 규칙을 여기서 다시 계산하면 전이표와 두 벌이 된다.
         // 같은 트랜잭션이라 조회가 더티 엔티티를 flush시켜 갱신된 값이 온다.
         String dealStage = requireDealInScope(ctx, dealId).stage();
+
+        // 응답에 최신 version을 싣는다 (08 검증 노트 #4) — update·withdraw와 같은 모양이다.
+        // 지금은 바로 위 Deal 조회의 auto-flush가 quote 갱신까지 함께 내보내 값이 맞지만,
+        // 그건 Hibernate가 쿼리 대상 테이블을 어떻게 계산하느냐에 딸린 우연이다.
+        // 규칙을 그 우연에 맡기지 않는다 — 조회가 빠지거나 순서가 바뀌면 조용히 어긋난다.
+        quoteRepository.flush();
+
         return new QuoteResponses.SendResult(
                 quote.getId(), quote.getStatus().name(), dealStage, quote.getVersion());
     }
