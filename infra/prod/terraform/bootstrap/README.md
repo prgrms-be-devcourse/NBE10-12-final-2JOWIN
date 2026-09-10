@@ -18,8 +18,8 @@ CI 에서 못 도는 이유 — **CI 가 쓸 역할을 지금 만드는 중**이
 | S3 상태 버킷 | `2jo-tfstate-<계정ID>` | 버저닝 · SSE-S3 · 퍼블릭 차단 4종 · non-TLS Deny · 이전 버전 90일 |
 | ~~GitHub OIDC provider~~ | `token.actions.githubusercontent.com` | **만들지 않고 참조만 한다** — 아래 |
 | IAM 역할 | `2jo-tf-plan` | PR · `ReadOnlyAccess` + `.tflock` 쓰기 |
-| IAM 역할 | `2jo-tf-apply` | `environment:prod` · `AdministratorAccess` |
-| IAM 역할 | `2jo-gha-deploy` | `environment:prod` · ECR push + 배포 중 22번 임시 개방 |
+| IAM 역할 | `2jo-tf-apply` | `environment:infra-apply` · `AdministratorAccess` |
+| IAM 역할 | `2jo-gha-deploy` | `environment:backend-deploy` · ECR push + 배포 중 22번 임시 개방 |
 
 ### OIDC 공급자를 만들지 않는 이유
 
@@ -73,7 +73,7 @@ The attribute "bucket" is required by the backend.
 | 4 | 퍼블릭 차단 | `aws s3api get-public-access-block --bucket 2jo-tfstate-<계정ID>` | 4종 전부 `true` |
 | 5 | 삭제 방어 | `terraform plan -destroy` (**apply 금지**) | `prevent_destroy` 오류 |
 | 6 | OIDC 참조됨 | `terraform state list \| grep -v ^data\.` | **OIDC 가 목록에 없어야 한다** |
-| 7 | 신뢰 조건 | `aws iam get-role --role-name 2jo-tf-apply` | `sub` 에 `environment:prod` |
+| 7 | 신뢰 조건 | `aws iam get-role --role-name 2jo-tf-apply` | `sub` 에 `environment:infra-apply` |
 | 8 | 배포 역할 범위 | `2jo-gha-deploy` 로 `ec2:RunInstances` 시도 | `AccessDenied` |
 
 ## 사전 확인
