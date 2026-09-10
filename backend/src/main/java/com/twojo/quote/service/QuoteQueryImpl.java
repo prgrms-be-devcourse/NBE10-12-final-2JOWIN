@@ -86,8 +86,8 @@ public class QuoteQueryImpl implements QuoteQuery {
     }
 
     @Override
-    public List<QuoteSummary> findExpiringUntil(LocalDate date) {
-        throw new UnsupportedOperationException("QuoteQuery.findExpiringUntil — C 3주차 구현 예정");
+    public List<QuoteSummary> findExpiringBetween(LocalDate from, LocalDate to) {
+        throw new UnsupportedOperationException("QuoteQuery.findExpiringBetween — 실구현 예정 (NT-06)");
     }
 
     /**

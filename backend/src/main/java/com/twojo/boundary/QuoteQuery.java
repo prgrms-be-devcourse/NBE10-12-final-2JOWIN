@@ -15,8 +15,32 @@ public interface QuoteQuery {
     /** SENT·VIEWED — NT-05 리마인드 · DB-03 응답 대기 */
     List<QuoteSummary> findAwaitingResponse(UUID companyId);
 
-    /** NT-06 임박 알림 후보 (valid_until 기준) */
-    List<QuoteSummary> findExpiringUntil(LocalDate date);
+    /**
+     * NT-06 임박 알림 후보 — 유효기간이 {@code from}~{@code to} <b>구간에 드는</b> 발송됨·열람됨 견적
+     * ({@code valid_until} 기준, 양 끝 포함).
+     *
+     * <p><b>전 회사를 한 번에 돌려준다</b> — {@link #findAwaitingResponse}가 회사별인 것과 일부러 다르다.
+     * 배치가 회사를 순회하며 부르는 대신 한 번 받아 {@link QuoteSummary#companyId}로 그룹핑하고,
+     * 회사당 {@code CompanyQuery.get}을 <b>한 번</b> 불러 정지 여부를 판정한다 (Q-27) — 그래야 한 회사의
+     * 조회 실패가 그 회사 견적 수만큼 되풀이되지 않는다 (2026-09-10 D 확정).
+     * <b>정지 회사 억제는 호출자가 한다</b> — 배치에는 {@code AccessContext}가 없어 여기서 판정할 수 없다.
+     *
+     * <p><b>기간을 시각이 아니라 날짜로, 하한까지 받는다.</b> 상한만 받으면 이미 만료된 견적
+     * ({@code valid_until} < 오늘)이 후보에 섞이는데, 그 건에 "유효기간이 임박했습니다"를 보내면
+     * 틀린 안내다. 견적 만료 배치(Q-37)가 아직 없어 그런 견적이 SENT로 남아 있다.
+     * 하한을 이 계약 안에서 "오늘"로 만들지 않는 이유는 규약이다 — 계약은 시간을 스스로 정하지 않고
+     * 호출자가 넘긴다 ({@code Quote.requireSendable(today)} · {@code OrderQuery.wonTotalsByQuotes} ·
+     * {@code PublicQuoteAssembler} "조립기는 시간을 다루지 않는다"와 같은 규약).
+     * 배치가 하루 건너뛰어도 {@code from}을 늘려 잡으면 놓친 건이 다음 실행에 들어온다.
+     *
+     * <p><b>대상 상태는 발송됨·열람됨뿐이다</b> — {@link #findAwaitingResponse}와 같은 집합이다.
+     * 작성 중(DRAFT)은 발송 전이라 알릴 대상이 아니고, 승인·반려는 응답이 끝났고,
+     * 회수·기간 만료는 이미 닫혔다 (전이표 §6).
+     *
+     * @param from 유효기간 하한(포함) — 보통 호출 시점의 한국 날짜다
+     * @param to   유효기간 상한(<b>포함</b>) — 임박 기준일. 예: 3일 전 알림이면 {@code from.plusDays(3)}
+     */
+    List<QuoteSummary> findExpiringBetween(LocalDate from, LocalDate to);
 
     /**
      * 고객 열람 페이지 렌더용 (AP-02·07 · SC-08) — <b>quote 소유 데이터만</b> 준다.
@@ -75,7 +99,7 @@ public interface QuoteQuery {
      *                  (없으면 누수를 막으려 목록을 통째로 비워야 한다), NT-05 인앱 알림도 이 축으로 수신자를
      *                  정한다. 이 계약은 회사 전체를 돌려주고 <b>거르는 일은 호출자가 한다</b> —
      *                  배치에는 {@code AccessContext}가 없어 여기서 판정할 수 없기 때문이다
-     * @param companyId {@code findExpiringUntil}이 <b>전 회사</b>를 한 번에 돌려주므로 줄마다 필요하다 —
+     * @param companyId {@code findExpiringBetween}이 <b>전 회사</b>를 한 번에 돌려주므로 줄마다 필요하다 —
      *                  정지 회사 억제(Q-27) 판정과 메일·알림 발행이 회사 단위다
      */
     record QuoteSummary(UUID id, String quoteNo, UUID dealId, UUID companyId, String customerName,
