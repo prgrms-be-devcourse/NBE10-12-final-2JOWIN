@@ -83,7 +83,12 @@ if [ -z "$SOURCE" ]; then
     exit 1
   fi
 
-  [ -n "$listing" ] && [ "$listing" != "None" ] || { log "backup/ 이 비어 있다"; exit 1; }
+  # `A && B || C` 로 쓰지 않는다. 그 관용구는 if-then-else 가 아니고,
+  # 그걸 그렇게 읽었다가 설정 전용 배포가 통째로 깨진 적이 있다 (#230).
+  if [ -z "$listing" ] || [ "$listing" = "None" ]; then
+    log "backup/ 이 비어 있다"
+    exit 1
+  fi
   SOURCE="s3://${BUCKET}/${listing}"
 fi
 
