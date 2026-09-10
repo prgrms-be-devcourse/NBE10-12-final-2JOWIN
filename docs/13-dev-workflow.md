@@ -108,19 +108,19 @@
 ## 2. PR 파이프라인
 
 ```
-push → PR 생성 → CI → 팀원 승인 1인 → Squash merge
+push → PR 생성 → CI → Squash merge
 ```
 
 | 단계 | 차단 여부 | 비고 |
 | --- | --- | --- |
 | CI (빌드·테스트·Flyway) | **차단** | required check |
-| 팀원 승인 | **차단** | 1인 이상. CODEOWNERS 자동 배정 · 리뷰 관점은 §2의 셀프 체크리스트와 동일 |
+| 팀원 승인 | 차단하지 않음 | **개발 속도를 위해 필수 승인을 두지 않기로 팀이 합의했다.** CODEOWNERS 로 리뷰어는 자동 배정되지만 머지를 막지는 않는다 — 리뷰 관점은 §2의 셀프 체크리스트와 동일 |
 
 ### 브랜치 보호 규칙 (`main` · `develop`)
 
 - 직접 push 금지 · force push 금지 · 브랜치 삭제 금지
 - required check = CI 잡만
-- 승인 1인 이상
+- 필수 승인 없음 (팀 합의) — 차단은 required check 만 한다
 
 ### PR 템플릿 (`.github/PULL_REQUEST_TEMPLATE.md`에 그대로 반영)
 
