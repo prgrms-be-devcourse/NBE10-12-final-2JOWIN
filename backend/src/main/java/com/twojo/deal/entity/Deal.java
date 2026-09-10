@@ -14,6 +14,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collections;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -33,12 +34,20 @@ public class Deal extends BaseTimeEntity {
     public enum Stage { LEAD, CONSULT, QUOTE, NEGOTIATION, WON, LOST }
 
     /**
+     * 진행 단계를 <b>화면에 세우는 순서</b> — 파이프라인 카드가 이 순서로 고정된다 (DB-01).
+     *
+     * <p>{@link #OPEN_STAGES}가 여기서 파생된다 — 같은 집합을 두 곳에 적으면 한쪽만 바뀔 때
+     * 파이프라인 카드와 "진행 중" 판정이 갈린다 (#216 리뷰).
+     */
+    public static final List<Stage> PIPELINE_ORDER =
+            List.of(Stage.LEAD, Stage.CONSULT, Stage.QUOTE, Stage.NEGOTIATION);
+
+    /**
      * 진행 중 단계 — 리드~협상 (전이표 §5).
      * <p>견적 작성·발송·복제 가능 여부(Q-25), 고객사 삭제 차단(CU-08), 주문 전환 시 자동 성사가
      * 전부 이 집합을 기준으로 갈린다. 종결은 성사(WON)·실패(LOST) 둘뿐이다.
      */
-    public static final Set<Stage> OPEN_STAGES =
-            Collections.unmodifiableSet(EnumSet.of(Stage.LEAD, Stage.CONSULT, Stage.QUOTE, Stage.NEGOTIATION));
+    public static final Set<Stage> OPEN_STAGES = Collections.unmodifiableSet(EnumSet.copyOf(PIPELINE_ORDER));
 
     /**
      * 진행 단계의 인접 관계 — 리드 → 상담 → 견적 → 협상 (전이표 §5, DL-07).

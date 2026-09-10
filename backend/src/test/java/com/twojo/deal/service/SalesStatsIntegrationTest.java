@@ -122,7 +122,7 @@ class SalesStatsIntegrationTest {
         jdbc.update("delete from quote where company_id = ?", companyId);
         jdbc.update("delete from deal where company_id = ?", companyId);
         jdbc.update("delete from customer where id = ?", customerId);
-        jdbc.update("delete from member where id in (?, ?)", 박지훈, 다른영업);
+        jdbc.update("delete from member where company_id = ?", companyId);   // 테스트가 심은 구성원 전부
         jdbc.update("delete from company where id = ?", companyId);
         jdbc.update("delete from application where id = ?", applicationId);
     }
@@ -237,8 +237,6 @@ class SalesStatsIntegrationTest {
 
         assertThat(won.amount()).isZero();     // null이 아니라 0이다 (#85 D 합의)
         assertThat(won.count()).isZero();
-
-        jdbc.update("delete from member where id = ?", 딜_없는_영업);
     }
 
     /**
@@ -303,5 +301,39 @@ class SalesStatsIntegrationTest {
             assertThat(row.wonCount()).isZero();
             assertThat(row.wonAmount()).isZero();   // null이 아니다 (#85)
         });
+    }
+
+    /**
+     * <b>비활성 구성원의 실적은 사라지면 안 된다.</b> 비활성화가 이관하는 것은 <b>진행 중</b> 딜뿐이라
+     * (MB-14) 성사된 딜은 떠난 담당자에게 남는다. 활성 목록만 추리면 그 금액이 {@code performance}에서
+     * 빠져 같은 화면의 {@code monthlyWon} 총액과 어긋난다 (2026-09-10 D 확인).
+     *
+     * <p>이 분기만 {@code MemberQuery.get}으로 이름을 되짚는다 — 활성 목록에 없는 id라서다.
+     */
+    @Test
+    @DisplayName("비활성 구성원도 실적이 있으면 목록에 선다 — 총액이 monthlyWon과 어긋나지 않는다")
+    void 비활성_구성원_실적() {
+        UUID 퇴사자 = UUID.randomUUID();
+        구성원(퇴사자, "정우성");
+        jdbc.update("update member set status = 'INACTIVE' where id = ?", 퇴사자);
+        전환된_주문(딜(퇴사자, "WON", null, null), 7_000_000L, 이달_1일_0시());
+
+        List<MemberPerformance> rows = salesStatsQuery.performance(
+                companyId, LocalDate.now(SEOUL).withDayOfMonth(1), LocalDate.now(SEOUL));
+
+        assertThat(rows).extracting(MemberPerformance::name).contains("정우성");
+        assertThat(rows).filteredOn(row -> row.name().equals("정우성"))
+                .singleElement()
+                .satisfies(row -> {
+                    assertThat(row.wonAmount()).isEqualTo(7_000_000L);
+                    assertThat(row.activeDealCount()).isZero();   // 진행 중 딜은 이관돼 남지 않는다
+                });
+
+        // performance 합계가 monthlyWon과 같아야 한다 — 이 테스트의 핵심이다
+        long 합계 = rows.stream().mapToLong(MemberPerformance::wonAmount).sum();
+        WonStats won = salesStatsQuery.monthlyWon(
+                new AccessContext(companyId, 박지훈, Role.COMPANY_ADMIN, AccessScope.COMPANY_ALL),
+                YearMonth.now(SEOUL));
+        assertThat(합계).isEqualTo(won.amount());
     }
 }

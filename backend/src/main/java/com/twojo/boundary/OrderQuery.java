@@ -1,6 +1,6 @@
 package com.twojo.boundary;
 
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -28,14 +28,20 @@ public interface OrderQuery {
      * 재전환은 {@code QUOTE_ALREADY_CONVERTED}로 막힌다. 그래서 견적당 <b>한 행</b>이고,
      * 전환 건수는 곧 <b>행 수</b>다. 딜 하나에 주문이 여럿일 수는 있다 — 승인 견적이 여럿이면 그렇다 (Q-25).
      *
+     * <p><b>기간은 한국 날짜로 받는다.</b> 시각이 아니라 날짜인 이유는 경계 계산을 이 모듈이
+     * 소유하기 때문이다 — {@code created_at}이 여기 컬럼이고, 호출자가 KST로 끊어 넘기면
+     * 같은 규칙이 모듈마다 한 벌씩 생긴다. 목록(OD-08)의 기간 필터와 <b>같은 축·같은 규칙</b>이다.
+     *
      * @param quoteIds <b>null이면 제한 없음</b>(기업 관리자, SC-05).
      *                 <b>빈 목록이면 아무것도 없다</b> — 담당 딜이 하나도 없는 영업이다.
      *                 "전부"와 "아무것도"를 뒤집으면 SC-04가 통째로 뚫린다
-     * @param from        전환 시각 하한(포함)
-     * @param toExclusive 전환 시각 상한(<b>제외</b>) — 호출자가 KST 날짜 경계를 계산해 넘긴다
+     * @param from     전환일 하한(포함). <b>null이면 하한 없음</b>
+     * @param to       전환일 상한(<b>포함</b>) — 그날 23:59:59까지다. <b>null이면 상한 없음</b>.
+     *                 둘 다 null이면 전 기간이고, {@code DealSummary.wonAmount}(DL-18)처럼
+     *                 기간을 묻지 않는 소비자가 같은 창구를 쓸 수 있다
      */
     List<QuoteWonTotal> wonTotalsByQuotes(UUID companyId, Collection<UUID> quoteIds,
-                                          Instant from, Instant toExclusive);
+                                          LocalDate from, LocalDate to);
 
     /**
      * 견적 하나가 만든 주문의 금액.

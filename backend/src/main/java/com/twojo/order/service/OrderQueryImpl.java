@@ -3,7 +3,7 @@ package com.twojo.order.service;
 import com.twojo.boundary.OrderQuery;
 import com.twojo.order.entity.Order;
 import com.twojo.order.repository.OrderRepository;
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -27,8 +27,10 @@ class OrderQueryImpl implements OrderQuery {
 
     @Override
     public List<QuoteWonTotal> wonTotalsByQuotes(UUID companyId, Collection<UUID> quoteIds,
-                                                 Instant from, Instant toExclusive) {
-        return orderRepository.findConverted(companyId, from, toExclusive, quoteIds).stream()
+                                                 LocalDate from, LocalDate to) {
+        return orderRepository
+                .findConverted(companyId, OrderPeriod.startOfDay(from), OrderPeriod.startOfNextDay(to), quoteIds)
+                .stream()
                 .map(order -> new QuoteWonTotal(order.getQuoteId(), order.getTotalAmount()))
                 .toList();
     }

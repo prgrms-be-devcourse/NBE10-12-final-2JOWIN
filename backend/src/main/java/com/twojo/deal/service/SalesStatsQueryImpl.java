@@ -48,12 +48,6 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional(readOnly = true)
 public class SalesStatsQueryImpl implements SalesStatsQuery {
 
-    /** 화면에 항상 네 칸이 서야 한다 — 건수 0인 단계도 0으로 보여야 빈칸과 구별된다 (DB-01) */
-    private static final List<Deal.Stage> PIPELINE_STAGES =
-            List.of(Deal.Stage.LEAD, Deal.Stage.CONSULT, Deal.Stage.QUOTE, Deal.Stage.NEGOTIATION);
-
-    /** 기간은 사람이 읽는 한국 날짜로 끊는다 — 주문 목록(OD-08)·채번의 연월 판정과 같은 축이다 */
-    private static final ZoneId SEOUL = ZoneId.of("Asia/Seoul");
 
     private final DealRepository dealRepository;
     private final QuoteQuery quoteQuery;
@@ -76,11 +70,11 @@ public class SalesStatsQueryImpl implements SalesStatsQuery {
         UUID assigneeMemberId = ctx.scope() == AccessScope.OWNED_ONLY ? ctx.memberId() : null;
 
         Map<Deal.Stage, DealRepository.StageAggregate> byStage = dealRepository
-                .aggregateByStage(ctx.companyId(), assigneeMemberId, PIPELINE_STAGES)
+                .aggregateByStage(ctx.companyId(), assigneeMemberId, Deal.PIPELINE_ORDER)
                 .stream()
                 .collect(Collectors.toMap(DealRepository.StageAggregate::getStage, Function.identity()));
 
-        return PIPELINE_STAGES.stream()
+        return Deal.PIPELINE_ORDER.stream()
                 .map(stage -> {
                     DealRepository.StageAggregate row = byStage.get(stage);
                     return row == null
@@ -106,8 +100,7 @@ public class SalesStatsQueryImpl implements SalesStatsQuery {
     @Override
     public WonStats monthlyWon(AccessContext ctx, YearMonth month) {
         List<OrderQuery.QuoteWonTotal> won = orderQuery.wonTotalsByQuotes(
-                ctx.companyId(), visibleQuoteIds(ctx),
-                startOfMonth(month), startOfMonth(month.plusMonths(1)));
+                ctx.companyId(), visibleQuoteIds(ctx), month.atDay(1), month.atEndOfMonth());
 
         long amount = won.stream().mapToLong(OrderQuery.QuoteWonTotal::totalAmount).sum();
         return new WonStats(amount, won.size());   // 0건이어도 null이 아니라 0이다 (#85 D 합의)
@@ -132,7 +125,7 @@ public class SalesStatsQueryImpl implements SalesStatsQuery {
     @Override
     public List<MemberPerformance> performance(UUID companyId, LocalDate from, LocalDate to) {
         List<OrderQuery.QuoteWonTotal> won = orderQuery.wonTotalsByQuotes(
-                companyId, null, startOfDay(from), startOfNextDay(to));   // null = 회사 전체 (SC-05)
+                companyId, null, from, to);   // quoteIds null = 회사 전체 (SC-05)
 
         Map<UUID, UUID> dealByQuote = quoteQuery
                 .originsByIds(companyId, won.stream().map(OrderQuery.QuoteWonTotal::quoteId).toList())
@@ -191,20 +184,6 @@ public class SalesStatsQueryImpl implements SalesStatsQuery {
         }
         return quoteQuery.quoteIdsByDeals(ctx.companyId(),
                 dealRepository.findIdsByAssignee(ctx.companyId(), ctx.memberId()));
-    }
-
-    /** 그 달 1일 0시 (KST) */
-    private static Instant startOfMonth(YearMonth month) {
-        return month.atDay(1).atStartOfDay(SEOUL).toInstant();
-    }
-
-    private static Instant startOfDay(LocalDate date) {
-        return date.atStartOfDay(SEOUL).toInstant();
-    }
-
-    /** {@code to}일을 <b>포함</b>하려면 다음 날 0시를 상한(제외)으로 준다 */
-    private static Instant startOfNextDay(LocalDate date) {
-        return date.plusDays(1).atStartOfDay(SEOUL).toInstant();
     }
 
     /**
