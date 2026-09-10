@@ -1,6 +1,5 @@
 package com.twojo.activity.service;
 
-import java.util.Map;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -25,15 +24,6 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 class AutoActivityText {
 
-    /** 시드·발행자가 쓰는 {@code event_type} 값 (#22 3번 표 · #244 시드). */
-    private static final Map<String, String> SENTENCES = Map.of(
-            "STAGE_MOVED", "단계를 이동했습니다",
-            "QUOTE_SENT", "견적을 발송했습니다",
-            "QUOTE_VIEWED", "고객이 견적을 열람했습니다",
-            "QUOTE_APPROVED", "고객이 견적을 승인했습니다",
-            "QUOTE_REJECTED", "고객이 견적을 반려했습니다",
-            "ORDER_CREATED", "주문으로 전환했습니다");
-
     private final ObjectMapper objectMapper;
 
     /**
@@ -43,7 +33,8 @@ class AutoActivityText {
      * 병합 키를 갖게 되는 날에도 화면이 빈 줄을 그리지 않게 한다.
      */
     String of(String eventType, String payload, UUID auditLogId) {
-        String sentence = SENTENCES.getOrDefault(eventType, eventType);
+        AuditEventType type = AuditEventType.of(eventType);
+        String sentence = type == null ? eventType : type.sentence();
         String detail = detailOf(eventType, payload, auditLogId);
         return detail == null ? sentence : sentence + " — " + detail;
     }
@@ -61,7 +52,7 @@ class AutoActivityText {
             return null;
         }
 
-        if ("STAGE_MOVED".equals(eventType)) {
+        if (AuditEventType.STAGE_MOVED.name().equals(eventType)) {
             JsonNode stage = root.path("changes").path("stage");
             String before = text(stage.path("before"));
             String after = text(stage.path("after"));

@@ -41,6 +41,21 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
     List<AuditLog> findByDealId(@Param("companyId") UUID companyId, @Param("dealId") UUID dealId);
 
     /**
+     * 기간 안의 단계 전이 (DB-07 전환율의 원천, {@code AuditQuery.stageChanges}).
+     *
+     * <p>기간은 <b>사건이 일어난 시각</b> 기준이다 — 적재 시각이 아니다. 비동기 적재라 둘이
+     * 밀릴 수 있고, 집계가 묻는 것은 "그 기간에 무슨 일이 있었나"다.
+     */
+    List<AuditLog> findByCompanyIdAndEventTypeAndOccurredAtBetweenOrderByOccurredAtAsc(
+            UUID companyId, String eventType, Instant from, Instant to);
+
+    /** 전이 이벤트 종류는 호출부가 넘긴다 — 이 인터페이스는 값 목록을 알 자리가 아니다. */
+    default List<AuditLog> findStageChanges(UUID companyId, String eventType, Instant from, Instant to) {
+        return findByCompanyIdAndEventTypeAndOccurredAtBetweenOrderByOccurredAtAsc(
+                companyId, eventType, from, to);
+    }
+
+    /**
      * 목록 (GET /audit-logs?entityType=&from=&to=) — 조건 조립은 {@link AuditLogSpecs}가 한다.
      *
      * <p>파생 쿼리로는 못 짠다. {@code Between}이 null을 못 받아 기간 미지정 호출이 막히고
