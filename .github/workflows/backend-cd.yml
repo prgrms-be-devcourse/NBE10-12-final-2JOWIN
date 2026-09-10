@@ -133,10 +133,12 @@ jobs:
           set -euo pipefail
           account="$(aws sts get-caller-identity --query Account --output text)"
           registry="${account}.dkr.ecr.${AWS_REGION}.amazonaws.com"
-          echo "registry=${registry}" >> "$GITHUB_OUTPUT"
-          echo "image=${registry}/${ECR_REPOSITORY}:${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-          # 사람이 읽는 태그. 배포·롤백은 아래 SHA 태그만 쓴다.
-          echo "versioned=${registry}/${ECR_REPOSITORY}:${VERSION}" >> "$GITHUB_OUTPUT"
+          # versioned 는 사람이 읽는 태그다. 배포·롤백은 image(SHA)만 쓴다.
+          {
+            echo "registry=${registry}"
+            echo "image=${registry}/${ECR_REPOSITORY}:${GITHUB_SHA}"
+            echo "versioned=${registry}/${ECR_REPOSITORY}:${VERSION}"
+          } >> "$GITHUB_OUTPUT"
           aws ecr get-login-password --region "$AWS_REGION" \
             | docker login --username AWS --password-stdin "$registry"
 
