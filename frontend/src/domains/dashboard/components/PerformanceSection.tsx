@@ -5,7 +5,7 @@ import { moneyShort } from '../../../shared/lib/format'
 import { BarChart } from './BarChart'
 import { codeOf } from '../../../shared/api/client'
 import { useDashboardPerformance } from '../hooks'
-import { PENDING_LABEL, SALES_STATS_PENDING } from '../pending'
+import { CONVERSIONS_PENDING, PENDING_LABEL } from '../pending'
 
 interface Props {
   from: string
@@ -19,8 +19,8 @@ interface Props {
  * 기간은 from/to 날짜 입력 (DB-08).
  */
 export function PerformanceSection({ from, to, onRangeChange }: Props) {
-  // 자리표시자인 동안은 호출하지 않는다 — 빈 목록을 받으러 갈 이유가 없다 (#216)
-  const { data, isPending, error, refetch } = useDashboardPerformance(from, to, !SALES_STATS_PENDING)
+  // 역할 판정은 상위가 한다 — DashboardPage가 `admin &&`로 이 섹션 자체를 렌더하지 않는다 (§3.2)
+  const { data, isPending, error, refetch } = useDashboardPerformance(from, to, true)
   return (
     <Card size="3">
       <Flex align="center" justify="between" gap="3" wrap="wrap" mb="3">
@@ -36,12 +36,7 @@ export function PerformanceSection({ from, to, onRangeChange }: Props) {
 
       {error && <ErrorCallout code={codeOf(error)} onRetry={() => refetch()} />}
 
-      {SALES_STATS_PENDING ? (
-        // 서버가 빈 목록을 주는 동안 "없습니다"로 그리면 실적이 0이라는 거짓말이 된다 (#216)
-        <Text as="p" size="2" color="gray" my="4">
-          {PENDING_LABEL} — 담당자별 실적과 전환율은 아직 집계되지 않습니다. 준비되면 이 자리에 표시됩니다.
-        </Text>
-      ) : isPending ? (
+      {isPending ? (
         <Flex direction="column" gap="2">
           <Skeleton height="24px" />
           <Skeleton height="24px" />
@@ -114,26 +109,35 @@ export function PerformanceSection({ from, to, onRangeChange }: Props) {
               <Text as="div" size="2" weight="medium" mb="2">
                 단계별 전환율
               </Text>
-              <Flex direction="column" gap="2">
-                {data.conversions.map((conversion) => {
-                  const pct = Math.round(conversion.rate * 100)
-                  return (
-                    <Box key={`${conversion.fromStage}-${conversion.toStage}`}>
-                      <Flex justify="between" mb="1">
-                        <Text size="1" color="gray">
-                          {DEAL_STAGE_LABEL[conversion.fromStage]} → {DEAL_STAGE_LABEL[conversion.toStage]}
-                        </Text>
-                        <Text size="1" weight="medium" style={{ fontVariantNumeric: 'tabular-nums' }}>
-                          {pct}%
-                        </Text>
-                      </Flex>
-                      <Box style={{ height: 6, borderRadius: 3, background: 'var(--gray-a4)', overflow: 'hidden' }}>
-                        <Box style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: conversion.toStage === 'WON' ? 'var(--green-9)' : 'var(--accent-9)' }} />
+              {data.conversions.length === 0 ? (
+                // 빈 목록의 뜻이 플래그로 갈린다 — 아직 안 센 것(#216)인지, 정말 이동이 없었던 것인지
+                <Text as="p" size="2" color="gray" my="3">
+                  {CONVERSIONS_PENDING
+                    ? `${PENDING_LABEL} — 단계 이동 이력이 쌓이면 이 자리에 표시됩니다.`
+                    : '이 기간에 단계 이동이 없습니다.'}
+                </Text>
+              ) : (
+                <Flex direction="column" gap="2">
+                  {data.conversions.map((conversion) => {
+                    const pct = Math.round(conversion.rate * 100)
+                    return (
+                      <Box key={`${conversion.fromStage}-${conversion.toStage}`}>
+                        <Flex justify="between" mb="1">
+                          <Text size="1" color="gray">
+                            {DEAL_STAGE_LABEL[conversion.fromStage]} → {DEAL_STAGE_LABEL[conversion.toStage]}
+                          </Text>
+                          <Text size="1" weight="medium" style={{ fontVariantNumeric: 'tabular-nums' }}>
+                            {pct}%
+                          </Text>
+                        </Flex>
+                        <Box style={{ height: 6, borderRadius: 3, background: 'var(--gray-a4)', overflow: 'hidden' }}>
+                          <Box style={{ width: `${Math.min(100, pct)}%`, height: '100%', background: conversion.toStage === 'WON' ? 'var(--green-9)' : 'var(--accent-9)' }} />
+                        </Box>
                       </Box>
-                    </Box>
-                  )
-                })}
-              </Flex>
+                    )
+                  })}
+                </Flex>
+              )}
             </Box>
           </Grid>
         )

@@ -56,6 +56,16 @@ function parts(iso: string): [string, string, string] {
   return f.split('-') as [string, string, string]
 }
 
+/**
+ * KST 하루의 시작·끝을 서버가 받는 시각(Instant)으로 — `<input type="date">`가 주는 `YYYY-MM-DD`를
+ * 그대로 보내면 시각 파라미터가 400이 난다.
+ *
+ * KST는 서머타임이 없어 오프셋이 늘 +09:00이라 문자열로 붙여도 정확하다.
+ * 끝은 `23:59:59.999`다 — 감사 로그의 `to`가 경계를 포함하는 비교(`<=`)라 다음 날 자정을 주면 하루가 더 걸린다.
+ */
+export const kstDayStart = (day: string): string => new Date(`${day}T00:00:00+09:00`).toISOString()
+export const kstDayEnd = (day: string): string => new Date(`${day}T23:59:59.999+09:00`).toISOString()
+
 // ── 경과·잔여 일수 ──────────────────────────────────────────────────────────
 
 /** 오늘(KST) 자정 기준 일수 차 — 미래가 양수 */

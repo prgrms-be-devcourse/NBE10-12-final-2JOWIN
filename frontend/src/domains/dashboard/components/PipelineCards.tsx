@@ -2,7 +2,6 @@ import { Card, Flex, Grid, Text } from '@radix-ui/themes'
 import { Link } from 'react-router'
 import { Money } from '../../../shared/ui'
 import { DEAL_STAGE_LABEL, OPEN_DEAL_STAGES } from '../../../shared/ui/status'
-import { PENDING_LABEL, SALES_STATS_PENDING } from '../pending'
 import type { DashboardSummaryResponse } from '../../../shared/api/types'
 
 interface Props {
@@ -45,15 +44,9 @@ export function PipelineCards({ pipeline, monthWonAmount, monthWonCount, monthLa
           <Text size="1" color="green" weight="medium">
             이달 성사
           </Text>
-          {SALES_STATS_PENDING ? (
-            <Text size="4" weight="bold" color="gray">
-              {PENDING_LABEL}
-            </Text>
-          ) : (
-            <Money value={monthWonAmount} short size="6" weight="bold" color="red" />
-          )}
+          <Money value={monthWonAmount} short size="6" weight="bold" color="red" />
           <Text size="1" color="gray">
-            {SALES_STATS_PENDING ? monthLabel : `${monthWonCount}건 · ${monthLabel}`}
+            {monthWonCount}건 · {monthLabel}
           </Text>
         </Flex>
       </Card>
