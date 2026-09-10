@@ -7,7 +7,8 @@ import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
 import com.twojo.boundary.ProductQuery;
-import com.twojo.boundary.QuoteQuery;
+import com.twojo.boundary.PublicQuoteAssembler;
+import com.twojo.boundary.PublicQuoteResponse;
 import com.twojo.boundary.ViewTokenCommand;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
@@ -76,6 +77,7 @@ public class QuoteService {
     private final ViewTokenCommand viewTokenCommand;
     private final ProductQuery productQuery;
     private final DocumentNumberService documentNumberService;
+    private final PublicQuoteAssembler publicQuoteAssembler;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -252,14 +254,23 @@ public class QuoteService {
     }
 
     /**
-     * 발송 전 미리보기 (QT-12) — <b>고객이 보게 될 것과 같은 데이터</b>다.
+     * 발송 전 미리보기 (QT-12) — <b>고객이 보게 될 화면 그대로</b>다.
      *
-     * <p>{@code QuoteQueryImpl.toPublicView}를 그대로 쓴다. 여기서 따로 조립하면 미리보기와
-     * 실제 열람 화면이 갈리는데, 그러면 미리보기가 확인해 주는 것이 아무것도 없어진다.
-     * 다만 <b>범위 판정은 구성원 규칙</b>을 쓴다 — 부르는 쪽이 로그인한 구성원이기 때문이다.
+     * <p><b>조립은 D의 {@link PublicQuoteAssembler}가 한다.</b> 예전에는 여기서
+     * {@code QuoteQueryImpl.toPublicView}를 그대로 내보냈는데, 그건 <b>boundary 계약</b>이지
+     * 고객이 실제로 보는 <b>API 응답</b>이 아니었다 — 회사 정체성·담당자·{@code respondable}이 빠져
+     * 프론트가 {@code companyName.slice(...)}에서 크래시했다 (#114). 08 §C가 "preview는 D의
+     * {@code PublicQuoteResponse}를 그대로 재사용"으로 못박은 이유다.
+     *
+     * <p><b>범위 판정은 여기서 한다.</b> 조립기는 {@code quoteId}만 받고 권한 맥락을 모른다 —
+     * 남의 담당 딜 견적이 404가 되는 것(SC-02·09)은 호출자 책임이라고 계약이 명시한다.
+     * {@code findInScope}가 먼저 걸리므로 조립기는 이미 통과한 견적만 본다.
+     *
+     * <p>{@code respondable}은 조립기가 <b>false로 고정</b>한다 — 발송 전이라 링크가 없다.
      */
-    public QuoteQuery.PublicQuoteView preview(AccessContext ctx, UUID quoteId) {
-        return QuoteQueryImpl.toPublicView(findInScope(ctx, quoteId).quote());
+    public PublicQuoteResponse preview(AccessContext ctx, UUID quoteId) {
+        findInScope(ctx, quoteId);   // SC-02·09 — 조립기 호출 전에 막는다
+        return publicQuoteAssembler.assembleForPreview(quoteId);
     }
 
     /**
