@@ -19,7 +19,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * {@link ViewTokenQueryImpl} — 판정 로직이 없어 리포지토리 결과가 그대로 전달되는지만 검증한다
- * (CU-14 존재 판정, NT-12 토큰&rarr;견적 되짚기).
+ * (CU-14 존재 판정, NT-12 토큰&rarr;견적 되짚기, NT-06 견적&rarr;수신 연락처).
  */
 @ExtendWith(MockitoExtension.class)
 @DisplayNameGeneration(DisplayNameGenerator.ReplaceUnderscores.class)
@@ -68,5 +68,26 @@ class ViewTokenQueryImplTest {
         given(quoteViewTokenRepository.findById(tokenId)).willReturn(Optional.empty());
 
         assertThat(viewTokenQuery.quoteIdOf(tokenId)).isEmpty();
+    }
+
+    @Test
+    @DisplayName("recipientContactIdOf — 활성 링크의 수신 연락처 id를 반환한다")
+    void recipientContactIdOf_활성링크의_연락처id를_반환한다() {
+        UUID quoteId = UUID.randomUUID();
+        UUID contactId = UUID.randomUUID();
+        QuoteViewToken token = QuoteViewToken.issue(
+                quoteId, contactId, "hash", Instant.parse("2026-09-30T14:59:59Z"));
+        given(quoteViewTokenRepository.findActiveByQuoteId(quoteId)).willReturn(Optional.of(token));
+
+        assertThat(viewTokenQuery.recipientContactIdOf(quoteId)).contains(contactId);
+    }
+
+    @Test
+    @DisplayName("recipientContactIdOf — 활성 링크가 없으면 Optional.empty를 반환한다 (예외 아님)")
+    void recipientContactIdOf_활성링크가_없으면_empty를_반환한다() {
+        UUID quoteId = UUID.randomUUID();
+        given(quoteViewTokenRepository.findActiveByQuoteId(quoteId)).willReturn(Optional.empty());
+
+        assertThat(viewTokenQuery.recipientContactIdOf(quoteId)).isEmpty();
     }
 }
