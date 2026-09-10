@@ -192,7 +192,16 @@ UPDATE quote_view_token SET token_hash = '3eee4f4fbf6a9ddb04e37f6f2337959e3b7380
 UPDATE quote_view_token SET token_hash = '970d3ea1cd5a5a3fc3e2f5537a124e05903b3c587baca1cefc12aa7bba686ed3', expires_at = '2026-09-30 23:59:59+09'
  WHERE id = '7a000000-0000-4000-8000-000000000014';
 UPDATE quote SET valid_until = '2026-09-30'
- WHERE id IN ('6a000000-0000-4000-8000-000000000011', '6a000000-0000-4000-8000-000000000014');
+ WHERE id IN ('6a000000-0000-4000-8000-000000000011', '6a000000-0000-4000-8000-000000000014',
+              '6a000000-0000-4000-8000-000000000008', '6a000000-0000-4000-8000-000000000010',
+              '6a000000-0000-4000-8000-000000000016');
+-- 008·010·016은 고정 날짜(09-12·09-12·09-09)라 시간이 지나면 유효기간이 지난 SENT·VIEWED가 된다.
+-- 재발송이 QUOTE_VALID_UNTIL_PASSED로 막히고(#181) 열람 링크도 410이라 데모가 깨진다.
+-- 링크 만료는 발급 시점에 valid_until 23:59:59로 고정되므로(Q-17) 토큰도 함께 올린다 —
+-- 한쪽만 올리면 "유효기간은 남았는데 링크는 만료된" 상태가 시드에 남는다.
+UPDATE quote_view_token SET expires_at = '2026-09-30 23:59:59+09'
+ WHERE id IN ('7a000000-0000-4000-8000-000000000008', '7a000000-0000-4000-8000-000000000010',
+              '7a000000-0000-4000-8000-000000000016');
 
 -- ── 주문 3건 — 이달 성사 합계 48,400,000 (DL-18 = 주문 합계)
 INSERT INTO orders (id, company_id, quote_id, order_no, supply_amount, vat_amount, total_amount, start_date, delivery_date) VALUES
