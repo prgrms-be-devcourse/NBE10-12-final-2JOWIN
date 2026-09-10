@@ -27,9 +27,14 @@ public final class DealResponses {
             UUID assigneeMemberId, String assigneeMemberName,
             LocalDate dueDate, Integer version, Instant createdAt) {
 
-        public static DealItem of(Deal deal, String customerName, String assigneeMemberName) {
+        /**
+         * @param wonAmount 성사 딜의 주문 합계 (DL-18). 진행 중이면 {@code null}이다 —
+         *                  표시 규칙이 "성사 전 expectedAmount, 성사 후 wonAmount"라
+         *                  0을 넣으면 화면이 "주문 0원"으로 읽는다 (08 §C)
+         */
+        public static DealItem of(Deal deal, Long wonAmount, String customerName, String assigneeMemberName) {
             return new DealItem(deal.getId(), deal.getTitle(), deal.getStage().name(),
-                    deal.getExpectedAmount(), null,
+                    deal.getExpectedAmount(), wonAmount,
                     deal.getCustomerId(), customerName,
                     deal.getAssigneeMemberId(), assigneeMemberName,
                     deal.getDueDate(), deal.getVersion(), deal.getCreatedAt());

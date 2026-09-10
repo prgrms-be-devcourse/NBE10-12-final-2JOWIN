@@ -192,6 +192,55 @@ class DealDetailIntegrationTest {
                 .containsExactly("O-7031", "O-7030");
     }
 
+    /**
+     * 딜 보드의 성사 컬럼이 카드 금액과 컬럼 합계에 이 값을 쓴다
+     * ({@code DealCard.tsx} · {@code DealBoardPage.tsx}). 목은 이미 채우고 있어
+     * 여기가 비면 <b>목에서만 맞게 보이고 실 API에서 0으로 뜬다.</b>
+     */
+    @Test
+    @DisplayName("목록의 성사 딜에 wonAmount가 실린다 — 진행 중은 null이다 (DL-18)")
+    void 목록에도_성사_금액이_실린다() {
+        UUID quoteId = 견적(companyId, dealId, "Q-7040", "APPROVED", 1_200_000L);
+        주문(companyId, quoteId, "O-7040", 1_200_000L);
+
+        // 같은 회사의 진행 중 딜 하나를 더 심는다 — 이쪽은 null이어야 한다
+        UUID openDeal = UUID.randomUUID();
+        jdbc.update("insert into deal (id, company_id, customer_id, assignee_member_id, title, stage, "
+                        + "expected_amount, version) values (?, ?, ?, ?, ?, 'QUOTE', 3000000, 0)",
+                openDeal, companyId, customerId, memberId, "진행 중 딜");
+
+        var page = dealService.list(ctx, null, null, null, org.springframework.data.domain.PageRequest.of(0, 20));
+
+        assertThat(page.content())
+                .filteredOn(item -> item.id().equals(dealId))
+                .singleElement()
+                .satisfies(item -> assertThat(item.wonAmount()).isEqualTo(1_200_000L));
+        assertThat(page.content())
+                .filteredOn(item -> item.id().equals(openDeal))
+                .singleElement()
+                .satisfies(item -> {
+                    assertThat(item.wonAmount()).isNull();              // 성사 전은 null (0이 아니다)
+                    assertThat(item.expectedAmount()).isEqualTo(3_000_000L);
+                });
+
+        jdbc.update("delete from deal where id = ?", openDeal);
+    }
+
+    /**
+     * 줄마다 물으면 20건짜리 목록에 조회가 40번이다. 창구가 묶음을 받으므로
+     * <b>페이지당 2회 고정</b>이어야 한다 — 성사 딜이 없으면 0회다.
+     */
+    @Test
+    @DisplayName("성사 딜이 없는 페이지에서는 경계를 부르지 않는다 — 조회가 늘지 않는다")
+    void 성사가_없으면_조회하지_않는다() {
+        jdbc.update("update deal set stage = 'QUOTE' where id = ?", dealId);
+
+        var page = dealService.list(ctx, null, null, null, org.springframework.data.domain.PageRequest.of(0, 20));
+
+        assertThat(page.content()).isNotEmpty();
+        assertThat(page.content()).allSatisfy(item -> assertThat(item.wonAmount()).isNull());
+    }
+
     @AfterEach
     void 지운다() {
         for (UUID co : java.util.List.of(companyId, otherCompanyId)) {
