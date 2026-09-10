@@ -65,9 +65,9 @@ jobs:
           # 규약을 따르는 커밋만 본다. 규약 밖(`[A] …` 형식)은 자동으로
           # patch 로 떨어진다 — 틀린 버전이 나오지는 않고 정확도만 낮아진다.
           # 지금 develop 커밋의 43% 가 규약 밖이다 (#280).
-          bump=patch
+          bump="patch"
           if printf '%s\n' "$subjects" | grep -qE '^feat(\([^)]*\))?:'; then
-            bump=minor
+            bump="minor"
           fi
 
           # 0.x 에서는 breaking 도 minor 로 본다. major 를 올리면
@@ -76,7 +76,7 @@ jobs:
           if printf '%s\n' "$subjects" | grep -qE '^[a-z]+(\([^)]*\))?!:' \
             || printf '%s\n' "$bodies" | grep -q 'BREAKING CHANGE'; then
             echo "::notice::breaking 표기를 찾았다 — 0.x 라 minor 로 올린다"
-            bump=minor
+            bump="minor"
           fi
 
           IFS=. read -r ma mi pa <<< "$base"
