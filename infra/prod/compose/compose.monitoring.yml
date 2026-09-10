@@ -22,7 +22,9 @@ services:
     expose:
       - "9090"
     volumes:
-      - ../monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      # 디렉터리로 붙인다 — 파일 단위 마운트는 inode 에 묶여서, s3 sync 가
+      # 파일을 바꿔치운 뒤에도 컨테이너가 옛 내용을 본다 (compose.yml 참고).
+      - ../monitoring/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
     command:
       - --config.file=/etc/prometheus/prometheus.yml
@@ -41,9 +43,11 @@ services:
     expose:
       - "3100"
     volumes:
-      - ../monitoring/loki/loki-config.yml:/etc/loki/local-config.yaml:ro
+      # 디렉터리로 붙이면서 컨테이너 안 파일명이 레포와 같아졌다 —
+      # 아래 -config.file 도 그 이름을 가리켜야 한다.
+      - ../monitoring/loki:/etc/loki:ro
       - loki-data:/loki
-    command: -config.file=/etc/loki/local-config.yaml
+    command: -config.file=/etc/loki/loki-config.yml
     mem_limit: 256m
     logging: *default-logging
     networks: [twojo-net]
@@ -52,11 +56,12 @@ services:
     image: grafana/promtail:3.4.2
     restart: unless-stopped
     volumes:
-      - ../monitoring/promtail/promtail.yml:/etc/promtail/config.yml:ro
+      # 디렉터리로 붙인다. 파일명이 promtail.yml 로 바뀌므로 아래도 맞춘다.
+      - ../monitoring/promtail:/etc/promtail:ro
       # 도커가 남기는 컨테이너 로그 원본. 읽기 전용으로만 붙인다.
       - /var/lib/docker/containers:/var/lib/docker/containers:ro
       - promtail-positions:/tmp
-    command: -config.file=/etc/promtail/config.yml
+    command: -config.file=/etc/promtail/promtail.yml
     depends_on:
       - loki
     mem_limit: 96m

@@ -3,6 +3,7 @@ import { Box, Flex, Grid, IconButton, Skeleton, Text } from '@radix-ui/themes'
 import { ChevronLeftIcon, ChevronRightIcon } from '@radix-ui/react-icons'
 import { ErrorCallout, PageHeader } from '../../../shared/ui'
 import { codeOf } from '../../../shared/api/client'
+import { date } from '../../../shared/lib/format'
 import { hasCompanyWideScope, useSession } from '../../../app/session'
 import { useCompleteTask, useDashboardSummary } from '../hooks'
 import { PipelineCards } from '../components/PipelineCards'
@@ -21,7 +22,8 @@ import { StartChecklist } from '../components/StartChecklist'
  * - 월 이동·실적 기간은 URL 쿼리 (`month` · `from`·`to`) — 새로고침·링크 공유가 그대로 동작한다
  * - 딜이 하나도 없으면 시작하기 체크리스트 (§6.2)
  */
-const thisMonth = () => new Date().toISOString().slice(0, 7)
+// 기본 월은 KST 기준 — UTC로 자르면 매달 1일 아침 9시 전에는 지난달이 뜬다
+const thisMonth = () => date(new Date().toISOString()).slice(0, 7)
 const shiftMonth = (month: string, delta: number) => {
   const [y, m] = month.split('-').map(Number)
   const d = new Date(Date.UTC(y, m - 1 + delta, 1))

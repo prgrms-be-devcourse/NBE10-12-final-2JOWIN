@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams } from 'react-router'
 import { Badge, Box, Button, Callout, Card, DropdownMenu, Flex, Grid, Skeleton, Table, Text } from '@radix-ui/themes'
 import { ArrowRightIcon, CopyIcon, DotsHorizontalIcon, EyeOpenIcon, Link2Icon, PaperPlaneIcon, ResetIcon } from '@radix-ui/react-icons'
 import { BackLink, ErrorCallout, Money, NotFound, PageHeader, QuoteStatusBadge, RemainingBadge, ViewedBadge } from '../../../shared/ui'
-import { VAT_MODE_LABEL } from '../../../shared/ui/status'
+import { DEAL_STAGE_LABEL, VAT_MODE_LABEL } from '../../../shared/ui/status'
 import { codeOf } from '../../../shared/api/client'
 import { date, dateTime } from '../../../shared/lib/format'
 import type { QuoteDetailResponse } from '../../../shared/api/types'
@@ -75,7 +75,7 @@ export function QuoteDetailPage() {
               </Button>
             )}
             {quote.status === 'APPROVED' && (
-              <Button color="green" onClick={() => setDialog('convert')}>
+              <Button color="green" disabled={actions.convert.isSuccess} onClick={() => setDialog('convert')}>
                 <ArrowRightIcon /> 주문 전환
               </Button>
             )}
@@ -115,11 +115,10 @@ export function QuoteDetailPage() {
       {actions.send.isSuccess && actions.send.data && (
         <Callout.Root color="green" mb="4" className="enter">
           <Callout.Text>
-            발송했습니다. 고객에게 열람 링크가 담긴 메일이 갑니다. 딜 단계: {actions.send.data.dealStage}
+            발송했습니다. 고객에게 열람 링크가 담긴 메일이 갑니다. 딜 단계: {DEAL_STAGE_LABEL[actions.send.data.dealStage]}
           </Callout.Text>
         </Callout.Root>
       )}
-
       {/* 대체 견적 (QT-28) — 반려·회수된 견적에서 그것을 대신한 새 견적으로 */}
       {quote.supersededByQuoteId && (
         <Callout.Root color="blue" mb="4">
@@ -140,7 +139,9 @@ export function QuoteDetailPage() {
       <TrackingCards quote={quote} />
 
       {draft ? (
-        <QuoteEditor quote={quote} onSend={() => setDialog('send')} onPreview={() => navigate(`/quotes/${quote.id}/preview`)} />
+        // key: 캐시된 다른 견적으로 이동하거나(id) 저장·새로고침으로 version이 바뀌면(version) 편집기를 새로 마운트한다 —
+        // 이전 견적의 rows·terms가 새 version으로 저장되는 덮어쓰기 경로를 막는다 (10 §5.4 · 12 §6.3-4)
+        <QuoteEditor key={`${quote.id}:${quote.version}`} quote={quote} onSend={() => setDialog('send')} onPreview={() => navigate(`/quotes/${quote.id}/preview`)} />
       ) : (
         <ReadOnlyItems quote={quote} />
       )}
@@ -182,7 +183,7 @@ export function QuoteDetailPage() {
         quote={quote}
         loading={actions.convert.isPending}
         error={actions.convert.error}
-        onConfirm={() => actions.convert.mutate(undefined, { onSuccess: (order) => navigate(`/orders/${order.id}`) })}
+        onConfirm={() => actions.convert.mutate(undefined, { onSuccess: (order) => { close(); navigate(`/orders/${order.id}`) } })}
       />
     </Box>
   )

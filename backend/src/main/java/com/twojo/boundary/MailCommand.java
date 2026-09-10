@@ -119,7 +119,23 @@ public interface MailCommand {
          * {@code refId}는 {@code invitation} 행 id — 재발송이 새 행을 만들어(Q-31) {@code email_log} 행도
          * 발송마다 하나다. {@code QUOTE_SENT}와 같은 패턴이라 {@code uk_email_log_dedup} 충돌이 없다.
          */
-        INVITATION("INVITATION");
+        INVITATION("INVITATION"),
+
+        /**
+         * NT-05 무응답 리마인드 배치 — 담당 구성원 수신 (notification, {@code RemindNoResponseBatch}).
+         *
+         * <p>{@code refId}는 <b>견적 행 id</b>로, 배치 재실행 간 고정된다({@code QUOTE_SENT}·
+         * {@code PASSWORD_RESET}이 발송마다 새 토큰 id를 쓰는 것과 반대). <b>견적당 1회</b>다 —
+         * 배치({@code RemindWorker})가 {@code notification}(해당 견적의 {@code REMIND_NO_RESPONSE}) 존재를
+         * 보고 <b>견적 전체를 건너뛰므로</b>, 재실행 시 {@code schedule}에 도달하지 않는다(11 §5, docs/05 §11).
+         * 담당자가 재배정돼도 재알림하지 않는다. {@code uk_email_log_dedup(template_type, ref_id, recipient_email)}는
+         * 정상 흐름에서 미도달하는 백스톱이다(06 §제약조건).
+         *
+         * <p>회차 분리(D-7·D-3)는 회차별 {@code TemplateType}이나 스키마 변경이 필요해 v1.1로 미룬다.
+         * {@code ref_type}은 {@code "QUOTE"} — {@code refId}가 토큰이 아니라 견적을 직접 가리킨다
+         * ({@code NotificationCommand.RefType.QUOTE}와 같은 값).
+         */
+        QUOTE_REMIND("QUOTE");
 
         private final String refType;
 

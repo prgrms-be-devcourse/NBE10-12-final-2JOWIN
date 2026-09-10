@@ -6,6 +6,8 @@ interface ImportMetaEnv {
   readonly VITE_API_BASE_URL?: string
   /** 공개(고객 열람·초대·비밀번호) API 기본 경로. 배포 환경에서는 절대 URL */
   readonly VITE_PUBLIC_API_BASE_URL?: string
+  /** 플랫폼 관리자 API 기본 경로 (AU-08). 구성원 세션과 별개 체인이다 */
+  readonly VITE_ADMIN_API_BASE_URL?: string
   /** 목으로 처리할 도메인 목록(쉼표 구분). 여기서 빼면 실 API로 간다 */
   readonly VITE_MOCK_DOMAINS?: string
 }

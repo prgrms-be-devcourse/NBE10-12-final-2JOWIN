@@ -1,7 +1,11 @@
-# CI — docs/13-dev-workflow.md §3
-# build / flyway-validate / flyway-version-check 3잡이 required check (머지 차단)
-# + frontend 잡은 문서 밖 추가분 (타입·빌드 깨짐 방지 — 팀 합의로 required 여부 결정)
-name: CI
+# Backend CI — docs/13-dev-workflow.md §3
+#
+# build / flyway-validate / flyway-version-check 3잡이 required check (머지 차단).
+# 프론트 검증은 frontend-ci.yml 로 분리했다 (ci-cd.md §4).
+#
+# 잡 이름은 룰셋에 문자열로 박혀 있다. 바꾸면 그 이름의 체크가 영원히
+# 보고되지 않아 PR 이 머지 불가로 남는다 — 오류도 안 나고 그냥 대기한다.
+name: Backend CI
 
 on:
   pull_request:
@@ -23,7 +27,6 @@ jobs:
       pull-requests: read
     outputs:
       backend: ${{ steps.filter.outputs.backend }}
-      frontend: ${{ steps.filter.outputs.frontend }}
     steps:
       - uses: dorny/paths-filter@v3
         id: filter
@@ -32,10 +35,7 @@ jobs:
           filters: |
             backend:
               - 'backend/**'
-              - '.github/workflows/ci.yml'
-            frontend:
-              - 'frontend/**'
-              - '.github/workflows/ci.yml'
+              - '.github/workflows/backend-ci.yml'
 
   build:
     needs: changes
@@ -171,21 +171,3 @@ jobs:
           fi
           echo "버전 중복 없음"
 
-  frontend:
-    needs: changes
-    if: needs.changes.outputs.frontend == 'true'
-    # 타입 검사 + 빌드 — 13-dev-workflow.md 3잡 외 추가분 (required 여부는 팀 결정)
-    name: frontend
-    runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: frontend
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
-        with:
-          node-version: '24'
-          cache: npm
-          cache-dependency-path: frontend/package-lock.json
-      - run: npm ci
-      - run: npm run build

@@ -1,5 +1,5 @@
 import { delay, http, HttpResponse } from 'msw'
-import { currentMember, db, error, memberActive, memberName, visibleDeals } from '../store'
+import { currentMember, db, error, memberActive, memberName, today, visibleDeals } from '../store'
 import type { DashboardPerformanceResponse, DashboardSummaryResponse } from '../../shared/api/types'
 import { DEAL_STAGES, OPEN_DEAL_STAGES, isOpenStage, type DealStage } from '../../shared/ui/status'
 
@@ -11,7 +11,7 @@ import { DEAL_STAGES, OPEN_DEAL_STAGES, isOpenStage, type DealStage } from '../.
  * 담당 스코프: 영업 담당자는 본인 담당 Deal 기준 집계 (🔶, DB-01~05).
  */
 
-const thisMonth = () => new Date().toISOString().slice(0, 7)
+const thisMonth = () => today().slice(0, 7) // KST — 화면의 기본 월과 같은 기준
 const monthRange = (month: string) => {
   const [y, m] = month.split('-').map(Number)
   const from = `${month}-01`
@@ -63,6 +63,7 @@ export const dashboardHandlers = [
     const followUps = db.tasks
       .filter((t) => dealIds.has(t.dealId) && t.doneAt === null)
       .sort((a, b) => a.dueDate.localeCompare(b.dueDate))
+      .slice(0, 10) // 서버 DashboardService.FOLLOWUP_LIMIT
       .map((t) => ({ taskId: t.id, dealId: t.dealId, dealTitle: dealTitle(t.dealId), content: t.content, dueDate: t.dueDate }))
 
     // DB-04 — 최근 활동: activity 단일 원천 최근 10건 (ActivityQuery 계약 · 10 §5.1 v2.0.1).
@@ -91,9 +92,12 @@ export const dashboardHandlers = [
     const member = currentMember(request)
     if (member.role !== 'COMPANY_ADMIN') return error('FORBIDDEN')
     const url = new URL(request.url)
-    const range = monthRange(thisMonth())
-    const from = url.searchParams.get('from') || range.from
-    const to = url.searchParams.get('to') || range.to
+    // 서버 기본값: from 미지정이면 이달 1일, to 미지정이면 **오늘** (DashboardController)
+    const from = url.searchParams.get('from') || `${thisMonth()}-01`
+    const to = url.searchParams.get('to') || today()
+    // 서버는 from > to 이거나 간격이 366일 이상이면 400 — fieldErrors 없이 코드만 (DashboardService)
+    const days = (Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86400000
+    if (Number.isNaN(days) || days < 0 || days >= 366) return error('VALIDATION_FAILED')
 
     const deals = db.deals.filter((d) => !d.deleted)
     const members = db.members

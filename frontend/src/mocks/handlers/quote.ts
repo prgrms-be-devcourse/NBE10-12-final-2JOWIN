@@ -1,7 +1,7 @@
 import { delay, http, HttpResponse } from 'msw'
 import {
   activeTokenOf, bumpVersion, canSee, contactsOf, currentMember, db, error, findDeal, findQuote, moveDealStage, nextDocNo,
-  notFound, now, paged, recordAudit, recordAuto, today,
+  noContent, notFound, now, paged, recordAudit, recordAuto, today,
 } from '../store'
 import { buildPublicQuote } from './publicQuote'
 import type {
@@ -12,7 +12,7 @@ import { VAT_MODES, isOpenStage } from '../../shared/ui/status'
 
 /**
  * 견적 목 (구성원용 `/api/v1/quotes`) — 07-api-spec.md §C (QT · AP-13·14 · OD-01~07) · 08-dto.md §C.
- * 백엔드에 QuoteController가 아직 없어 docs가 정본이다.
+ * 정본은 백엔드 QuoteService(#101·#154)다 — 응답 형태·판정 순서를 그쪽에 맞춘다. 복제·주문 전환만 아직 서버에 없어 docs 기준이다.
  *
  * 실패 경로: QUOTE_NOT_DRAFT · QUOTE_EMPTY_ITEMS · QUOTE_VALID_UNTIL_PASSED · CONTACT_NOT_IN_CUSTOMER ·
  * QUOTE_DEAL_CLOSED · PRODUCT_DISCONTINUED · QUOTE_NOT_WITHDRAWABLE · QUOTE_NOT_RESENDABLE ·
@@ -239,7 +239,7 @@ export const quoteHandlers = [
     return HttpResponse.json(toDetail(created), { status: 201 })
   }),
 
-  // 수신인 변경 재발송 (AP-13) — 판정 축은 견적 상태 (QUOTE_NOT_RESENDABLE, v1.6.7)
+  // 수신인 변경 재발송 (AP-13) — 판정 축은 견적 상태 (QUOTE_NOT_RESENDABLE, v1.6.7). 견적은 그대로라 204 (서버 resendViewToken)
   http.post(`${BASE}/:id/view-token/resend`, async ({ params, request }) => {
     const member = currentMember(request)
     const quote = visibleQuote(request, String(params.id))
@@ -257,20 +257,21 @@ export const quoteHandlers = [
     }
     issueToken(quote, body.recipientContactId)
     recordAuto(deal.id, `견적을 다른 수신인에게 재발송했습니다 — ${quote.quoteNo}`, member.id)
-    return HttpResponse.json(toDetail(quote))
+    return noContent()
   }),
 
-  // 열람 링크 수동 만료 (AP-14)
+  // 열람 링크 수동 만료 (AP-14) — 견적 상태는 그대로, 링크만 닫는다. 멱등 — 활성 링크가 없어도 204 (서버 expireViewToken)
   http.post(`${BASE}/:id/view-token/expire`, ({ params, request }) => {
     const member = currentMember(request)
     const quote = visibleQuote(request, String(params.id))
     if (!quote) return notFound()
     const token = activeTokenOf(quote.id)
-    if (!token) return error('LINK_EXPIRED')
-    token.status = 'EXPIRED'
-    token.expiredReason = 'MANUAL'
-    recordAuto(quote.dealId, `열람 링크를 수동 만료했습니다 — ${quote.quoteNo}`, member.id)
-    return HttpResponse.json(toDetail(quote))
+    if (token) {
+      token.status = 'EXPIRED'
+      token.expiredReason = 'MANUAL'
+      recordAuto(quote.dealId, `열람 링크를 수동 만료했습니다 — ${quote.quoteNo}`, member.id)
+    }
+    return noContent()
   }),
 
   // 주문 전환 (OD-01~07) — 승인 견적만 · 1회만 · Deal은 단계 무관 성사 (멱등)
@@ -294,7 +295,7 @@ export const quoteHandlers = [
     deal.wonAmount = db.orders.filter((o) => o.dealId === deal.id).reduce((acc, o) => acc + o.totalAmount, 0) // DL-18
     recordAudit({ entityType: 'ORDER', entityId: order.id, eventType: 'ORDER_CREATED', actorType: 'MEMBER', actorId: member.id, changes: { orderNo: { before: null, after: order.orderNo } } })
     recordAuto(deal.id, `주문으로 전환했습니다 — ${order.orderNo}`, member.id)
-    const body: OrderDetailResponse = { ...order, items: db.orderItems.get(order.id) ?? [] }
+    const body: OrderDetailResponse = { ...order, dealStage: deal.stage, items: db.orderItems.get(order.id) ?? [] }
     return HttpResponse.json(body, { status: 201 })
   }),
 ]

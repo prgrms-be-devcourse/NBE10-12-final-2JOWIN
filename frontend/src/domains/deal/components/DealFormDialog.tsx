@@ -13,6 +13,9 @@ import { useMemberOptions } from '../hooks'
  *
  * - 생성: 고객사(필수) · 제목(필수) · 예상 금액(선택, 0 이상) · 마감일(선택) · 담당자(기업 관리자만 노출, DL-04)
  * - 수정: 제목 · 예상 금액 · 마감일 + version — 고객사·담당자는 여기서 바꾸지 않는다 (담당자 변경은 별도 엔드포인트 DL-05)
+ * - 수정은 PATCH라 null = 미변경이다 (DealRequests.UpdateDeal · Deal.update) — 값을 "미정"으로 되돌리는 경로가 v1에 없어
+ *   비운 채 저장하면 서버가 무시한다. 화면은 비우기를 막고 이유를 말한다
+ * - 409 STALE_VERSION은 [새로고침]으로 상세를 재조회한다 (10 §6.3) — 입력은 그대로 두고 새 version으로 다시 저장할 수 있다
  * - 영업 담당자는 담당자 필드를 보지 않는다 — assigneeMemberId를 생략하면 생성자 본인 (CreateDealRequest)
  */
 
@@ -34,6 +37,8 @@ interface EditProps {
   deal: DealDetailResponse
   loading: boolean
   error: unknown
+  /** STALE_VERSION일 때 상세 재조회 */
+  onRetry?: () => void
   onSubmit: (body: UpdateDealRequest) => void
 }
 
@@ -76,7 +81,10 @@ function DealForm(props: Props) {
 
   const amount = form.expectedAmount.trim() === '' ? null : Number(form.expectedAmount.replace(/,/g, ''))
   const amountInvalid = amount !== null && (!Number.isInteger(amount) || amount < 0)
-  const canSubmit = form.title.trim() !== '' && !amountInvalid && (props.mode === 'edit' || form.customerId !== NONE)
+  // 수정 모드에서 있던 값을 비우면 서버는 미변경으로 본다 — 저장을 막고 안내한다
+  const amountCleared = props.mode === 'edit' && props.deal.expectedAmount !== null && amount === null
+  const dueDateCleared = props.mode === 'edit' && props.deal.dueDate !== null && form.dueDate === ''
+  const canSubmit = form.title.trim() !== '' && !amountInvalid && !amountCleared && !dueDateCleared && (props.mode === 'edit' || form.customerId !== NONE)
 
   const handleSubmit = (e: FormEvent) => {
     e.preventDefault()
@@ -134,7 +142,12 @@ function DealForm(props: Props) {
           </Field>
 
           <Flex gap="3">
-            <Field label="예상 금액" hint="원 단위 · 미정이면 비워 둡니다 (DL-02)" error={amountInvalid ? '0 이상의 정수를 입력해 주세요.' : apiError?.reasonOf('expectedAmount')} grow>
+            <Field
+              label="예상 금액"
+              hint={props.mode === 'edit' ? '원 단위 · 한 번 정한 금액은 미정으로 되돌릴 수 없습니다' : '원 단위 · 미정이면 비워 둡니다 (DL-02)'}
+              error={amountInvalid ? '0 이상의 정수를 입력해 주세요.' : amountCleared ? '미정으로 되돌릴 수 없습니다. 금액을 입력해 주세요.' : apiError?.reasonOf('expectedAmount')}
+              grow
+            >
               <TextField.Root
                 inputMode="numeric"
                 value={form.expectedAmount}
@@ -150,7 +163,7 @@ function DealForm(props: Props) {
                 </TextField.Slot>
               </TextField.Root>
             </Field>
-            <Field label="마감일" error={apiError?.reasonOf('dueDate')} grow>
+            <Field label="마감일" error={dueDateCleared ? '마감일은 비울 수 없습니다. 날짜를 골라 주세요.' : apiError?.reasonOf('dueDate')} grow>
               <TextField.Root type="date" value={form.dueDate} onChange={(e) => set('dueDate')(e.target.value)} disabled={props.loading} />
             </Field>
           </Flex>
@@ -171,7 +184,9 @@ function DealForm(props: Props) {
             </Field>
           )}
 
-          {apiError && apiError.code !== 'VALIDATION_FAILED' && <ErrorCallout code={apiError.code} />}
+          {apiError && apiError.code !== 'VALIDATION_FAILED' && (
+            <ErrorCallout code={apiError.code} onRetry={props.mode === 'edit' ? props.onRetry : undefined} />
+          )}
 
           <Flex gap="3" justify="end" mt="2">
             <Dialog.Close>

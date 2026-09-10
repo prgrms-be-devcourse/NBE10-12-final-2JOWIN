@@ -42,24 +42,24 @@ export const productHandlers = [
     return HttpResponse.json(created, { status: 201 })
   }),
 
-  // PATCH — 보내지 않은 필드는 미변경 · 이름 변경 시 중복 검사 (PR-04)
+  // PATCH — 보내지 않은 필드·null은 미변경 (Product.update) · 설명은 ''로 지운다 · 이름 변경 시 중복 검사 (PR-04)
   http.patch('/api/v1/products/:id', async ({ params, request }) => {
     const forbidden = adminOnly(request)
     if (forbidden) return forbidden
     const product = find(String(params.id))
     if (!product) return notFound()
     const body = (await request.json()) as UpdateProductRequest
-    if (body.name !== undefined && !body.name.trim()) return error('VALIDATION_FAILED', [{ field: 'name', reason: '공백일 수 없습니다' }])
-    if (body.unit !== undefined && !body.unit.trim()) return error('VALIDATION_FAILED', [{ field: 'unit', reason: '공백일 수 없습니다' }])
-    if (body.unitPrice !== undefined && body.unitPrice < 0) return error('VALIDATION_FAILED', [{ field: 'unitPrice', reason: '0원 이상이어야 합니다.' }])
-    if (body.name !== undefined && duplicated(body.name, product.id)) return error('PRODUCT_NAME_DUPLICATED')
+    if (body.name != null && !body.name.trim()) return error('VALIDATION_FAILED', [{ field: 'name', reason: '공백일 수 없습니다' }])
+    if (body.unit != null && !body.unit.trim()) return error('VALIDATION_FAILED', [{ field: 'unit', reason: '공백일 수 없습니다' }])
+    if (body.unitPrice != null && body.unitPrice < 0) return error('VALIDATION_FAILED', [{ field: 'unitPrice', reason: '0원 이상이어야 합니다.' }])
+    if (body.name != null && duplicated(body.name, product.id)) return error('PRODUCT_NAME_DUPLICATED')
     const changes: Record<string, { before: unknown; after: unknown }> = {}
-    if (body.name !== undefined && body.name.trim() !== product.name) changes.name = { before: product.name, after: body.name.trim() }
-    if (body.unitPrice !== undefined && body.unitPrice !== product.unitPrice) changes.unitPrice = { before: product.unitPrice, after: body.unitPrice }
-    if (body.name !== undefined) product.name = body.name.trim()
-    if (body.unit !== undefined) product.unit = body.unit.trim()
-    if (body.unitPrice !== undefined) product.unitPrice = body.unitPrice
-    if (body.description !== undefined) product.description = body.description?.trim() || null
+    if (body.name != null && body.name.trim() !== product.name) changes.name = { before: product.name, after: body.name.trim() }
+    if (body.unitPrice != null && body.unitPrice !== product.unitPrice) changes.unitPrice = { before: product.unitPrice, after: body.unitPrice }
+    if (body.name != null) product.name = body.name.trim()
+    if (body.unit != null) product.unit = body.unit.trim()
+    if (body.unitPrice != null) product.unitPrice = body.unitPrice
+    if (body.description != null) product.description = body.description   // 서버는 ''도 그대로 저장한다 (Product.update) — 표시에서 '—'로 거른다
     if (Object.keys(changes).length) recordAudit({ entityType: 'PRODUCT', entityId: product.id, eventType: 'UPDATED', actorType: 'MEMBER', actorId: currentMember(request).id, changes })
     return HttpResponse.json(product)
   }),

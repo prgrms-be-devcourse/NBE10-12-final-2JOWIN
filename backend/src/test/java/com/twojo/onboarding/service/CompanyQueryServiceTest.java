@@ -8,6 +8,7 @@ import com.twojo.boundary.CompanyQuery.CompanySummary;
 import com.twojo.global.error.MissingReferenceException;
 import com.twojo.onboarding.entity.Company;
 import com.twojo.onboarding.repository.CompanyRepository;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -78,5 +79,31 @@ class CompanyQueryServiceTest {
                 .isInstanceOf(MissingReferenceException.class)
                 .hasMessageContaining("company")
                 .hasMessageContaining(COMPANY_ID.toString());
+    }
+
+    /**
+     * 거르는 상태를 잘못 넣어도 컴파일은 통과한다 — {@code SUSPENDED}를 넘기면 배치가 정확히
+     * 정지된 회사에만 알림을 보낸다. 넘어간 인자를 직접 봐야 그 뒤집힘이 잡힌다 (Q-27).
+     */
+    @Test
+    @DisplayName("ACTIVE로 걸러 조회하고 결과를 그대로 돌려준다 — 배치의 회사 순회 (Q-27)")
+    void 활성_회사만_조회한다() {
+        UUID 다른회사 = UUID.fromString("c0000000-0000-4000-8000-000000000002");
+        given(companyRepository.findIdsByStatus(Company.Status.ACTIVE))
+                .willReturn(List.of(COMPANY_ID, 다른회사));
+
+        assertThat(companyQueryService.findActiveIds()).containsExactly(COMPANY_ID, 다른회사);
+    }
+
+    /**
+     * {@code get}과 달리 없는 것이 이상 상황이 아니다 — 회사가 하나도 없는 순간이 실제로 있고
+     * (첫 가입 승인 전), 정지가 전부여도 정상이다. 여기서 던지면 배치가 그날 통째로 죽는다.
+     */
+    @Test
+    @DisplayName("활성 회사가 없으면 빈 목록 — 예외도 null도 아니다")
+    void 활성_회사가_없으면_빈_목록이다() {
+        given(companyRepository.findIdsByStatus(Company.Status.ACTIVE)).willReturn(List.of());
+
+        assertThat(companyQueryService.findActiveIds()).isEmpty();
     }
 }

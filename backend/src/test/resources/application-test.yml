@@ -26,3 +26,10 @@ app:
   # ViewTokenCommandImpl이 @Value로 요구한다 — 없으면 contextLoads가 깨진다
   view-link:
     base-url: http://localhost:5173
+
+# 리마인드 배치 — 테스트에선 스케줄 트리거를 끈다("-" = Scheduled.CRON_DISABLED).
+# 배치 동작은 RemindNoResponseIntegrationTest가 run()을 직접 호출해 검증한다.
+notification:
+  remind:
+    cron: "-"
+    after-days: 3

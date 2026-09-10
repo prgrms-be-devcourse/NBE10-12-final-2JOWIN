@@ -108,3 +108,17 @@ describe('단계 전이 오류 코드 (07 §C)', () => {
     expect((await res.json()).code).toBe('STALE_VERSION')
   })
 })
+
+describe('PATCH /api/v1/deals/{id} — 수정 (DL-02·03)', () => {
+  it('null·미전송 필드는 미변경 — 예상 금액·마감일을 미정으로 되돌릴 수 없다 (Deal.update)', async () => {
+    session.login(admin)
+    const deal = db.deals.find((d) => d.stage === 'LEAD' && !d.deleted && d.expectedAmount !== null && d.dueDate !== null)!
+    const before = { title: deal.title, expectedAmount: deal.expectedAmount, dueDate: deal.dueDate }
+    const res = await call(dealHandlers, new Request(`http://localhost/api/v1/deals/${deal.id}`, {
+      method: 'PATCH', headers: { ...auth(admin), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title: null, expectedAmount: null, dueDate: null, version: deal.version }),
+    }))
+    expect(res.status).toBe(200)
+    expect({ title: deal.title, expectedAmount: deal.expectedAmount, dueDate: deal.dueDate }).toEqual(before)
+  })
+})
