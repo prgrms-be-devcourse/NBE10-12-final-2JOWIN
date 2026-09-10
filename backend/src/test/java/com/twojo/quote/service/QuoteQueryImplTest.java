@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.BDDMockito.then;
 
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.DealQuery;
@@ -15,6 +16,7 @@ import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -148,5 +150,108 @@ class QuoteQueryImplTest {
 
         assertThat(row.customerName()).isNull();
         assertThat(row.quoteNo()).isEqualTo("Q-2609-001");   // 나머지는 정상이다
+    }
+
+    /**
+     * 만료 임박 (NT-06) — 계약은 <b>전 회사를 한 번에</b> 돌려준다 (2026-09-10 C·D 합의).
+     * 회사 축을 배치가 그룹핑하므로, 여기서 볼 것은 "여러 회사가 섞여 나오는가"와
+     * "이름 채우기가 회사별로 갈리는가"다.
+     */
+    @Nested
+    @DisplayName("만료 임박 (NT-06)")
+    class ExpiringBetween {
+
+        private static final LocalDate FROM = LocalDate.of(2026, 9, 11);
+        private static final LocalDate TO = LocalDate.of(2026, 9, 14);
+
+        @Test
+        @DisplayName("발송됨·열람됨만 대상이다 — 응답 대기와 같은 집합을 넘긴다")
+        void 대상_상태() {
+            given(quoteRepository.findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(any(), any(), any()))
+                    .willReturn(List.of());
+
+            quoteQuery.findExpiringBetween(FROM, TO);
+
+            ArgumentCaptor<java.util.Collection<Quote.Status>> captor =
+                    ArgumentCaptor.forClass(java.util.Collection.class);
+            then(quoteRepository).should()
+                    .findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(captor.capture(), eq(FROM), eq(TO));
+            assertThat(captor.getValue())
+                    .containsExactlyInAnyOrder(Quote.Status.SENT, Quote.Status.VIEWED);
+        }
+
+        /**
+         * <b>이 계약의 핵심이다.</b> 회사 인자를 받지 않으므로 여러 회사의 줄이 함께 나오고,
+         * 이름 채우기는 회사별로 갈려야 한다 — {@code namesByIds}가 회사 스코프를 요구하기
+         * 때문이다(SC-01). 한 회사의 이름 맵을 다른 회사 줄에 쓰면 남의 고객사명이 샌다.
+         */
+        @Test
+        @DisplayName("여러 회사가 섞여 나오고 이름은 회사별로 채워진다 — 남의 고객사명이 새지 않는다")
+        void 회사별_그룹핑() {
+            UUID otherCompany = UUID.randomUUID();
+            UUID otherDeal = UUID.randomUUID();
+            UUID customerA = UUID.randomUUID();
+            UUID customerB = UUID.randomUUID();
+
+            Quote mine = quoteAt(Quote.Status.SENT);
+            Quote theirs = Quote.draft(otherCompany, otherDeal, "Q-2609-777", LocalDate.of(2026, 9, 13));
+            ReflectionTestUtils.setField(theirs, "status", Quote.Status.VIEWED);
+
+            given(quoteRepository.findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(any(), any(), any()))
+                    .willReturn(List.of(mine, theirs));
+
+            given(dealQuery.summariesByIds(eq(COMPANY_ID), any())).willReturn(List.of(
+                    new DealQuery.DealSummary(DEAL_ID, customerA, "도담 리모델링", "QUOTE",
+                            null, null, Instant.parse("2026-08-01T00:00:00Z"))));
+            given(customerQuery.namesByIds(eq(COMPANY_ID), any()))
+                    .willReturn(List.of(new CustomerQuery.CustomerSummary(customerA, "도담산업")));
+
+            given(dealQuery.summariesByIds(eq(otherCompany), any())).willReturn(List.of(
+                    new DealQuery.DealSummary(otherDeal, customerB, "성원 확장", "QUOTE",
+                            null, null, Instant.parse("2026-08-01T00:00:00Z"))));
+            given(customerQuery.namesByIds(eq(otherCompany), any()))
+                    .willReturn(List.of(new CustomerQuery.CustomerSummary(customerB, "성원물산")));
+
+            List<QuoteQuery.QuoteSummary> rows = quoteQuery.findExpiringBetween(FROM, TO);
+
+            assertThat(rows).hasSize(2);
+            assertThat(rows).extracting(QuoteQuery.QuoteSummary::companyId)
+                    .containsExactlyInAnyOrder(COMPANY_ID, otherCompany);
+            assertThat(rows).extracting(QuoteQuery.QuoteSummary::customerName)
+                    .containsExactlyInAnyOrder("도담산업", "성원물산");
+        }
+
+        /**
+         * 조회 횟수가 <b>줄 수가 아니라 회사 수</b>에 비례하는지 고정한다.
+         * 같은 회사의 견적이 여럿이면 경계 호출은 각각 한 번이어야 한다 — N+1 방지.
+         */
+        @Test
+        @DisplayName("같은 회사 견적이 여럿이어도 경계 조회는 회사당 한 번이다")
+        void 회사당_한_번() {
+            Quote first = quoteAt(Quote.Status.SENT);
+            Quote second = Quote.draft(COMPANY_ID, DEAL_ID, "Q-2609-002", LocalDate.of(2026, 9, 12));
+            ReflectionTestUtils.setField(second, "status", Quote.Status.VIEWED);
+
+            given(quoteRepository.findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(any(), any(), any()))
+                    .willReturn(List.of(first, second));
+            고객사이름("도담산업");
+
+            assertThat(quoteQuery.findExpiringBetween(FROM, TO)).hasSize(2);
+
+            then(dealQuery).should().summariesByIds(eq(COMPANY_ID), any());
+            then(customerQuery).should().namesByIds(eq(COMPANY_ID), any());
+        }
+
+        @Test
+        @DisplayName("구간에 든 견적이 없으면 빈 목록 — 경계를 부르지 않는다")
+        void 빈_목록() {
+            given(quoteRepository.findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(any(), any(), any()))
+                    .willReturn(List.of());
+
+            assertThat(quoteQuery.findExpiringBetween(FROM, TO)).isEmpty();
+
+            then(dealQuery).shouldHaveNoInteractions();
+            then(customerQuery).shouldHaveNoInteractions();
+        }
     }
 }

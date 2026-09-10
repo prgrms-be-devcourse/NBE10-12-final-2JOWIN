@@ -61,9 +61,50 @@ public class QuoteQueryImpl implements QuoteQuery {
      */
     @Override
     public List<QuoteSummary> findAwaitingResponse(UUID companyId) {
-        List<Quote> quotes = quoteRepository
-                .findByCompanyIdAndStatusInOrderBySentAtAsc(companyId, AWAITING_RESPONSE);
+        return withCustomerNames(companyId, quoteRepository
+                .findByCompanyIdAndStatusInOrderBySentAtAsc(companyId, AWAITING_RESPONSE));
+    }
 
+    /**
+     * 만료 임박 견적 (NT-06) — 유효기간이 {@code [from, to]}에 든 발송됨·열람됨.
+     *
+     * <p><b>전 회사를 한 번에 돌려준다</b> — 계약이 그렇게 확정됐다(2026-09-10 C·D 합의).
+     * 배치는 {@code QuoteSummary.companyId}로 그룹핑해 회사별로 정지 판정(Q-27)을 한다.
+     * {@code findAwaitingResponse}가 회사별인 것과 갈리지만, 각 배치가 자기 쿼리 모양에
+     * 맞춘 것이라 불일치가 아니다.
+     *
+     * <p><b>이름 채우기는 회사별로 나눠서 한다</b> — {@code DealQuery.summariesByIds}와
+     * {@code CustomerQuery.namesByIds}가 둘 다 회사 스코프를 요구하기 때문이다(SC-01).
+     * 조회 횟수는 <b>줄 수가 아니라 회사 수</b>에 비례한다 — 회사당 각각 한 번이다.
+     *
+     * <p>정렬은 리포지토리가 유효기간 오름차순으로 준 것을 <b>회사별로 나눠도 유지</b>한다 —
+     * {@code groupingBy}가 만드는 리스트는 원본 순서를 지킨다. 다만 계약은 회사 간 순서를
+     * 보장하지 않는다(호출자가 그룹핑한다).
+     */
+    @Override
+    public List<QuoteSummary> findExpiringBetween(LocalDate from, LocalDate to) {
+        return quoteRepository
+                .findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(AWAITING_RESPONSE, from, to)
+                .stream()
+                .collect(Collectors.groupingBy(Quote::getCompanyId))
+                .entrySet().stream()
+                .flatMap(byCompany -> withCustomerNames(byCompany.getKey(), byCompany.getValue()).stream())
+                .toList();
+    }
+
+    /**
+     * 견적 줄에 고객사명을 채운다 — 견적에는 고객사 id가 없어 {@code deal}을 한 홉 지난다.
+     *
+     * <p>고객사는 B 소유라 {@code CustomerQuery}를 거쳐야 하고, 둘 다 <b>배치 창구</b>라
+     * 줄 수와 무관하게 조회는 각각 한 번이다 (#273).
+     * {@code CustomerQuery.get}이 아니라 {@code namesByIds}를 쓰는 이유는 배치 경로에
+     * {@code AccessContext}가 없기 때문이다 — 회사 스코프만으로 판정이 끝난다 (SC-01).
+     *
+     * <p><b>이름이 비는 줄이 생길 수 있다.</b> 고객사나 Deal이 소프트 삭제되면 배치 결과에서
+     * 빠지고 그 줄의 이름만 null이 된다. 목록 전체를 실패시키지 않는 것이 {@code namesByIds}의
+     * 계약이고 (B javadoc), 배치가 고객사 하나 때문에 통째로 멈추면 안 된다.
+     */
+    private List<QuoteSummary> withCustomerNames(UUID companyId, List<Quote> quotes) {
         Map<UUID, UUID> customerByDeal = dealQuery
                 .summariesByIds(companyId, quotes.stream().map(Quote::getDealId).distinct().toList())
                 .stream()
@@ -85,10 +126,6 @@ public class QuoteQueryImpl implements QuoteQuery {
                 customerName, quote.getSentAt(), quote.getFirstViewedAt(), quote.getValidUntil());
     }
 
-    @Override
-    public List<QuoteSummary> findExpiringBetween(LocalDate from, LocalDate to) {
-        throw new UnsupportedOperationException("QuoteQuery.findExpiringBetween — 실구현 예정 (NT-06)");
-    }
 
     /**
      * 주문 조회가 쓰는 견적 출처 (OD-08·09) — 회사 스코프가 걸린다 (SC-01).

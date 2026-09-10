@@ -2,6 +2,7 @@ package com.twojo.quote.repository;
 
 import com.twojo.quote.entity.Quote;
 import jakarta.persistence.LockModeType;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -75,6 +76,21 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
      * <p>발송이 오래된 것부터 준다 — 리마인드는 가장 오래 답이 없는 건이 먼저다.
      */
     List<Quote> findByCompanyIdAndStatusInOrderBySentAtAsc(UUID companyId, Collection<Quote.Status> statuses);
+
+    /**
+     * {@code QuoteQuery.findExpiringBetween} — 유효기간이 구간 안에 든 응답 대기 견적 (NT-06).
+     *
+     * <p><b>회사 스코프를 걸지 않는다</b> — 계약이 전 회사를 한 번에 돌려주고, 호출자가
+     * {@code QuoteSummary.companyId}로 그룹핑해 회사별 정지 판정(Q-27)을 한다 (계약 javadoc).
+     * NT-05가 회사별로 도는 것과 갈리는 이유는 각 배치가 자기 쿼리 모양에 맞췄기 때문이다.
+     *
+     * <p>{@code Between}은 <b>양 끝을 포함</b>한다 — 계약의 "하한 포함 · 상한 포함"과 같다.
+     * 하한이 있어야 이미 만료된 견적에 "임박했습니다"가 나가지 않는다.
+     *
+     * <p>유효기간이 가까운 것부터 준다 — 먼저 닫히는 건이 먼저 알려져야 한다.
+     */
+    List<Quote> findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(
+            Collection<Quote.Status> statuses, LocalDate from, LocalDate to);
 
     /** {@code QuoteQuery.quoteIdsByDeals} — 주문 목록의 SC-04 범위 필터. id만 읽는다 */
     @Query("select q.id from Quote q where q.companyId = :companyId and q.dealId in :dealIds")
