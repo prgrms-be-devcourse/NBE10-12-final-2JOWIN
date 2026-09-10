@@ -100,7 +100,7 @@ class OrderServiceTest {
     private static ConversionSnapshot 스냅샷() {
         return new ConversionSnapshot(QUOTE_ID, "Q-2609-001", DEAL_ID,
                 1_000_000L, 100_000L, 1_100_000L,
-                List.of(new ConversionSnapshot.Line("사무용 의자", "EA", 10, 80_000L, 800_000L)));
+                List.of(new ConversionSnapshot.Line("사무용 의자", "EA", 10, 80_000L, 800_000L, 0)));
     }
 
     /** 견적이 있고, 담당 딜이고, 승인된 상태 — 여기서 갈라지는 것만 각 테스트가 덮어쓴다 */

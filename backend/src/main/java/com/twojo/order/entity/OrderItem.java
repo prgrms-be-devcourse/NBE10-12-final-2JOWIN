@@ -37,6 +37,9 @@ public class OrderItem extends BaseTimeEntity {
 
     private Long amount;
 
+    /** 견적 항목의 순서를 그대로 물려받는다 (QT-07 → OD-04). {@code Order.items}의 {@code @OrderBy} 축 */
+    private int sortOrder;
+
     /**
      * 전환 시점 값 복사 (OD-04).
      *
@@ -48,13 +51,15 @@ public class OrderItem extends BaseTimeEntity {
      * 견적이 확정한 값과 주문이 적은 값이 갈릴 여지가 생긴다. <b>스냅샷은 옮겨 적는 것이지
      * 다시 세는 것이 아니다.</b>
      */
-    public static OrderItem of(String name, String unit, int quantity, Long unitPrice, Long amount) {
+    public static OrderItem of(String name, String unit, int quantity,
+                               Long unitPrice, Long amount, int sortOrder) {
         OrderItem item = new OrderItem();
         item.name = name;
         item.unit = unit;
         item.quantity = quantity;
         item.unitPrice = unitPrice;
         item.amount = amount;
+        item.sortOrder = sortOrder;
         return item;
     }
 

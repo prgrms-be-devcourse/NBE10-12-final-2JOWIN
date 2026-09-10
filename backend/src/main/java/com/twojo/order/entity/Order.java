@@ -8,6 +8,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.OneToMany;
+import jakarta.persistence.OrderBy;
 import jakarta.persistence.Table;
 import java.time.LocalDate;
 import java.util.ArrayList;
@@ -57,11 +58,12 @@ public class Order extends BaseTimeEntity {
      * {@code GET /orders/{id}}는 DB가 돌려주는 순서라 <b>같은 주문인데 조회 시점에 따라
      * 항목 순서가 달라질 수 있다</b>.
      *
-     * <p>{@code @OrderBy("id ASC")}로 안정시킬 수는 있으나 그 순서도 견적 순서가 아니라,
-     * 문제를 가리기만 한다. 제대로 고치려면 {@code order_item.sort_order} 마이그레이션이
-     * 필요하고 그건 ERD 버전 업이 따라오는 별도 결정이라 <b>#160에서는 손대지 않았다</b>.
+     * <p><b>정렬 축은 견적에서 물려받은 {@code sortOrder}다</b> (V301). 삽입 순서에 기대면
+     * 전환 직후 응답은 맞지만 재조회에서 갈린다 — 1차 캐시가 비면 DB가 돌려주는 순서가
+     * 그대로 나오기 때문이다. {@code quote_item}이 같은 문제를 같은 방식으로 푼다.
      */
     @OneToMany(mappedBy = "order", cascade = CascadeType.ALL, orphanRemoval = true)
+    @OrderBy("sortOrder ASC")
     private List<OrderItem> items = new ArrayList<>();
 
     /**
@@ -91,7 +93,7 @@ public class Order extends BaseTimeEntity {
         order.totalAmount = snapshot.totalAmount();
         snapshot.items().forEach(line -> {
             OrderItem item = OrderItem.of(line.name(), line.unit(),
-                    line.quantity(), line.unitPrice(), line.amount());
+                    line.quantity(), line.unitPrice(), line.amount(), line.sortOrder());
             item.assignTo(order);
             order.items.add(item);
         });
