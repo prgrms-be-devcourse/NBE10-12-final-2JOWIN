@@ -5,6 +5,7 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
+import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.deal.DealStageChanged;
 import com.twojo.deal.dto.DealRequests;
@@ -16,6 +17,7 @@ import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
 import java.time.Instant;
 import java.util.Collection;
+import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -47,6 +49,7 @@ public class DealService {
     private final DealRepository dealRepository;
     private final CustomerQuery customerQuery;
     private final MemberQuery memberQuery;
+    private final QuoteQuery quoteQuery;
     private final ApplicationEventPublisher eventPublisher;
 
     /** 생성 (DL-01~04) — 회사의 모든 고객사에 가능하고, 배정 대상은 활성 구성원이다 */
@@ -104,6 +107,29 @@ public class DealService {
         return DealResponses.DealItem.of(deal,
                 customerQuery.get(ctx, deal.getCustomerId()).name(),
                 memberQuery.get(deal.getAssigneeMemberId()).name());
+    }
+
+    /**
+     * 삭제 (DL-16) — 소프트 삭제다. 견적이 하나라도 연결돼 있으면 막는다 (DL-17).
+     *
+     * <p><b>단계는 보지 않는다</b> — DL-16이 상태를 제한하지 않고, 종결(WON·LOST) Deal도 지울 수 있다.
+     * 실제로 막는 축은 견적 연결 하나뿐인데, 성사한 Deal은 견적을 거쳐 왔으므로 DL-17에서 자연히 걸린다.
+     *
+     * <p><b>{@code version}을 받지 않는다</b> — 07 §C가 이 행에만 "version 포함"을 적지 않았다
+     * (PATCH 수정·담당자 변경과 다른 자리다). 덮어쓸 필드가 없어 잃을 수정이 없다 —
+     * 같은 이유로 {@code CustomerService.delete}도 받지 않는다 (CU-07).
+     *
+     * <p>판정은 {@link QuoteQuery#quoteIdsByDeals}로 한다 — 견적은 C 소유라 직접 읽지 않는다.
+     * 단건이라 묶음에 이 Deal 하나만 넘기고, 빈 목록이면 연결된 견적이 없다는 뜻이다.
+     */
+    @Transactional
+    public void delete(AccessContext ctx, UUID dealId, Instant now) {
+        Deal deal = findInScope(ctx, dealId);
+
+        if (!quoteQuery.quoteIdsByDeals(ctx.companyId(), List.of(dealId)).isEmpty()) {
+            throw new BusinessException(ErrorCode.DEAL_HAS_QUOTES);
+        }
+        deal.softDelete(now);
     }
 
     /**
