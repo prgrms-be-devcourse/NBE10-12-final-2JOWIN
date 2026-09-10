@@ -23,7 +23,7 @@ name: Infra CI
 
 on:
   pull_request:
-    branches: [develop, 'release/**', main]
+    branches: [develop, main]
 
 concurrency:
   group: infra-ci-${{ github.ref }}
