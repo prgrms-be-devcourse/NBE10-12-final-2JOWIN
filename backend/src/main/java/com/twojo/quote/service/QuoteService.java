@@ -207,7 +207,7 @@ public class QuoteService {
     public void resendViewToken(AccessContext ctx, UUID quoteId,
                                 QuoteRequests.ResendViewToken request) {
         Quote quote = findInScope(ctx, quoteId).quote();
-        quote.requireResendable();
+        quote.requireResendable(LocalDate.now(SEOUL));
         requireContactInCustomer(quote.getDealId(), request.recipientContactId());
 
         viewTokenCommand.issue(quoteId, request.recipientContactId(), null);   // 08 ResendViewTokenRequest에는 message가 없다
