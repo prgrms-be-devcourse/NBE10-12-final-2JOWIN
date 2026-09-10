@@ -2,10 +2,13 @@ package com.twojo.customer.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.CustomerQuery;
+import com.twojo.customer.entity.Customer;
 import com.twojo.customer.repository.CustomerContactRepository;
 import com.twojo.customer.repository.CustomerRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import java.util.Collection;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
@@ -30,8 +33,26 @@ class CustomerQueryImpl implements CustomerQuery {
     @Override
     public CustomerSummary get(AccessContext ctx, UUID customerId) {
         return customerRepository.findByIdAndCompanyIdAndDeletedAtIsNull(customerId, ctx.companyId())
-                .map(customer -> new CustomerSummary(customer.getId(), customer.getName()))
+                .map(CustomerQueryImpl::toSummary)
                 .orElseThrow(() -> new BusinessException(ErrorCode.RESOURCE_NOT_FOUND));
+    }
+
+    /**
+     * 빈 묶음이면 조회하지 않는다 — {@code in ()}는 쓸모없는 왕복이다.
+     * 회사 스코프와 소프트 삭제 제외는 파생 쿼리 이름이 보증하고, 없는 id는 그래서 결과에서 빠진다.
+     */
+    @Override
+    public List<CustomerSummary> namesByIds(UUID companyId, Collection<UUID> customerIds) {
+        if (customerIds == null || customerIds.isEmpty()) {
+            return List.of();
+        }
+        return customerRepository.findByCompanyIdAndIdInAndDeletedAtIsNull(companyId, customerIds).stream()
+                .map(CustomerQueryImpl::toSummary)
+                .toList();
+    }
+
+    private static CustomerSummary toSummary(Customer customer) {
+        return new CustomerSummary(customer.getId(), customer.getName());
     }
 
     @Override
