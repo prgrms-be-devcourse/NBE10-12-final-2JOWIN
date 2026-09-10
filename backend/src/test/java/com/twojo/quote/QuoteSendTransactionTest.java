@@ -145,6 +145,10 @@ class QuoteSendTransactionTest {
         return jdbc.queryForObject("select stage from deal where id = ?", String.class, dealId);
     }
 
+    private int quoteVersion() {
+        return jdbc.queryForObject("select version from quote where id = ?", Integer.class, quoteId);
+    }
+
     private int activeLinkCount() {
         return jdbc.queryForObject(
                 "select count(*) from quote_view_token where quote_id = ? and status = 'ACTIVE'",
@@ -158,7 +162,7 @@ class QuoteSendTransactionTest {
 
         assertThat(result.status()).isEqualTo("SENT");
         assertThat(result.dealStage()).isEqualTo("QUOTE");        // 자동 승급이 응답에 반영됐다 (Q-25)
-        assertThat(result.version()).isNotNull();
+        assertThat(result.version()).isEqualTo(quoteVersion());   // 08 검증 노트 #4
 
         assertThat(quoteStatus()).isEqualTo("SENT");
         assertThat(dealStage()).isEqualTo("QUOTE");
@@ -187,6 +191,30 @@ class QuoteSendTransactionTest {
         assertThat(quoteStatus()).isEqualTo("DRAFT");   // 발송되지 않았다
         assertThat(dealStage()).isEqualTo("LEAD");      // 단계도 그대로다
         assertThat(activeLinkCount()).isZero();         // 링크도 남지 않았다 — 이게 핵심이다
+    }
+
+    /**
+     * <b>version 회귀를 잡는 유일한 자리다.</b> 리드 딜로 발송하면 {@code promoteToQuoteStage}가
+     * Deal을 더티로 만들고, 마지막 Deal 조회가 그 더티 때문에 액션 큐를 통째로 실행해
+     * Quote의 {@code @Version}까지 <b>덩달아</b> 올라간다 — 명시적 flush가 없어도 통과한다.
+     *
+     * <p>딜이 <b>이미 견적 단계면</b> 승급이 무동작이라 Deal이 더티가 아니고, Deal 조회는
+     * quote 테이블과 무관해 auto-flush가 걸리지 않는다. 그때 응답에는 읽어온 0이,
+     * DB에는 1이 남는다 (08 검증 노트 #4 위반).
+     *
+     * <p>딜 하나에 견적을 여러 건 만들 수 있어(QT-18) 실제로 흔한 경로다 —
+     * 두 번째 견적을 발송할 때는 딜이 이미 견적 단계다.
+     */
+    @Test
+    @DisplayName("이미 견적 단계인 딜에 발송해도 응답 version이 DB와 같다 (08 검증 노트 #4)")
+    void 승급이_무동작이어도_최신_version이_실린다() {
+        jdbc.update("update deal set stage = 'QUOTE' where id = ?", dealId);
+
+        var result = quoteService.send(ctx, quoteId, new QuoteRequests.SendQuote(contactId, null));
+
+        assertThat(result.dealStage()).isEqualTo("QUOTE");   // 무동작이지만 단계는 견적 그대로다
+        assertThat(quoteVersion()).isEqualTo(1);             // markSent가 DB에 반영됐다
+        assertThat(result.version()).isEqualTo(quoteVersion());
     }
 
     @Test
