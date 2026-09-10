@@ -3,8 +3,10 @@ package com.twojo.activity.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.mock;
 
 import com.twojo.activity.entity.AuditLog;
 import com.twojo.boundary.AuditActor;
@@ -241,5 +243,28 @@ class AuditLogListenerTest {
         assertThat(saved.getValue().getPayload())
                 .doesNotContain("transferToMemberId")
                 .contains("\"dealIds\":[]");
+    }
+
+    /**
+     * 조립이 {@code try} 밖에 있으면 여기서 난 예외가 {@code AFTER_COMMIT} 을 타고 올라가
+     * <b>커밋된 요청을 500 으로 뒤집는다</b>. 같은 트랜잭션의 다른 리스너도 실행되지 않는다.
+     */
+    @Test
+    @DisplayName("행을 만들지 못해도 예외를 밖으로 내보내지 않는다")
+    void buildFails_swallows() {
+        auditLogListener = new AuditLogListener(auditLogWriter, brokenMapper());
+
+        assertThatCode(() -> auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID,
+                "Q-2608-014", AuditActor.member(MEMBER_ID), OCCURRED_AT)))
+                .doesNotThrowAnyException();
+
+        then(auditLogWriter).shouldHaveNoInteractions();
+    }
+
+    /** 직렬화가 터지는 상황을 만든다 — 실제로는 순환 참조나 직렬화 불가 타입이 그렇다. */
+    private static ObjectMapper brokenMapper() {
+        ObjectMapper mapper = mock(ObjectMapper.class);
+        given(mapper.writeValueAsString(any())).willThrow(new IllegalStateException("직렬화 실패"));
+        return mapper;
     }
 }

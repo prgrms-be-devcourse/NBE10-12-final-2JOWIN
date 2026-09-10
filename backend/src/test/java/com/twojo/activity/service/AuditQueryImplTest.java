@@ -42,7 +42,8 @@ class AuditQueryImplTest {
     @Test
     @DisplayName("payload 의 changes 에서 before·after 를 꺼내 준다 — 저장 형식은 나가지 않는다")
     void stageChanges_extractsBeforeAndAfter() {
-        given(auditLogRepository.findStageChanges(COMPANY_ID, "STAGE_MOVED", FROM, TO))
+        given(auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
+                COMPANY_ID, "STAGE_MOVED", FROM, TO))
                 .willReturn(List.of(stageMoved("CONSULT", "QUOTE")));
 
         List<AuditQuery.StageChange> changes = auditQuery.stageChanges(COMPANY_ID, FROM, TO);
@@ -61,7 +62,8 @@ class AuditQueryImplTest {
     @Test
     @DisplayName("읽히지 않는 payload 행은 결과에서 빠진다 — 예외를 던지지 않는다")
     void stageChanges_brokenPayload_isSkipped() {
-        given(auditLogRepository.findStageChanges(COMPANY_ID, "STAGE_MOVED", FROM, TO))
+        given(auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
+                COMPANY_ID, "STAGE_MOVED", FROM, TO))
                 .willReturn(List.of(broken(), stageMoved("QUOTE", "WON")));
 
         List<AuditQuery.StageChange> changes = auditQuery.stageChanges(COMPANY_ID, FROM, TO);
@@ -70,14 +72,21 @@ class AuditQueryImplTest {
                 .extracting(AuditQuery.StageChange::afterStage).isEqualTo("WON");
     }
 
+    /**
+     * 경계 규약(하한 포함·상한 제외)은 파생 쿼리 <b>메서드 이름</b>이 만든다 — 목은 SQL 을
+     * 만들지 않으므로 여기서 검증되지 않는다. 이 테스트가 지키는 것은 서비스가 받은 범위를
+     * 손대지 않고 그대로 넘긴다는 것뿐이다.
+     */
     @Test
     @DisplayName("기간을 그대로 리포지토리에 넘긴다 — 서비스가 값을 바꾸지 않는다")
     void stageChanges_passesRangeThrough() {
-        given(auditLogRepository.findStageChanges(COMPANY_ID, "STAGE_MOVED", FROM, TO)).willReturn(List.of());
+        given(auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
+                COMPANY_ID, "STAGE_MOVED", FROM, TO)).willReturn(List.of());
 
         auditQuery.stageChanges(COMPANY_ID, FROM, TO);
 
-        then(auditLogRepository).should().findStageChanges(COMPANY_ID, "STAGE_MOVED", FROM, TO);
+        then(auditLogRepository).should().findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
+                COMPANY_ID, "STAGE_MOVED", FROM, TO);
     }
 
     private static AuditLog stageMoved(String before, String after) {
@@ -91,4 +100,5 @@ class AuditQueryImplTest {
         return AuditLog.of(COMPANY_ID, "DEAL", DEAL_ID, "STAGE_MOVED",
                 AuditActor.system(), Instant.parse("2026-09-10T01:00:00Z"), "{깨진 json");
     }
+
 }

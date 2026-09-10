@@ -12,6 +12,7 @@ import com.twojo.quote.QuoteSent;
 import java.time.Instant;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -28,6 +29,10 @@ import tools.jackson.databind.ObjectMapper;
  *
  * <p>{@code entity_type}·{@code event_type}은 <b>여기서 만든다</b>. 발행자가 문자열로 실어 보내면
  * 오타가 그대로 저장되고, 값이 바뀔 때 발행 지점 전부를 찾아다녀야 한다 (#22).
+ *
+ * <p><b>payload 는 필드를 하나씩 골라 담는다</b> — 이벤트를 통째로 직렬화하지 않는다.
+ * 비밀번호·토큰·해시가 들어갈 경로를 만들지 않기 위해서다 (06 규약, #22 5번). 발행자가 새 필드를
+ * 늘려도 여기서 고르지 않으면 저장되지 않으므로, 거르는 코드 대신 <b>고르는 구조</b>로 막는다.
  */
 @Slf4j
 @Component
@@ -39,12 +44,9 @@ class AuditLogListener {
 
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteSent event) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("dealId", event.dealId());
-        payload.put("quoteNo", event.quoteNo());
-
-        write(AuditLog.of(event.companyId(), "QUOTE", event.quoteId(), AuditEventType.QUOTE_SENT.name(),
-                event.actor(), event.occurredAt(), objectMapper.writeValueAsString(payload)));
+        write(AuditEventType.QUOTE_SENT.name(), () -> quoteRow(event.companyId(), event.quoteId(),
+                AuditEventType.QUOTE_SENT, event.actor(), event.occurredAt(),
+                quotePayload(event.dealId(), event.quoteNo(), null, null)));
     }
 
     /**
@@ -56,26 +58,29 @@ class AuditLogListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(DealStageChanged event) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("dealId", event.dealId());
-        // Map.of 는 순서를 보장하지 않는다 — before·after 가 뒤집혀 저장되면 읽는 사람이 헷갈린다
-        Map<String, Object> stage = new LinkedHashMap<>();
-        stage.put("before", event.beforeStage());
-        stage.put("after", event.afterStage());
-        payload.put("changes", new LinkedHashMap<>(Map.of("stage", stage)));
-        if (event.lostReason() != null) {
-            payload.put("lostReason", event.lostReason());
-        }
-
-        write(AuditLog.of(event.companyId(), "DEAL", event.dealId(), AuditEventType.STAGE_MOVED.name(),
-                event.actor(), event.occurredAt(), objectMapper.writeValueAsString(payload)));
+        write(AuditEventType.STAGE_MOVED.name(), () -> {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("dealId", event.dealId());
+            // Map.of 는 순서를 보장하지 않는다 — before·after 가 뒤집혀 저장되면 읽는 사람이 헷갈린다
+            Map<String, Object> stage = new LinkedHashMap<>();
+            stage.put("before", event.beforeStage());
+            stage.put("after", event.afterStage());
+            payload.put("changes", new LinkedHashMap<>(Map.of("stage", stage)));
+            if (event.lostReason() != null) {
+                payload.put("lostReason", event.lostReason());
+            }
+            return AuditLog.of(event.companyId(), "DEAL", event.dealId(),
+                    AuditEventType.STAGE_MOVED.name(), event.actor(), event.occurredAt(),
+                    objectMapper.writeValueAsString(payload));
+        });
     }
 
     /** 첫 열람 (AP-02·07) — 재열람은 발행 쪽이 이미 걸러 여기 오지 않는다. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteViewed event) {
-        write(quoteRow(event.companyId(), event.quoteId(), AuditEventType.QUOTE_VIEWED, event.actor(),
-                event.occurredAt(), quotePayload(event.dealId(), event.quoteNo(), null, null)));
+        write(AuditEventType.QUOTE_VIEWED.name(), () -> quoteRow(event.companyId(), event.quoteId(),
+                AuditEventType.QUOTE_VIEWED, event.actor(), event.occurredAt(),
+                quotePayload(event.dealId(), event.quoteNo(), null, null)));
     }
 
     /**
@@ -84,16 +89,16 @@ class AuditLogListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteApproved event) {
-        write(quoteRow(event.companyId(), event.quoteId(), AuditEventType.QUOTE_APPROVED, event.actor(),
-                event.occurredAt(),
+        write(AuditEventType.QUOTE_APPROVED.name(), () -> quoteRow(event.companyId(), event.quoteId(),
+                AuditEventType.QUOTE_APPROVED, event.actor(), event.occurredAt(),
                 quotePayload(event.dealId(), event.quoteNo(), event.responderName(), null)));
     }
 
     /** 고객 반려 (AP-09·10·19) — 사유도 발생 전에 없던 값이라 부가 필드다. */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteRejected event) {
-        write(quoteRow(event.companyId(), event.quoteId(), AuditEventType.QUOTE_REJECTED, event.actor(),
-                event.occurredAt(),
+        write(AuditEventType.QUOTE_REJECTED.name(), () -> quoteRow(event.companyId(), event.quoteId(),
+                AuditEventType.QUOTE_REJECTED, event.actor(), event.occurredAt(),
                 quotePayload(event.dealId(), event.quoteNo(), event.responderName(), event.reason())));
     }
 
@@ -103,13 +108,15 @@ class AuditLogListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(OrderCreated event) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        payload.put("dealId", event.dealId());
-        payload.put("orderNo", event.orderNo());
-        payload.put("quoteId", event.quoteId());
-
-        write(AuditLog.of(event.companyId(), "ORDER", event.orderId(), AuditEventType.ORDER_CREATED.name(),
-                event.actor(), event.occurredAt(), objectMapper.writeValueAsString(payload)));
+        write(AuditEventType.ORDER_CREATED.name(), () -> {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            payload.put("dealId", event.dealId());
+            payload.put("orderNo", event.orderNo());
+            payload.put("quoteId", event.quoteId());
+            return AuditLog.of(event.companyId(), "ORDER", event.orderId(),
+                    AuditEventType.ORDER_CREATED.name(), event.actor(), event.occurredAt(),
+                    objectMapper.writeValueAsString(payload));
+        });
     }
 
     /**
@@ -123,15 +130,16 @@ class AuditLogListener {
      */
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(MemberDeactivated event) {
-        Map<String, Object> payload = new LinkedHashMap<>();
-        if (event.transferToMemberId() != null) {
-            payload.put("transferToMemberId", event.transferToMemberId());
-        }
-        payload.put("dealIds", event.dealIds());
-
-        write(AuditLog.of(event.companyId(), "MEMBER", event.memberId(),
-                AuditEventType.MEMBER_DEACTIVATED.name(), event.actor(), event.occurredAt(),
-                objectMapper.writeValueAsString(payload)));
+        write(AuditEventType.MEMBER_DEACTIVATED.name(), () -> {
+            Map<String, Object> payload = new LinkedHashMap<>();
+            if (event.transferToMemberId() != null) {
+                payload.put("transferToMemberId", event.transferToMemberId());
+            }
+            payload.put("dealIds", event.dealIds());
+            return AuditLog.of(event.companyId(), "MEMBER", event.memberId(),
+                    AuditEventType.MEMBER_DEACTIVATED.name(), event.actor(), event.occurredAt(),
+                    objectMapper.writeValueAsString(payload));
+        });
     }
 
     private AuditLog quoteRow(UUID companyId, UUID quoteId, AuditEventType eventType,
@@ -165,13 +173,23 @@ class AuditLogListener {
      * <p><b>직접 적재까지 실패하면 삼킨다.</b> {@code AFTER_COMMIT}에서 새는 예외는 커밋된 요청을
      * 500으로 뒤집고, 같은 트랜잭션의 다른 리스너도 실행되지 않는다.
      */
-    private void write(AuditLog row) {
+    private void write(String eventType, Supplier<AuditLog> row) {
+        AuditLog built;
         try {
-            auditLogWriter.writeAsync(row);
+            built = row.get();
+        } catch (RuntimeException e) {
+            // 조립도 try 안이다 — payload 직렬화와 AuditLog.of 의 null 검사가 여기서 터질 수 있고,
+            // AFTER_COMMIT 에서 새면 커밋된 요청이 500 이 된다
+            log.error("감사 로그를 만들지 못했다 — 이 사건은 기록되지 않는다. eventType={}, {}",
+                    eventType, e.getClass().getName());
+            return;
+        }
+        try {
+            auditLogWriter.writeAsync(built);
         } catch (RuntimeException e) {
             log.warn("감사 로그 제출 실패 — 직접 적재한다. eventType={}, {}",
-                    row.getEventType(), e.getClass().getName());
-            writeNowQuietly(row);
+                    eventType, e.getClass().getName());
+            writeNowQuietly(built);
         }
     }
 

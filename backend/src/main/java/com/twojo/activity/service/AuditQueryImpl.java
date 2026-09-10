@@ -31,7 +31,8 @@ class AuditQueryImpl implements AuditQuery {
 
     @Override
     public List<StageChange> stageChanges(UUID companyId, Instant from, Instant to) {
-        return auditLogRepository.findStageChanges(companyId, AuditEventType.STAGE_MOVED.name(), from, to).stream()
+        return auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
+                        companyId, AuditEventType.STAGE_MOVED.name(), from, to).stream()
                 .map(this::toStageChange)
                 .filter(Objects::nonNull)
                 .toList();

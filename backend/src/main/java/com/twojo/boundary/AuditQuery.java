@@ -27,6 +27,12 @@ public interface AuditQuery {
      *
      * <p>읽히지 않는 {@code payload}가 있는 행은 결과에서 빠진다(예외 아님) — 한 행 때문에 기간
      * 전체 집계가 실패하면 안 된다.
+     *
+     * @param from 하한 — <b>포함</b>이다. null을 받지 않는다
+     * @param to   상한 — <b>제외</b>다. 다음 구간의 하한을 그대로 넘기면 겹치지도 비지도 않는다.
+     *             1월을 물을 때 상한은 {@code 02-01T00:00}이고, 그 시각에 일어난 전이는 2월에만
+     *             들어간다. 상한도 포함하면 경계의 한 건이 두 번 세어지고, 그것을 피하려고 상한을
+     *             당기면 그 사이 마이크로초에 일어난 전이가 어느 기간에도 들어가지 않는다
      */
     List<StageChange> stageChanges(UUID companyId, Instant from, Instant to);
 

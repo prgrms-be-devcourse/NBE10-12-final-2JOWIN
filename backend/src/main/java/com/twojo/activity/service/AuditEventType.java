@@ -17,6 +17,11 @@ enum AuditEventType {
     QUOTE_APPROVED("고객이 견적을 승인했습니다"),
     QUOTE_REJECTED("고객이 견적을 반려했습니다"),
     ORDER_CREATED("주문으로 전환했습니다"),
+
+    /**
+     * 문장이 <b>딜 타임라인에는 쓰이지 않는다</b> — payload 에 {@code dealId}가 없어(#22 3번 표)
+     * 병합 대상이 아니다. 감사 로그 화면이 같은 문장을 쓰게 되면 그때 이 값이 쓰인다.
+     */
     MEMBER_DEACTIVATED("구성원을 비활성화했습니다");
 
     private final String sentence;

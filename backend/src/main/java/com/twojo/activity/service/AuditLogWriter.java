@@ -2,6 +2,7 @@ package com.twojo.activity.service;
 
 import com.twojo.activity.entity.AuditLog;
 import com.twojo.activity.repository.AuditLogRepository;
+import com.twojo.global.config.AsyncConfig;
 import lombok.RequiredArgsConstructor;
 import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Component;
@@ -24,8 +25,15 @@ class AuditLogWriter {
 
     private final AuditLogRepository auditLogRepository;
 
-    /** 별도 스레드에서 적재한다 — 원 작업의 응답을 붙잡지 않는다. */
-    @Async
+    /**
+     * 별도 스레드에서 적재한다 — 원 작업의 응답을 붙잡지 않는다.
+     *
+     * <p><b>실행기를 이름으로 지정한다</b> — 이름 없는 {@code @Async}도 같은 풀로 흐르지만
+     * ({@code AsyncConfig.getAsyncExecutor}), 어느 풀을 쓰는지 코드에 남지 않으면 그 풀의 크기를
+     * 정한 근거와 실제 사용자가 갈린다. 그 풀은 지금 <b>커밋 후 알림 전용</b>으로 적혀 있고
+     * 크기도 그 전제로 정해져 있다 — 감사 적재가 함께 쓰기 시작했다는 사실을 여기 남긴다.
+     */
+    @Async(AsyncConfig.NOTIFICATION_EXECUTOR)
     @Transactional(propagation = Propagation.REQUIRES_NEW)
     public void writeAsync(AuditLog row) {
         auditLogRepository.save(row);
