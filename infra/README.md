@@ -65,7 +65,7 @@ docker compose -f infra/dev/docker-compose.yml up -d
 | 5 | dnszi 에 A 레코드 등록 (`api` → EIP) | 사람 | **4 에서 EIP 가 생긴 뒤에** 가능하다 |
 | 6 | 첫 배포 | CI | Let's Encrypt 발급은 5 가 전파된 뒤에 성공한다 |
 
-메인 스택을 손으로 `apply` 하지 않는다. 그 역할(`2jo-tf-apply`)의 신뢰 조건이 `environment:prod` 라서 **사람의 자격증명으로는 맡을 수 없다** — CI 가 승인을 받아야만 토큰이 나온다.
+메인 스택을 손으로 `apply` 하지 않는다. 그 역할(`2jo-tf-apply`)의 신뢰 조건이 `environment:infra-apply` 라서 **사람의 자격증명으로는 맡을 수 없다** — CI 가 승인을 받아야만 토큰이 나온다.
 
 #### 4 단계 전에 있어야 하는 값
 
