@@ -1,6 +1,7 @@
 package com.twojo.deal.service;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
@@ -15,6 +16,9 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.IllegalTransactionStateException;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 
 /**
  * {@link DealCommand#reassignOpenDeals}의 <b>엔티티 경유 규약</b>을 실제 DB로 고정한다 (MB-14, Q-48).
@@ -27,8 +31,13 @@ import org.springframework.test.context.ActiveProfiles;
  * <p>함께 고정하는 것: 세는 집합({@link DealQuery#countOpenAssigned})과 옮기는 집합이 같다 —
  * 종결(WON)·소프트 삭제·타 구성원 담당은 둘 다에서 빠진다. #134 리뷰에서 C가 찾은 갭이 그 불일치였다.
  *
- * <p>{@code @Transactional}을 붙이지 않는다 — 붙이면 이관이 테스트 트랜잭션에 합류해 flush·커밋이
- * 미뤄지고 version 증가를 DB에서 읽을 수 없다. {@code DealStageConcurrencyTest}와 같은 이유다.
+ * <p>{@code @Transactional}을 <b>클래스에 붙이지 않는다</b> — 붙이면 이관이 테스트 트랜잭션에 합류해
+ * flush·커밋이 미뤄지고 version 증가를 DB에서 읽을 수 없다. {@code DealStageConcurrencyTest}와 같은 이유다.
+ *
+ * <p>대신 이관 호출만 {@link TransactionTemplate}로 감싼다 — 계약이 {@code MANDATORY}라
+ * 트랜잭션 없이 부르면 거부된다 (#227). <b>이 편이 실제와 같다</b>: 운영에서 이 메서드는 항상
+ * {@code MemberAdminService.deactivate}의 쓰기 트랜잭션 안에서 불린다. 예전에는 기본
+ * {@code REQUIRED}라 독립 호출이 되었을 뿐이고, 그 경로는 어디에도 없었다.
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -38,6 +47,14 @@ class DealReassignIntegrationTest {
     private DealCommand dealCommand;
     @Autowired
     private DealQuery dealQuery;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
+
+    /** 운영의 호출자(비활성화)가 여는 것과 같은 쓰기 트랜잭션 — 커밋까지 끝내고 나온다 */
+    private List<UUID> 트랜잭션_안에서_이관() {
+        return new TransactionTemplate(transactionManager)
+                .execute(status -> dealCommand.reassignOpenDeals(companyId, fromMemberId, toMemberId));
+    }
     @Autowired
     private JdbcTemplate jdbc;
 
@@ -109,7 +126,7 @@ class DealReassignIntegrationTest {
         long before = dealQuery.countOpenAssigned(companyId, fromMemberId);
         assertThat(before).isEqualTo(2);   // 세는 집합: LEAD·NEGOTIATION
 
-        List<UUID> moved = dealCommand.reassignOpenDeals(companyId, fromMemberId, toMemberId);
+        List<UUID> moved = 트랜잭션_안에서_이관();
 
         // 옮기는 집합 == 세는 집합 — A는 사전 판정 건수와 반환 건수가 같다고 단언해도 된다
         assertThat(moved).containsExactlyInAnyOrder(leadId, negotiationId);
@@ -140,7 +157,7 @@ class DealReassignIntegrationTest {
                 leadId, negotiationId);
 
         assertThat(dealQuery.countOpenAssigned(companyId, fromMemberId)).isZero();
-        assertThat(dealCommand.reassignOpenDeals(companyId, fromMemberId, toMemberId)).isEmpty();
+        assertThat(트랜잭션_안에서_이관()).isEmpty();
         assertThat(versionOf(leadId)).isZero();
     }
 
@@ -155,5 +172,23 @@ class DealReassignIntegrationTest {
     private boolean updatedRecently(UUID dealId) {
         return jdbc.queryForObject("select updated_at > now() - interval '1 hour' from deal where id = ?",
                 Boolean.class, dealId);
+    }
+
+    /**
+     * <b>계약의 약속을 실제로 지키는지 본다</b> (#227). javadoc이 "호출자의 쓰기 트랜잭션이 필수"라고
+     * 하는데 기본 {@code REQUIRED}면 트랜잭션 없이 불러도 <b>조용히 자기 것을 열고 커밋한다</b> —
+     * 그러면 "비활성화가 롤백되면 이관도 되돌아간다"는 약속이 그 경로에서 깨지고 흔적도 없다.
+     *
+     * <p>{@code MANDATORY}로 올려 그 자리에서 실패하게 했다. 이 단언이 없으면 누군가
+     * {@code @Transactional} 기본값으로 되돌려도 아무도 모른다.
+     */
+    @Test
+    @DisplayName("트랜잭션 없이 부르면 거부한다 — 조용히 자기 트랜잭션을 열지 않는다 (#227)")
+    void 트랜잭션_없는_호출은_거부() {
+        assertThatThrownBy(() -> dealCommand.reassignOpenDeals(companyId, fromMemberId, toMemberId))
+                .isInstanceOf(IllegalTransactionStateException.class);
+
+        assertThat(dealQuery.countOpenAssigned(companyId, fromMemberId)).isEqualTo(2);   // 아무것도 안 옮겼다
+        assertThat(versionOf(leadId)).isZero();
     }
 }
