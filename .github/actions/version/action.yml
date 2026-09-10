@@ -1,0 +1,82 @@
+# 릴리스 버전 계산 (이슈 #280)
+#
+# Release 와 Backend CD 가 같은 머지에서 동시에 돈다. 둘이 같은 버전을
+# 말해야 "이 릴리스가 이 이미지" 가 성립하는데, 규칙을 양쪽에 복사하면
+# 언젠가 어긋난다 — 경로 목록을 두 벌 두었다가 사고가 난 적이 있다 (#228).
+# 그래서 규칙은 여기 한 곳에만 둔다.
+#
+# 빌드 번호로 워크플로 실행 번호를 쓰지 않는 이유도 같다. 실행 번호는
+# 워크플로마다 따로 세어서(같은 커밋에 Release=2, Backend CD=17) 두 쪽이
+# 절대 일치할 수 없다. 커밋 수는 저장소가 가진 값이라 누가 세어도 같다.
+#
+# 호출하는 쪽은 fetch-depth: 0 으로 체크아웃해야 한다 — 태그와 전체
+# 이력이 없으면 직전 릴리스 이후를 볼 수 없다.
+name: 버전 계산
+description: 커밋 규약과 커밋 수로 v0.x.y-develop.N 을 계산한다
+
+outputs:
+  version:
+    description: 계산된 버전 (예 v0.1.2-develop.217)
+    value: ${{ steps.compute.outputs.version }}
+  bump:
+    description: 올린 자리 (minor 또는 patch)
+    value: ${{ steps.compute.outputs.bump }}
+
+runs:
+  using: composite
+  steps:
+    - id: compute
+      shell: bash
+      run: |
+        set -euo pipefail
+
+        # 가장 최근 릴리스 태그. 버전 정렬(-v:refname)을 쓰지 않는 이유는
+        # prerelease 접미사가 붙으면 정렬 결과가 versionsort.suffix 설정에
+        # 좌우되기 때문이다. 우리 태그는 시간순으로만 늘어나므로 생성 시각이
+        # 더 단순하고 틀릴 여지가 없다.
+        last="$(git tag --list 'v*' --sort=-creatordate | head -1)"
+
+        if [ -n "$last" ]; then
+          base="$(printf %s "$last" | sed -E 's/^v//; s/-.*$//')"
+          subjects="$(git log --format=%s "${last}..HEAD")"
+          bodies="$(git log --format=%B "${last}..HEAD")"
+          echo "이전 태그: ${last} (기준 ${base})"
+        else
+          base="0.0.0"
+          subjects="$(git log --format=%s)"
+          bodies="$(git log --format=%B)"
+          echo "이전 태그가 없다 — 0.0.0 에서 시작한다"
+        fi
+
+        # 규약을 따르는 커밋만 본다. 규약 밖(`[A] …` 형식)은 자동으로
+        # patch 로 떨어진다 — 틀린 버전이 나오지는 않고 정확도만 낮아진다.
+        bump="patch"
+        if printf '%s\n' "$subjects" | grep -qE '^feat(\([^)]*\))?:'; then
+          bump="minor"
+        fi
+
+        # 0.x 에서는 breaking 도 minor 로 본다. major 를 올리면
+        # v1.0.0-develop.N 이 되어 제출용 v1.0.0 을 미리 써버린다
+        # (docs/13-dev-workflow.md §1.1).
+        if printf '%s\n' "$subjects" | grep -qE '^[a-z]+(\([^)]*\))?!:' \
+          || printf '%s\n' "$bodies" | grep -q 'BREAKING CHANGE'; then
+          echo "::notice::breaking 표기를 찾았다 — 0.x 라 minor 로 올린다"
+          bump="minor"
+        fi
+
+        IFS=. read -r ma mi pa <<< "$base"
+        case "$bump" in
+          minor) mi=$((mi + 1)); pa=0 ;;
+          patch) pa=$((pa + 1)) ;;
+        esac
+
+        # 빌드 번호 = 이 커밋까지의 커밋 수. 단조 증가하고, 어느 워크플로가
+        # 세어도 같은 값이 나온다.
+        count="$(git rev-list --count HEAD)"
+
+        version="v${ma}.${mi}.${pa}-develop.${count}"
+        echo "판정: ${bump} → ${version}"
+        {
+          echo "version=${version}"
+          echo "bump=${bump}"
+        } >> "$GITHUB_OUTPUT"

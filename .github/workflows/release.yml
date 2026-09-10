@@ -3,10 +3,11 @@
 # 지금까지 "서버에 뭐가 떠 있나" 의 답이 40자 SHA 뿐이었다. 자동 롤백은
 # 직전 SHA 로 잘 돌아가지만, 사람이 "두 개 전으로" 라고 말할 이름이 없었다.
 #
-# 버전  v0.<minor>.<patch>-develop.<실행번호>
+# 버전  v0.<minor>.<patch>-develop.<커밋수>
 #   0.<minor>.<patch>  커밋 규약에서 계산 (feat -> minor, 나머지 -> patch)
 #   -develop           develop 에서 나온 빌드. 최종은 제출 때 main 의 v1.0.0
-#   .<실행번호>         단조 증가
+#   .<커밋수>           단조 증가. Backend CD 와 같은 값을 얻으려고
+#                      워크플로 실행 번호 대신 쓴다 (.github/actions/version)
 #
 # AWS 를 만지지 않는다. 실패해도 배포에 영향이 없다.
 #
@@ -41,54 +42,7 @@ jobs:
 
       - id: version
         name: 1. 버전 계산
-        run: |
-          set -euo pipefail
-
-          # 가장 최근 릴리스 태그. 버전 정렬(-v:refname)을 쓰지 않는 이유는
-          # prerelease 접미사가 붙으면 정렬 결과가 versionsort.suffix 설정에
-          # 좌우되기 때문이다. 우리 태그는 시간순으로만 늘어나므로 생성 시각이
-          # 더 단순하고 틀릴 여지가 없다.
-          last="$(git tag --list 'v*' --sort=-creatordate | head -1)"
-
-          if [ -n "$last" ]; then
-            base="$(printf %s "$last" | sed -E 's/^v//; s/-.*$//')"
-            subjects="$(git log --format=%s "${last}..HEAD")"
-            bodies="$(git log --format=%B "${last}..HEAD")"
-            echo "이전 태그: ${last} (기준 ${base})"
-          else
-            base="0.0.0"
-            subjects="$(git log --format=%s)"
-            bodies="$(git log --format=%B)"
-            echo "이전 태그가 없다 — 0.0.0 에서 시작한다"
-          fi
-
-          # 규약을 따르는 커밋만 본다. 규약 밖(`[A] …` 형식)은 자동으로
-          # patch 로 떨어진다 — 틀린 버전이 나오지는 않고 정확도만 낮아진다.
-          # 지금 develop 커밋의 43% 가 규약 밖이다 (#280).
-          bump="patch"
-          if printf '%s\n' "$subjects" | grep -qE '^feat(\([^)]*\))?:'; then
-            bump="minor"
-          fi
-
-          # 0.x 에서는 breaking 도 minor 로 본다. major 를 올리면
-          # v1.0.0-develop.N 이 되어 제출용 v1.0.0 을 미리 써버린다
-          # (docs/13-dev-workflow.md §1.1).
-          if printf '%s\n' "$subjects" | grep -qE '^[a-z]+(\([^)]*\))?!:' \
-            || printf '%s\n' "$bodies" | grep -q 'BREAKING CHANGE'; then
-            echo "::notice::breaking 표기를 찾았다 — 0.x 라 minor 로 올린다"
-            bump="minor"
-          fi
-
-          IFS=. read -r ma mi pa <<< "$base"
-          case "$bump" in
-            minor) mi=$((mi + 1)); pa=0 ;;
-            patch) pa=$((pa + 1)) ;;
-          esac
-
-          version="v${ma}.${mi}.${pa}-develop.${GITHUB_RUN_NUMBER}"
-          echo "판정: ${bump} → ${version}"
-          echo "version=${version}" >> "$GITHUB_OUTPUT"
-          echo "bump=${bump}" >> "$GITHUB_OUTPUT"
+        uses: ./.github/actions/version
 
       - id: publish
         name: 2. 태그 · 릴리스 생성
