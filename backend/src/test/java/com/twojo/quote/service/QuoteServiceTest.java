@@ -10,6 +10,7 @@ import static org.mockito.Mockito.never;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditActorType;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
@@ -20,6 +21,7 @@ import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.sequence.DocumentNumberService;
 import com.twojo.global.sequence.DocumentSequence.DocType;
+import com.twojo.quote.QuoteSent;
 import com.twojo.quote.dto.QuoteRequests;
 import com.twojo.quote.entity.Quote;
 import com.twojo.quote.entity.QuoteItem;
@@ -40,6 +42,7 @@ import org.mockito.Mockito;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.test.util.ReflectionTestUtils;
@@ -73,6 +76,7 @@ class QuoteServiceTest {
     @Mock private DealCommand dealCommand;
     @Mock private CustomerQuery customerQuery;
     @Mock private ViewTokenCommand viewTokenCommand;
+    @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private QuoteService quoteService;
 
     private static DealQuery.DealSummary dealSummary() {
@@ -420,6 +424,46 @@ class QuoteServiceTest {
                     .isEqualTo(ErrorCode.QUOTE_EMPTY_ITEMS);
 
             then(viewTokenCommand).shouldHaveNoInteractions();
+        }
+
+        /**
+         * 발송 감사 이벤트 (AC-07, #22). 행위자는 발송한 <b>구성원</b>이다 — 딜 승급이 함께
+         * 일으키는 {@code DealStageChanged}가 SYSTEM인 것과 갈린다. 두 사건의 주체가 다르다.
+         */
+        @Test
+        @DisplayName("발송에 성공하면 QuoteSent(MEMBER)를 발행한다")
+        void 발송_발행() {
+            Quote quote = sendableQuote();
+            quoteExists(quote);
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(true);
+            given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
+            given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(true);
+
+            quoteService.send(SALES, QUOTE_ID, new QuoteRequests.SendQuote(CONTACT_ID, null));
+
+            ArgumentCaptor<QuoteSent> event = ArgumentCaptor.forClass(QuoteSent.class);
+            then(eventPublisher).should().publishEvent(event.capture());
+            assertThat(event.getValue().quoteId()).isEqualTo(QUOTE_ID);
+            assertThat(event.getValue().dealId()).isEqualTo(DEAL_ID);
+            assertThat(event.getValue().companyId()).isEqualTo(COMPANY_ID);
+            assertThat(event.getValue().quoteNo()).isEqualTo(quote.getQuoteNo());
+            assertThat(event.getValue().actor().type()).isEqualTo(AuditActorType.MEMBER);
+            assertThat(event.getValue().actor().actorId()).isEqualTo(SALES_ID);
+            assertThat(event.getValue().occurredAt()).isEqualTo(quote.getSentAt());   // 발송 시각과 같은 값이다
+        }
+
+        /** 검증에 걸려 되돌아간 요청은 사건이 아니다 — 발송되지 않은 견적이 타임라인에 남으면 안 된다 */
+        @Test
+        @DisplayName("검증에 걸리면 발행하지 않는다")
+        void 차단시_미발행() {
+            quoteExists(sendableQuote());
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(false);
+
+            assertThatThrownBy(() -> quoteService.send(SALES, QUOTE_ID,
+                    new QuoteRequests.SendQuote(CONTACT_ID, null)))
+                    .isInstanceOf(BusinessException.class);
+
+            then(eventPublisher).shouldHaveNoInteractions();
         }
     }
 

@@ -1,13 +1,17 @@
 package com.twojo.deal.service;
 
+import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.DealCommand;
+import com.twojo.deal.DealStageChanged;
 import com.twojo.deal.entity.Deal;
 import com.twojo.deal.repository.DealRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import java.time.Instant;
 import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,17 +32,43 @@ import org.springframework.transaction.annotation.Transactional;
 class DealCommandImpl implements DealCommand {
 
     private final DealRepository dealRepository;
+    private final ApplicationEventPublisher eventPublisher;
 
     @Override
     @Transactional
     public void promoteToQuoteStage(UUID dealId) {
-        find(dealId).promoteToQuoteStage();   // 종결이면 여기서 막힌다 · 견적·협상이면 무동작
+        Deal deal = find(dealId);
+        Deal.Stage before = deal.getStage();
+        deal.promoteToQuoteStage();   // 종결이면 여기서 막힌다 · 견적·협상이면 무동작
+        publishIfMoved(deal, before);
     }
 
     @Override
     @Transactional
     public void markWon(UUID dealId) {
-        find(dealId).win();   // 이미 성사면 무동작 · 실패면 DEAL_NOT_OPEN
+        Deal deal = find(dealId);
+        Deal.Stage before = deal.getStage();
+        deal.win();   // 이미 성사면 무동작 · 실패면 DEAL_NOT_OPEN
+        publishIfMoved(deal, before);
+    }
+
+    /**
+     * 시스템 전이 감사 이벤트 (AC-07, #22) — <b>단계가 실제로 바뀐 경우에만</b> 발행한다.
+     *
+     * <p>이 계약의 두 메서드는 <b>멱등</b>이다. 이미 견적·협상인 딜의 승급(Q-25)과 이미 성사인
+     * 딜의 성사(OD-06)는 아무 일도 하지 않는데, 그때도 발행하면 타임라인에 "견적 → 견적" 같은
+     * <b>일어나지 않은 변화</b>가 쌓인다. 두 번째 승인 견적을 전환할 때마다 성사 기록이 늘어난다.
+     *
+     * <p>행위자는 {@code SYSTEM}이다 — 다른 도메인의 사건이 Deal을 움직인 것이라 사람이 없다 (#22 3번).
+     * {@code lostReason}은 이 두 전이의 도착 단계가 LOST가 아니라 항상 null이다.
+     */
+    private void publishIfMoved(Deal deal, Deal.Stage before) {
+        if (deal.getStage() == before) {
+            return;
+        }
+        eventPublisher.publishEvent(new DealStageChanged(
+                deal.getCompanyId(), deal.getId(), AuditActor.system(), Instant.now(),
+                before.name(), deal.getStage().name(), null));
     }
 
     /** 없으면 RESOURCE_NOT_FOUND — 조용히 무동작하면 주문은 생겼는데 딜은 그대로인 상태가 남는다 */

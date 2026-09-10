@@ -11,6 +11,7 @@ import static org.mockito.Mockito.verify;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditActorType;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
@@ -24,6 +25,7 @@ import com.twojo.global.error.MissingReferenceException;
 import com.twojo.global.sequence.DocumentNumberService;
 import com.twojo.global.sequence.DocumentSequence.DocType;
 import com.twojo.order.dto.OrderResponses;
+import com.twojo.order.OrderCreated;
 import com.twojo.order.entity.Order;
 import com.twojo.order.repository.OrderRepository;
 import java.time.Instant;
@@ -39,6 +41,7 @@ import org.mockito.Captor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 
@@ -75,6 +78,7 @@ class OrderServiceTest {
     @Mock private DealCommand dealCommand;
     @Mock private CustomerQuery customerQuery;
     @Mock private DocumentNumberService documentNumberService;
+    @Mock private ApplicationEventPublisher eventPublisher;
 
     @InjectMocks private OrderService orderService;
 
@@ -135,8 +139,38 @@ class OrderServiceTest {
         assertThat(response.dealStage()).isEqualTo("WON");
     }
 
+    /**
+     * 전환 감사 이벤트 (AC-07, #22). 행위자는 전환을 요청한 <b>구성원</b>이다 —
+     * 같은 트랜잭션에서 {@code markWon}이 일으키는 {@code DealStageChanged}는 SYSTEM이라
+     * 두 사건의 주체가 갈린다. {@code quoteId}가 실려 주문과 출처 견적이 이어진다.
+     */
     @Test
-    @DisplayName("이미 전환된 견적은 QUOTE_ALREADY_CONVERTED — 채번도 성사도 일어나지 않는다 (OD-03)")
+    @DisplayName("전환에 성공하면 OrderCreated(MEMBER)를 발행한다")
+    void 전환_발행() {
+        전환_가능한_견적();
+        given(dealQuery.summariesByIds(COMPANY_ID, List.of(DEAL_ID)))
+                .willReturn(List.of(딜("NEGOTIATION")), List.of(딜("WON")));
+        given(dealQuery.customerIdOf(DEAL_ID)).willReturn(CUSTOMER_ID);
+        given(customerQuery.get(ctx, CUSTOMER_ID))
+                .willReturn(new CustomerQuery.CustomerSummary(CUSTOMER_ID, "도담산업"));
+        given(documentNumberService.next(COMPANY_ID, DocType.ORDER)).willReturn("O-2609-001");
+        given(orderRepository.save(any(Order.class))).willAnswer(call -> call.getArgument(0));
+
+        orderService.convert(ctx, QUOTE_ID);
+
+        ArgumentCaptor<OrderCreated> event = ArgumentCaptor.forClass(OrderCreated.class);
+        verify(eventPublisher).publishEvent(event.capture());
+        assertThat(event.getValue().orderNo()).isEqualTo("O-2609-001");
+        assertThat(event.getValue().quoteId()).isEqualTo(QUOTE_ID);
+        assertThat(event.getValue().dealId()).isEqualTo(DEAL_ID);
+        assertThat(event.getValue().companyId()).isEqualTo(COMPANY_ID);
+        assertThat(event.getValue().actor().type()).isEqualTo(AuditActorType.MEMBER);
+        assertThat(event.getValue().actor().actorId()).isEqualTo(MEMBER_ID);
+    }
+
+    /** 주문이 만들어지지 않은 요청은 사건이 아니다 — 없는 주문이 타임라인에 남으면 안 된다 */
+    @Test
+    @DisplayName("이미 전환된 견적은 QUOTE_ALREADY_CONVERTED — 채번도 성사도 발행도 일어나지 않는다 (OD-03)")
     void 재전환_차단() {
         전환_가능한_견적();
         given(dealQuery.summariesByIds(COMPANY_ID, List.of(DEAL_ID))).willReturn(List.of(딜("WON")));
@@ -151,6 +185,7 @@ class OrderServiceTest {
         verify(documentNumberService, never()).next(any(), any());
         verify(orderRepository, never()).save(any());
         verify(dealCommand, never()).markWon(any());
+        verify(eventPublisher, never()).publishEvent(any(Object.class));
     }
 
     /**
@@ -205,6 +240,7 @@ class OrderServiceTest {
 
         verify(orderRepository, never()).save(any());
         verify(dealCommand, never()).markWon(any());
+        verify(eventPublisher, never()).publishEvent(any(Object.class));
     }
 
     /**
