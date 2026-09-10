@@ -2,6 +2,7 @@ package com.twojo.order.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
@@ -15,6 +16,7 @@ import com.twojo.global.sequence.DocumentNumberService;
 import com.twojo.global.sequence.DocumentSequence.DocType;
 import com.twojo.order.dto.OrderRequests;
 import com.twojo.order.dto.OrderResponses;
+import com.twojo.order.OrderCreated;
 import com.twojo.order.entity.Order;
 import com.twojo.order.repository.OrderRepository;
 import java.time.Instant;
@@ -27,6 +29,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
@@ -64,6 +67,7 @@ public class OrderService {
     private final DealCommand dealCommand;
     private final CustomerQuery customerQuery;
     private final DocumentNumberService documentNumberService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 승인 견적 → 주문 전환 (OD-01~07, Q-25).
@@ -97,6 +101,12 @@ public class OrderService {
         String orderNo = documentNumberService.next(ctx.companyId(), DocType.ORDER);   // OD-07
         Order order = orderRepository.save(Order.from(ctx.companyId(), snapshot, orderNo));
         dealCommand.markWon(origin.dealId());   // OD-06 — 진행 중이면 단계 무관, 이미 성사면 무동작
+
+        // 전환 감사 이벤트 (AC-07, #22). 자동 성사가 함께 일어난 경우 같은 트랜잭션에서
+        // DealStageChanged(SYSTEM)도 발행되는데, 그건 markWon 안쪽 몫이라 여기서 손대지 않는다.
+        eventPublisher.publishEvent(new OrderCreated(order.getCompanyId(), order.getId(),
+                origin.dealId(), order.getOrderNo(), quoteId,
+                AuditActor.member(ctx.memberId()), Instant.now()));
 
         // 단계를 다시 읽어 응답에 싣는다 — 방금 일으킨 자동 성사를 응답이 부정하면 안 된다.
         // 명시적 flush는 필요 없다: dealStage는 엔티티가 아니라 쿼리(summariesByIds)로 읽고,

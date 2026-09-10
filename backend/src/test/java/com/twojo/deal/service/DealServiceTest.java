@@ -10,9 +10,11 @@ import static org.mockito.Mockito.never;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditActorType;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.Role;
+import com.twojo.deal.DealStageChanged;
 import com.twojo.deal.dto.DealRequests;
 import com.twojo.deal.entity.Deal;
 import com.twojo.deal.repository.DealRepository;
@@ -30,6 +32,7 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageImpl;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
@@ -57,6 +60,7 @@ class DealServiceTest {
     @Mock private DealRepository dealRepository;
     @Mock private CustomerQuery customerQuery;
     @Mock private MemberQuery memberQuery;
+    @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private DealService dealService;
 
     private static Deal deal(UUID id, UUID assigneeId) {
@@ -267,6 +271,83 @@ class DealServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+        }
+    }
+
+    /**
+     * 단계 전이 감사 이벤트 (AC-07, #22) — 수동 전이 네 개는 {@code moveStage} 한 곳을 지난다.
+     *
+     * <p>여기서 고정하는 것은 셋이다: <b>전이 전</b> 단계가 실려야 하고(전이 뒤에는 알 방법이 없다),
+     * 행위자가 요청한 <b>구성원</b>이어야 하며(자동 전이의 SYSTEM과 갈린다),
+     * {@code lostReason}은 <b>실패일 때만</b> 실려야 한다 (DL-11).
+     */
+    @Nested
+    @DisplayName("단계 전이 이벤트 (AC-07)")
+    class StageEvent {
+
+        private Deal 담당딜(UUID dealId) {
+            Deal deal = deal(dealId, SALES_ID);
+            given(dealRepository.findByIdAndCompanyIdAndDeletedAtIsNull(dealId, COMPANY_ID))
+                    .willReturn(Optional.of(deal));
+            given(customerQuery.get(eq(SALES), any()))
+                    .willReturn(new CustomerQuery.CustomerSummary(CUSTOMER_ID, "한빛"));
+            given(memberQuery.get(SALES_ID))
+                    .willReturn(new MemberQuery.MemberSummary(SALES_ID, "박지훈", true));
+            return deal;
+        }
+
+        private DealStageChanged 발행된_이벤트() {
+            ArgumentCaptor<DealStageChanged> captor = ArgumentCaptor.forClass(DealStageChanged.class);
+            then(eventPublisher).should().publishEvent(captor.capture());
+            return captor.getValue();
+        }
+
+        @Test
+        @DisplayName("진행 시 전이 전·후 단계와 요청한 구성원이 실린다")
+        void 진행_발행() {
+            UUID dealId = UUID.randomUUID();
+            Deal deal = 담당딜(dealId);
+
+            dealService.advance(SALES, dealId, new DealRequests.StageMove(0));
+
+            DealStageChanged event = 발행된_이벤트();
+            assertThat(event.beforeStage()).isEqualTo("LEAD");
+            assertThat(event.afterStage()).isEqualTo("CONSULT");
+            assertThat(event.dealId()).isEqualTo(deal.getId());
+            assertThat(event.companyId()).isEqualTo(COMPANY_ID);
+            assertThat(event.actor().type()).isEqualTo(AuditActorType.MEMBER);
+            assertThat(event.actor().actorId()).isEqualTo(SALES_ID);
+            assertThat(event.lostReason()).isNull();   // 실패가 아니면 비어 있다
+        }
+
+        @Test
+        @DisplayName("실패 처리에는 사유가 함께 실린다 — 타임라인에서 이유를 보려면 필요하다 (DL-11)")
+        void 실패_발행() {
+            UUID dealId = UUID.randomUUID();
+            담당딜(dealId);
+
+            dealService.lose(SALES, dealId, new DealRequests.LoseDeal("경쟁사 선정", 0));
+
+            DealStageChanged event = 발행된_이벤트();
+            assertThat(event.afterStage()).isEqualTo("LOST");
+            assertThat(event.lostReason()).isEqualTo("경쟁사 선정");
+        }
+
+        /**
+         * 버전이 어긋나면 전이 자체가 일어나지 않는다 — 그때 이벤트가 나가면
+         * <b>실패한 요청이 타임라인에 남는다.</b>
+         */
+        @Test
+        @DisplayName("버전 충돌로 전이가 막히면 발행하지 않는다")
+        void 충돌시_미발행() {
+            UUID dealId = UUID.randomUUID();
+            given(dealRepository.findByIdAndCompanyIdAndDeletedAtIsNull(dealId, COMPANY_ID))
+                    .willReturn(Optional.of(deal(dealId, SALES_ID)));
+
+            assertThatThrownBy(() -> dealService.advance(SALES, dealId, new DealRequests.StageMove(7)))
+                    .isInstanceOf(BusinessException.class);
+
+            then(eventPublisher).should(never()).publishEvent(any(DealStageChanged.class));
         }
     }
 }

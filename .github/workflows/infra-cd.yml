@@ -52,7 +52,7 @@ jobs:
     runs-on: ubuntu-latest
     # 승인 게이트. Environment 에 Required reviewers 를 걸면
     # 승인 전에는 OIDC 토큰 자체가 발급되지 않는다 — 브랜치 기준으로는 안 되는 것
-    environment: prod
+    environment: infra-apply
     permissions:
       contents: read
       id-token: write

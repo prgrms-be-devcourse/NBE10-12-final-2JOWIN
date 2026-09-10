@@ -2,6 +2,7 @@ package com.twojo.quote.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.DealCommand;
 import com.twojo.boundary.DealQuery;
@@ -13,6 +14,7 @@ import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
 import com.twojo.global.sequence.DocumentNumberService;
 import com.twojo.global.sequence.DocumentSequence.DocType;
+import com.twojo.quote.QuoteSent;
 import com.twojo.quote.dto.QuoteRequests;
 import com.twojo.quote.dto.QuoteResponses;
 import com.twojo.quote.entity.Quote;
@@ -26,6 +28,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,6 +76,7 @@ public class QuoteService {
     private final ViewTokenCommand viewTokenCommand;
     private final ProductQuery productQuery;
     private final DocumentNumberService documentNumberService;
+    private final ApplicationEventPublisher eventPublisher;
 
     /**
      * 작성 시작 (QT-01) — 빈 DRAFT 하나를 만든다. 항목은 이어지는 PUT이 채운다.
@@ -154,8 +158,13 @@ public class QuoteService {
         quote.requireSendable(LocalDate.now(SEOUL));
 
         viewTokenCommand.issue(quoteId, request.recipientContactId(), request.message());   // message는 메일 본문에 (#183)
-        dealCommand.promoteToQuoteStage(dealId);
-        quote.markSent(Instant.now());
+        dealCommand.promoteToQuoteStage(dealId);   // 승급이 일어났다면 그 안에서 DealStageChanged(SYSTEM)가 발행된다
+        Instant sentAt = Instant.now();
+        quote.markSent(sentAt);
+
+        // 발송 감사 이벤트 (AC-07, #22) — requireSendable을 통과한 뒤라 여기 도달하면 반드시 전이다
+        eventPublisher.publishEvent(new QuoteSent(quote.getCompanyId(), quoteId, dealId,
+                quote.getQuoteNo(), AuditActor.member(ctx.memberId()), sentAt));
 
         // 승급이 반영된 단계를 다시 읽는다 — 규칙을 여기서 다시 계산하면 전이표와 두 벌이 된다.
         // 같은 트랜잭션이라 조회가 더티 엔티티를 flush시켜 갱신된 값이 온다.

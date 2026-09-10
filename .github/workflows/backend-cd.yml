@@ -4,9 +4,11 @@
 #   이미지는 ECR 로 가고, 명령은 SSH 로 간다. 22번은 배포하는 동안만
 #   러너 공인 IP /32 로 열렸다가 회수된다 (.github/actions/remote-deploy).
 #
-# 승인 게이트가 보안 장치이기도 하다. 배포 역할의 신뢰 조건이
-# repo:<org>/<repo>:environment:prod 라서, 승인 전에는 OIDC 토큰 자체가
-# 발급되지 않는다. 브랜치 보호가 '코드가 들어오는 것'을 막는다면
+# Environment 가 보안 장치이기도 하다. 배포 역할의 신뢰 조건이
+# repo:<org>/<repo>:environment:backend-deploy 라서, 이 환경을 거치지
+# 않으면 OIDC 토큰의 sub 가 달라져 AWS 접근 자체가 막힌다. 환경에는
+# 브랜치 정책(develop 만)이 걸려 있어, 기능 브랜치에서 수동 실행해도
+# 운영에 닿지 못한다. 브랜치 보호가 '코드가 들어오는 것'을 막는다면
 # 이건 'AWS 를 만지는 것'을 막는다.
 #
 # 설계 근거: cd.md
@@ -74,12 +76,12 @@ jobs:
 
     # 이 환경에는 승인자가 없다. 팀원 5명이 머지하는데 승인자 1명이 매번
     # 챙기는 것은 현실적이지 않고, 결국 "일단 승인" 이 되어 게이트가 형식만
-    # 남는다. 인프라 apply 는 여전히 prod(승인 있음)를 쓴다.
+    # 남는다. 인프라 apply 는 여전히 infra-apply(승인 있음)를 쓴다.
     #
     # environment 를 지우면 안 된다. 배포 역할의 신뢰 조건이
     # environment:<이름> 이라, 빼면 OIDC 토큰의 sub 가 달라져 AWS 접근
     # 자체가 막힌다. 승인은 환경 설정에서 빼는 것이지 이 줄이 아니다.
-    environment: prod-deploy
+    environment: backend-deploy
 
     # SSH 가 종료 코드를 직접 돌려주므로 폴링 상한 대신 job 타임아웃으로 막는다.
     # 최악 케이스 290초(pull 30 + up 10 + health 90 + 타깃확인 60 + 롤백 10 + health 90)에
