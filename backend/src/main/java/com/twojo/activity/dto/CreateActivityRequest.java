@@ -2,6 +2,7 @@ package com.twojo.activity.dto;
 
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
+import jakarta.validation.constraints.Pattern;
 import java.time.Instant;
 
 /**
@@ -14,6 +15,7 @@ import java.time.Instant;
  * <p>작성자는 서버가 AccessContext에서 채운다 — 요청 바디에 없다.
  */
 public record CreateActivityRequest(
-        @NotBlank String channel,
+        @NotNull @Pattern(regexp = "CALL|MEETING|EMAIL",
+                 message = "수단은 CALL·MEETING·EMAIL 중 하나입니다.") String channel,
         @NotBlank String content,
         @NotNull Instant occurredAt) {}
