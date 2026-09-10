@@ -225,7 +225,9 @@ export const quoteHandlers = [
     if (!quote) return notFound()
     const deal = findDeal(quote.dealId)!
     if (!isOpenStage(deal.stage)) return error('QUOTE_DEAL_CLOSED')
-    const validUntil = quote.validUntil > today() ? quote.validUntil : new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)
+    // 원본 기간을 물려받지 않는다 — QT-31("유효기간 연장은 v1에서 복제로 우회")이 성립하려면
+    // 항상 새로 정해야 한다. 서버도 오늘 + 30일이다 (QuoteService.DEFAULT_VALIDITY_DAYS).
+    const validUntil = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
     const created: QuoteRow = {
       ...quote, id: crypto.randomUUID(), quoteNo: nextDocNo('QUOTE'), status: 'DRAFT', validUntil,
       clonedFromQuoteId: quote.id, supersededByQuoteId: null, rejectReason: null, responderName: null, responderTitle: null,
