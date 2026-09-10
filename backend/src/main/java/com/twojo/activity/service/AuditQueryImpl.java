@@ -4,6 +4,7 @@ import com.twojo.activity.entity.AuditLog;
 import com.twojo.activity.repository.AuditLogRepository;
 import com.twojo.boundary.AuditQuery;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
@@ -30,9 +31,10 @@ class AuditQueryImpl implements AuditQuery {
     private final ObjectMapper objectMapper;
 
     @Override
-    public List<StageChange> stageChanges(UUID companyId, Instant from, Instant to) {
+    public List<StageChange> stageChanges(UUID companyId, LocalDate from, LocalDate to) {
         return auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
-                        companyId, AuditEventType.STAGE_MOVED.name(), from, to).stream()
+                        companyId, AuditEventType.STAGE_MOVED.name(),
+                        AuditPeriod.startOfDay(from), AuditPeriod.startOfNextDay(to)).stream()
                 .map(this::toStageChange)
                 .filter(Objects::nonNull)
                 .toList();

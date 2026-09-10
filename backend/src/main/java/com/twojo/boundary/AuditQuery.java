@@ -1,6 +1,7 @@
 package com.twojo.boundary;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 
@@ -22,19 +23,21 @@ public interface AuditQuery {
      * <p><b>행위자 축이 없다.</b> 자동 승급·자동 성사는 {@code SYSTEM}이라 actor로 담당자별 집계를
      * 하면 그 건들이 통째로 빠진다. {@code dealId}로 담당자를 되짚는다.
      *
+     * <p><b>기간은 한국 날짜로 받는다.</b> 시각이 아니라 날짜인 이유는 경계 계산을 이 모듈이
+     * 소유하기 때문이다 — {@code occurred_at}이 여기 컬럼이고, 호출자가 KST로 끊어 넘기면 같은
+     * 규칙이 모듈마다 한 벌씩 생긴다 ({@code OrderQuery.wonTotalsByQuotes}와 같은 축이다).
+     *
      * <p><b>리스너가 붙기 전의 전이는 없다.</b> {@code deal}에 현재 단계 한 칸만 있고 이력 테이블이
      * 없어 과거를 복원할 원천이 없다 — 초기 수치는 실제보다 낮다.
      *
      * <p>읽히지 않는 {@code payload}가 있는 행은 결과에서 빠진다(예외 아님) — 한 행 때문에 기간
      * 전체 집계가 실패하면 안 된다.
      *
-     * @param from 하한 — <b>포함</b>이다. null을 받지 않는다
-     * @param to   상한 — <b>제외</b>다. 다음 구간의 하한을 그대로 넘기면 겹치지도 비지도 않는다.
-     *             1월을 물을 때 상한은 {@code 02-01T00:00}이고, 그 시각에 일어난 전이는 2월에만
-     *             들어간다. 상한도 포함하면 경계의 한 건이 두 번 세어지고, 그것을 피하려고 상한을
-     *             당기면 그 사이 마이크로초에 일어난 전이가 어느 기간에도 들어가지 않는다
+     * @param from 전이일 하한(<b>포함</b>) — 한국 날짜다. null을 받지 않는다
+     * @param to   전이일 상한(<b>포함</b>) — 그날 끝까지다. 1월을 물으면 {@code 01-31}이다.
+     *             내부에서는 다음 날 0시 미만으로 끊어 인접한 두 기간이 겹치지도 비지도 않게 한다
      */
-    List<StageChange> stageChanges(UUID companyId, Instant from, Instant to);
+    List<StageChange> stageChanges(UUID companyId, LocalDate from, LocalDate to);
 
     record StageChange(UUID dealId, String beforeStage, String afterStage, Instant occurredAt) {}
 }

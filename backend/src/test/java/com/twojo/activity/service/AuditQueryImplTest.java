@@ -9,6 +9,7 @@ import com.twojo.activity.repository.AuditLogRepository;
 import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.AuditQuery;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
@@ -27,8 +28,12 @@ class AuditQueryImplTest {
 
     private static final UUID COMPANY_ID = UUID.randomUUID();
     private static final UUID DEAL_ID = UUID.randomUUID();
-    private static final Instant FROM = Instant.parse("2026-09-01T00:00:00Z");
-    private static final Instant TO = Instant.parse("2026-09-30T00:00:00Z");
+    private static final LocalDate FROM = LocalDate.of(2026, 9, 1);
+    private static final LocalDate TO = LocalDate.of(2026, 9, 30);
+
+    /** KST 로 끊는다 — 9/1 0시부터 10/1 0시 직전까지가 "9월" 이다. */
+    private static final Instant FROM_AT = Instant.parse("2026-08-31T15:00:00Z");
+    private static final Instant TO_EXCLUSIVE = Instant.parse("2026-09-30T15:00:00Z");
 
     @Mock private AuditLogRepository auditLogRepository;
 
@@ -43,7 +48,7 @@ class AuditQueryImplTest {
     @DisplayName("payload 의 changes 에서 before·after 를 꺼내 준다 — 저장 형식은 나가지 않는다")
     void stageChanges_extractsBeforeAndAfter() {
         given(auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
-                COMPANY_ID, "STAGE_MOVED", FROM, TO))
+                COMPANY_ID, "STAGE_MOVED", FROM_AT, TO_EXCLUSIVE))
                 .willReturn(List.of(stageMoved("CONSULT", "QUOTE")));
 
         List<AuditQuery.StageChange> changes = auditQuery.stageChanges(COMPANY_ID, FROM, TO);
@@ -63,7 +68,7 @@ class AuditQueryImplTest {
     @DisplayName("읽히지 않는 payload 행은 결과에서 빠진다 — 예외를 던지지 않는다")
     void stageChanges_brokenPayload_isSkipped() {
         given(auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
-                COMPANY_ID, "STAGE_MOVED", FROM, TO))
+                COMPANY_ID, "STAGE_MOVED", FROM_AT, TO_EXCLUSIVE))
                 .willReturn(List.of(broken(), stageMoved("QUOTE", "WON")));
 
         List<AuditQuery.StageChange> changes = auditQuery.stageChanges(COMPANY_ID, FROM, TO);
@@ -73,20 +78,20 @@ class AuditQueryImplTest {
     }
 
     /**
-     * 경계 규약(하한 포함·상한 제외)은 파생 쿼리 <b>메서드 이름</b>이 만든다 — 목은 SQL 을
-     * 만들지 않으므로 여기서 검증되지 않는다. 이 테스트가 지키는 것은 서비스가 받은 범위를
-     * 손대지 않고 그대로 넘긴다는 것뿐이다.
+     * <b>날짜를 KST 시각으로 끊어 넘긴다.</b> 상한은 그날을 포함해야 하므로 <b>다음 날</b> 0시가
+     * 되고, 조회는 그 값 미만으로 끊는다 — 그래야 인접한 두 기간이 겹치지도 비지도 않는다.
+     * 시간대를 서버 기본값으로 끊으면 자정 부근 전이가 옆 달로 샌다.
      */
     @Test
-    @DisplayName("기간을 그대로 리포지토리에 넘긴다 — 서비스가 값을 바꾸지 않는다")
-    void stageChanges_passesRangeThrough() {
+    @DisplayName("한국 날짜를 시각 경계로 끊어 넘긴다 — 상한은 다음 날 0시다")
+    void stageChanges_convertsDatesToSeoulBoundaries() {
         given(auditLogRepository.findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
-                COMPANY_ID, "STAGE_MOVED", FROM, TO)).willReturn(List.of());
+                COMPANY_ID, "STAGE_MOVED", FROM_AT, TO_EXCLUSIVE)).willReturn(List.of());
 
         auditQuery.stageChanges(COMPANY_ID, FROM, TO);
 
         then(auditLogRepository).should().findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
-                COMPANY_ID, "STAGE_MOVED", FROM, TO);
+                COMPANY_ID, "STAGE_MOVED", FROM_AT, TO_EXCLUSIVE);
     }
 
     private static AuditLog stageMoved(String before, String after) {
