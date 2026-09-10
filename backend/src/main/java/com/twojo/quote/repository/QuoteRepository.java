@@ -119,6 +119,10 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
      *
      * <p>{@code findIdsByDeals}와 달리 화면에 그릴 필드가 필요해 엔티티를 읽는다.
      * 상태로 거르지 않는다 — 회수·반려도 그 딜의 이력이다.
+     *
+     * <p><b>최근 것부터 준다</b> — 딜 상세의 견적 탭은 "지금 무엇이 오가는가"를 보는 자리라
+     * 마지막에 만든 견적이 위에 와야 한다. 복제(QT-19)로 재제안한 건이 원본 아래 묻히면
+     * 담당자가 옛 견적을 본다. 프론트 목도 같은 순서다.
      */
-    List<Quote> findByCompanyIdAndDealIdIn(UUID companyId, Collection<UUID> dealIds);
+    List<Quote> findByCompanyIdAndDealIdInOrderByCreatedAtDesc(UUID companyId, Collection<UUID> dealIds);
 }

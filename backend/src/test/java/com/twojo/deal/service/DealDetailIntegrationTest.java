@@ -168,6 +168,30 @@ class DealDetailIntegrationTest {
         assertThat(detail.orders()).isEmpty();
     }
 
+    /**
+     * <b>목이 이미 최신순으로 그린다</b>({@code mocks/handlers/deal.ts} — {@code createdAt} 내림차순).
+     * 서버가 순서를 안 정하면 화면 순서가 환경마다 갈린다. 복제(QT-19)로 재제안한 건이
+     * 원본 아래 묻히면 담당자가 옛 견적을 보게 되는 자리라 계약으로 고정한다.
+     */
+    @Test
+    @DisplayName("견적·주문이 최근 것부터 나온다 — 목과 같은 순서다")
+    void 최신순_정렬() {
+        UUID first = 견적(companyId, dealId, "Q-7030", "REJECTED", 500_000L);
+        주문(companyId, first, "O-7030", 500_000L);
+        jdbc.update("update quote set created_at = now() - interval '2 days' where id = ?", first);
+        jdbc.update("update orders set created_at = now() - interval '2 days' where quote_id = ?", first);
+
+        UUID second = 견적(companyId, dealId, "Q-7031", "APPROVED", 900_000L);
+        주문(companyId, second, "O-7031", 900_000L);
+
+        DealResponses.DealDetail detail = dealService.get(ctx, dealId);
+
+        assertThat(detail.quotes()).extracting(DealResponses.DealDetail.QuoteSummary::quoteNo)
+                .containsExactly("Q-7031", "Q-7030");
+        assertThat(detail.orders()).extracting(DealResponses.DealDetail.OrderSummary::orderNo)
+                .containsExactly("O-7031", "O-7030");
+    }
+
     @AfterEach
     void 지운다() {
         for (UUID co : java.util.List.of(companyId, otherCompanyId)) {

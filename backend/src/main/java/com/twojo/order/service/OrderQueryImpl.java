@@ -47,7 +47,7 @@ class OrderQueryImpl implements OrderQuery {
         if (quoteIds == null || quoteIds.isEmpty()) {
             return List.of();
         }
-        return orderRepository.findByCompanyIdAndQuoteIdIn(companyId, quoteIds).stream()
+        return orderRepository.findByCompanyIdAndQuoteIdInOrderByCreatedAtDesc(companyId, quoteIds).stream()
                 .map(order -> new OrderBrief(order.getId(), order.getQuoteId(), order.getOrderNo(),
                         order.getTotalAmount(), order.getCreatedAt()))
                 .toList();

@@ -65,7 +65,8 @@ public interface OrderQuery {
      * 딜 상세는 언제나 특정 딜의 견적으로 좁혀진 자리라 전 회사를 물을 일이 없고,
      * null을 허용하면 실수로 회사 전체 주문이 한 딜에 붙는다.
      *
-     * <p>순서를 보장하지 않는다 — 호출자가 {@code quoteId}로 묶는다.
+     * <p><b>최근 전환부터 준다</b> — 견적 요약과 같은 순서다. 여러 견적을 한 번에 물으면
+     * 견적이 섞인 채 시간순이므로, 호출자가 {@code quoteId}로 묶으면 그 안에서 순서가 유지된다.
      */
     List<OrderBrief> briefsByQuotes(UUID companyId, Collection<UUID> quoteIds);
 

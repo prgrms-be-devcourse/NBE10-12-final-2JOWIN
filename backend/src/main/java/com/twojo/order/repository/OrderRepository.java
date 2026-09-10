@@ -60,8 +60,10 @@ public interface OrderRepository extends JpaRepository<Order, UUID>, JpaSpecific
      *
      * <p>항목은 읽지 않는다 — 딜 상세는 주문번호·금액·전환 시각만 그린다.
      * 견적당 주문은 최대 하나지만(OD-03 UNIQUE) 딜에는 여럿일 수 있다 (Q-25).
+     *
+     * <p><b>최근 전환부터 준다</b> — 견적 탭과 같은 순서다 ({@code created_at}이 곧 전환 시각).
      */
-    List<Order> findByCompanyIdAndQuoteIdIn(UUID companyId, Collection<UUID> quoteIds);
+    List<Order> findByCompanyIdAndQuoteIdInOrderByCreatedAtDesc(UUID companyId, Collection<UUID> quoteIds);
 
     /**
      * 재전환 차단 (OD-03) — <b>회사 스코프가 없다.</b> {@code quote_id}에 걸린 UNIQUE가

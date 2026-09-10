@@ -155,7 +155,7 @@ public class QuoteQueryImpl implements QuoteQuery {
         if (dealIds == null || dealIds.isEmpty()) {
             return List.of();
         }
-        return quoteRepository.findByCompanyIdAndDealIdIn(companyId, dealIds).stream()
+        return quoteRepository.findByCompanyIdAndDealIdInOrderByCreatedAtDesc(companyId, dealIds).stream()
                 .map(quote -> new QuoteBrief(quote.getId(), quote.getDealId(), quote.getQuoteNo(),
                         quote.getStatus().name(), quote.getTotalAmount(), quote.getSentAt()))
                 .toList();
