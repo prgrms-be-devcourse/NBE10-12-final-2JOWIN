@@ -36,10 +36,11 @@ class EmailFailedNotifierTest {
         return new EmailDeliveryFailedEvent(EMAIL_LOG_ID, type, COMPANY_ID, REF_ID);
     }
 
-    @Test
-    @DisplayName("QUOTE_SENT 실패면 writer에 위임한다")
-    void QUOTE_SENT면_writer에_위임한다() {
-        EmailDeliveryFailedEvent e = event(MailCommand.TemplateType.QUOTE_SENT);
+    @ParameterizedTest
+    @EnumSource(value = MailCommand.TemplateType.class, names = {"QUOTE_SENT", "QUOTE_REMIND"})
+    @DisplayName("인앱 EMAIL_FAILED 수신자가 있는 template 실패는 writer에 위임한다")
+    void 인앱_수신자_있는_template은_위임한다(MailCommand.TemplateType type) {
+        EmailDeliveryFailedEvent e = event(type);
 
         notifier.on(e);
 
@@ -47,9 +48,12 @@ class EmailFailedNotifierTest {
     }
 
     @ParameterizedTest
-    @EnumSource(value = MailCommand.TemplateType.class, names = "QUOTE_SENT", mode = EnumSource.Mode.EXCLUDE)
-    @DisplayName("QUOTE_SENT가 아닌 template 실패는 writer에 위임하지 않는다 (notifiesInApp이 걸러낸다)")
-    void QUOTE_SENT가_아니면_무시한다(MailCommand.TemplateType type) {
+    @EnumSource(
+            value = MailCommand.TemplateType.class,
+            names = {"QUOTE_SENT", "QUOTE_REMIND"},
+            mode = EnumSource.Mode.EXCLUDE)
+    @DisplayName("인앱 수신자가 없는 template 실패는 writer에 위임하지 않는다 (notifiesInApp이 걸러낸다)")
+    void 인앱_수신자_없는_template은_무시한다(MailCommand.TemplateType type) {
         notifier.on(event(type));
 
         then(writer).should(never()).write(any());

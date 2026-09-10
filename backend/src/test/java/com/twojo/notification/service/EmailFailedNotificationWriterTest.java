@@ -86,8 +86,24 @@ class EmailFailedNotificationWriterTest {
     }
 
     @Test
-    @DisplayName("QUOTE_SENT가 아닌 이벤트면 정합 깨짐 - IllegalStateException (notifiesInApp ↔ write 방어선)")
-    void QUOTE_SENT가_아니면_IllegalStateException() {
+    @DisplayName("QUOTE_REMIND는 refId를 견적 id로 직접 써서 담당자에게 알린다 (토큰 되짚기 없음)")
+    void QUOTE_REMIND는_refId를_견적으로_직접_쓴다() {
+        EmailDeliveryFailedEvent e = new EmailDeliveryFailedEvent(
+                EMAIL_LOG_ID, MailCommand.TemplateType.QUOTE_REMIND, COMPANY_ID, QUOTE_ID);
+        given(quoteQuery.getPublicView(QUOTE_ID)).willReturn(view());
+
+        writer.write(e);
+
+        ArgumentCaptor<String> msg = ArgumentCaptor.forClass(String.class);
+        then(notificationCommand).should().notifyForDeal(
+                eq(NotificationType.EMAIL_FAILED), eq(COMPANY_ID), eq(DEAL_ID), msg.capture(), eq(QUOTE_ID));
+        assertThat(msg.getValue()).contains("Q-2026-011").contains("리마인드");
+        then(viewTokenQuery).shouldHaveNoInteractions();
+    }
+
+    @Test
+    @DisplayName("처리 못하는 template이면 정합 깨짐 - IllegalStateException (notifiesInApp ↔ write 방어선)")
+    void 처리_못하는_template이면_IllegalStateException() {
         EmailDeliveryFailedEvent wrong = new EmailDeliveryFailedEvent(
                 EMAIL_LOG_ID, MailCommand.TemplateType.PASSWORD_RESET, COMPANY_ID, TOKEN_ID);
 

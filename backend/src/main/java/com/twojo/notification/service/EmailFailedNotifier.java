@@ -20,11 +20,12 @@ import org.springframework.transaction.event.TransactionalEventListener;
  * <p><b>template별 인앱 알림 여부는 {@link #notifiesInApp}에 있다</b> (docs/03-requirements.md &sect;2.13
  * NT-12 표). {@code default} 없는 switch 식이라 {@code TemplateType} 값이 늘면 컴파일이 막혀 "이 메일
  * 실패에 인앱 수신자가 있나"를 강제로 답하게 한다 — {@code !=} 비교였던 시절 {@code QUOTE_REMIND}가
- * 신호 없이 누락된 자리다 (#247). 현재 {@code QUOTE_SENT}만 알린다. 그 외는 {@code email_log} FAILED
- * 지표만 남는다.
+ * 신호 없이 누락된 자리다 (#247). {@code QUOTE_SENT}(고객 대상)와 {@code QUOTE_REMIND}(NT-05 병행분,
+ * &sect;2.13 "메일 채널 이상 인지용")를 알린다. 그 외는 {@code email_log} FAILED 지표만 남는다.
  *
  * <p><b>자기 예외는 삼킨다</b> — 알림은 부가 작업이고 실패 감지 바닥은 {@code email_log} FAILED다.
- * 로그엔 클래스명만 남긴다 (수신자·토큰이 예외 메시지에 섞인다, docs/14-tech-stack.md &sect;2-1·&sect;7.3).
+ * 로그엔 클래스명과 {@code templateType}만 남긴다 (수신자·토큰이 예외 메시지에 섞인다,
+ * docs/14-tech-stack.md &sect;2-1·&sect;7.3). {@code templateType}은 PII가 아니라 정합 깨짐 진단에 필요하다.
  */
 @Component
 @RequiredArgsConstructor
@@ -42,7 +43,8 @@ class EmailFailedNotifier {
         try {
             writer.write(event);
         } catch (RuntimeException e) {
-            log.warn("EMAIL_FAILED 알림 실패 - emailLogId={}, {}", event.emailLogId(), e.getClass().getName());
+            log.warn("EMAIL_FAILED 알림 실패 - emailLogId={}, templateType={}, {}",
+                    event.emailLogId(), event.templateType(), e.getClass().getName());
         }
     }
 
@@ -53,9 +55,9 @@ class EmailFailedNotifier {
     private static boolean notifiesInApp(MailCommand.TemplateType type) {
         return switch (type) {
             case QUOTE_SENT -> true;         // 딜 담당 구성원, Q-26 폴백 (NT-12 v1, #213)
-            case QUOTE_REMIND,               // NT-05 병행분 — 담당자는 REMIND_NO_RESPONSE 인앱을 이미 받음, 메일 실패 통보는 중복 (#247)
-                 INVITATION,                // 별건 — invited_by 되짚기 통로 필요, E 별도 채번
-                 PASSWORD_RESET,            // §2.13 "해당 없음" — 본인 수신, 로그인 전
+            case QUOTE_REMIND -> true;       // NT-05 병행분 — 메일 채널 이상 인지용, 원 수신 구성원 = 딜 담당자 (§2.13, #247)
+            case INVITATION,                 // 별건 — invited_by 되짚기 통로 필요, E 별도 채번
+                 PASSWORD_RESET,            // NT-14 — 수신자 로그인 불가 (§2.13 "인앱 수신자 없음")
                  SIGNUP_APPROVED,           // NT-13 — 사내 인앱 수신자 없음
                  SIGNUP_REJECTED -> false;
         };
