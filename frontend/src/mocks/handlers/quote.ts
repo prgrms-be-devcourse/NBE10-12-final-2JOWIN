@@ -39,12 +39,26 @@ const toList = (q: QuoteRow): QuoteResponse => ({
   validUntil: q.validUntil, sentAt: q.sentAt, firstViewedAt: q.firstViewedAt, version: q.version,
 })
 
+/**
+ * 대체 견적(QT-28) — 서버 미러 (QuoteService.supersededBy, #326 확정). 저장하지 않고 읽을 때 구한다.
+ *
+ * 규칙: 원본이 반려·회수됐고, 그 복제본 중 DRAFT가 아닌 것 가운데 sentAt이 가장 최근인 것. 없으면 null.
+ * "대체"는 고객에게 다시 간 것만 뜻한다 — 복제 직후의 DRAFT는 아직 대체한 게 아니라 대체할 예정이고,
+ * 진행 중·기간 만료 원본은 대체될 이유가 없다. 복제본이 여럿이면 먼저 만든 것이 아니라 마지막에 발송된 것이다.
+ */
+function supersededByOf(q: QuoteRow): string | null {
+  if (q.status !== 'REJECTED' && q.status !== 'WITHDRAWN') return null
+  const sent = db.quotes.filter((c) => c.clonedFromQuoteId === q.id && c.status !== 'DRAFT' && c.sentAt !== null)
+  if (sent.length === 0) return null
+  return sent.reduce((latest, c) => (c.sentAt! > latest.sentAt! ? c : latest)).id
+}
+
 const toDetail = (q: QuoteRow): QuoteDetailResponse => ({
   id: q.id, quoteNo: q.quoteNo, dealId: q.dealId, dealTitle: findDeal(q.dealId)?.title ?? '', status: q.status,
   vatMode: q.vatMode, terms: q.terms, validUntil: q.validUntil,
   supplyAmount: q.supplyAmount, vatAmount: q.vatAmount, totalAmount: q.totalAmount,
   items: itemsOf(q.id),
-  clonedFromQuoteId: q.clonedFromQuoteId, supersededByQuoteId: q.supersededByQuoteId,
+  clonedFromQuoteId: q.clonedFromQuoteId, supersededByQuoteId: supersededByOf(q),
   rejectReason: q.rejectReason, responderName: q.responderName, responderTitle: q.responderTitle,
   sentAt: q.sentAt, firstViewedAt: q.firstViewedAt, respondedAt: q.respondedAt,
   version: q.version, createdAt: q.createdAt,
@@ -100,7 +114,7 @@ export const quoteHandlers = [
     const validUntil = new Date(Date.now() + 14 * 86_400_000).toISOString().slice(0, 10)
     const created: QuoteRow = {
       id: crypto.randomUUID(), quoteNo: nextDocNo('QUOTE'), dealId: deal.id, status: 'DRAFT', vatMode: 'EXCLUDED', terms: null,
-      validUntil, supplyAmount: 0, vatAmount: 0, totalAmount: 0, clonedFromQuoteId: null, supersededByQuoteId: null,
+      validUntil, supplyAmount: 0, vatAmount: 0, totalAmount: 0, clonedFromQuoteId: null,
       rejectReason: null, responderName: null, responderTitle: null, sentAt: null, firstViewedAt: null, respondedAt: null,
       version: 0, createdAt: now(),
     }
@@ -230,13 +244,12 @@ export const quoteHandlers = [
     const validUntil = new Date(Date.now() + 30 * 86_400_000).toISOString().slice(0, 10)
     const created: QuoteRow = {
       ...quote, id: crypto.randomUUID(), quoteNo: nextDocNo('QUOTE'), status: 'DRAFT', validUntil,
-      clonedFromQuoteId: quote.id, supersededByQuoteId: null, rejectReason: null, responderName: null, responderTitle: null,
+      clonedFromQuoteId: quote.id, rejectReason: null, responderName: null, responderTitle: null,
       sentAt: null, firstViewedAt: null, respondedAt: null, version: 0, createdAt: now(),
     }
     db.quotes.unshift(created)
     db.quoteItems.set(created.id, itemsOf(quote.id).map((it) => ({ ...it, id: crypto.randomUUID() })))
-    // 반려·회수된 원본의 대체 견적 링크 (QT-28)
-    if ((quote.status === 'REJECTED' || quote.status === 'WITHDRAWN') && !quote.supersededByQuoteId) quote.supersededByQuoteId = created.id
+    // 원본의 대체 견적 링크(QT-28)는 여기서 찍지 않는다 — 이 복제본이 발송된 뒤에야 supersededByOf가 잡는다 (#326)
     recordAuto(deal.id, `견적을 복제했습니다 — ${quote.quoteNo} → ${created.quoteNo}`, member.id)
     return HttpResponse.json(toDetail(created), { status: 201 })
   }),
