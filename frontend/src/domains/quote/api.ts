@@ -61,7 +61,7 @@ export async function withdrawQuote(id: string) {
   return data
 }
 
-/** POST /quotes/{id}/clone — 새 DRAFT (QT-19). 백엔드 미구현 — 404("일시적인 오류") */
+/** POST /quotes/{id}/clone — 새 DRAFT (QT-19). 종결 Deal이면 409 QUOTE_DEAL_CLOSED (Q-25) */
 export async function cloneQuote(id: string) {
   const { data } = await api.post<QuoteDetailResponse>(`/quotes/${id}/clone`)
   return data

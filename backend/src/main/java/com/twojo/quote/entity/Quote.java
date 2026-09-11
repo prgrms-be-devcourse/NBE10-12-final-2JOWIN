@@ -111,6 +111,43 @@ public class Quote extends BaseTimeEntity {
     }
 
     /**
+     * 복제 (QT-19) — 원본을 새 작성 중(DRAFT) 견적으로 베낀다. <b>원본은 그대로다</b> (전이표 §6).
+     *
+     * <p><b>원본의 상태를 보지 않는다.</b> 전이표가 "모든 상태 → 복제"로 적고 있다 —
+     * 반려된 견적을 고쳐 다시 보내는 것이 이 기능의 주 용도이고(Q-18), 회수·만료된 건도
+     * 재제안 출발점이 된다(DL-12 재개 시 "재제안은 복제로"). 막는 축은 <b>종결 Deal 하나뿐</b>이고
+     * 그 판정은 서비스가 한다 (Q-25 — 딜 상태는 이 엔티티가 모른다).
+     *
+     * <p><b>베끼는 것과 베끼지 않는 것</b>:
+     * <ul>
+     *   <li>베낀다 — 항목(단가·수량·순서·카탈로그 단가 스냅샷)·{@code vatMode}·{@code terms}.
+     *       다시 보내려고 만드는 견적이라 내용이 같아야 손이 덜 간다</li>
+     *   <li>베끼지 않는다 — 번호·유효기간·발송/열람/응답 이력·반려 사유·응답자.
+     *       번호와 유효기간은 서비스가 새로 정하고(채번·오늘 기준), 나머지는
+     *       <b>원본에게 일어난 일</b>이라 새 견적의 사실이 아니다</li>
+     * </ul>
+     *
+     * <p><b>계보는 한 단계만 기록한다</b> — {@code clonedFromQuoteId}는 직전 원본이다.
+     * 복제의 복제면 그 중간 견적을 가리킨다. 뿌리까지 거슬러 두면 "무엇을 고쳐 다시 보냈나"라는
+     * 이 필드의 쓰임과 어긋난다.
+     *
+     * @param quoteNo    서비스가 채번한 새 번호 ({@link #draft}와 같은 이유로 엔티티가 만들지 않는다)
+     * @param validUntil 서비스가 오늘 기준으로 새로 정한 유효기간 — 원본 것은 이미 낡았을 수 있다
+     */
+    public Quote cloneAsDraft(String quoteNo, LocalDate validUntil) {
+        Quote copy = draft(companyId, dealId, quoteNo, validUntil);
+        copy.vatMode = this.vatMode;
+        copy.terms = this.terms;
+        copy.clonedFromQuoteId = this.id;
+        copy.replaceItems(items.stream()
+                .map(item -> QuoteItem.of(item.getProductId(), item.getName(), item.getUnit(),
+                        item.getQuantity(), item.getUnitPrice(),
+                        item.getCatalogPriceAtCreation(), item.getSortOrder()))
+                .toList());
+        return copy;
+    }
+
+    /**
      * 작성 중 본문 갱신 (QT-09·10·23) — 항목은 {@link #replaceItems}가 따로 맡는다.
      *
      * <p><b>PUT이므로 전부 덮어쓴다.</b> {@code terms}에 null이 오면 조건 문구를 지우는 것이다 —

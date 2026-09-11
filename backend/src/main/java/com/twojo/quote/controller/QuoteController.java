@@ -30,7 +30,7 @@ import org.springframework.web.bind.annotation.RestController;
  * <p>{@link AccessContext}는 인증 필터가 심은 principal에서 타입으로 주입된다 —
  * 요청에 회사·구성원 식별자가 실리지 않는다. 범위 판정(SC-01·02)은 서비스가 한다.
  *
- * <p>발송·회수·복제는 이 컨트롤러에 없다 — 별도 이슈다.
+ * <p>발송·회수는 이 컨트롤러에 없다 — 별도 이슈다. 복제(QT-19)는 여기 있다.
  * <b>주문 전환({@code POST /quotes/{id}/convert-to-order})은 경로만 여기 아래에 있고
  * {@code OrderController}가 받는다</b> — 만들어지는 것이 주문이기 때문이다 (#160).
  */
@@ -74,6 +74,13 @@ public class QuoteController {
     }
 
     /** 상세 — 항목 포함 (sortOrder 오름차순, QT-07) */
+    /** 복제 (QT-19) — 원본을 새 DRAFT로 베낀다. 종결 Deal이면 409 (Q-25) */
+    @PostMapping("/{quoteId}/clone")
+    @ResponseStatus(HttpStatus.CREATED)
+    public QuoteResponses.QuoteDetail clone(AccessContext ctx, @PathVariable UUID quoteId) {
+        return quoteService.clone(ctx, quoteId);
+    }
+
     @GetMapping("/{quoteId}")
     public QuoteResponses.QuoteDetail get(AccessContext ctx, @PathVariable UUID quoteId) {
         return quoteService.get(ctx, quoteId);
