@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.23
+# DTO 설계서 — v1.6.24
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.24 | **`QuoteDetailResponse.supersededByQuoteId` 주석을 확정 규칙에 맞춘다(2026-09-11, #326)** — "반려 → 대체 견적 링크"가 **회수(QT-17)를 빠뜨리고** 있었다. QT-28은 "반려·회수된 견적에서"라 적고, 구현도 둘을 같이 본다. 어느 복제본인지도 함께 적는다 — `DRAFT`가 아닌 것 중 `sent_at` 최신이다. 규칙의 근거는 07 v1.6.19가 정본이다 |
 | v1.6.23 | **딜·주문 응답 `customerName` nullable 명시(2026-09-10)** — `DealResponse`·`DealDetailResponse`·`OrderResponse`·`OrderDetailResponse` 네 곳. 목록이 고객사 이름을 배치 창구(`CustomerQuery.namesByIds`)로 받게 되면서(#273) **지워진 고객사는 그 줄만 이름이 빈다** — 예전 단건 `get`은 없으면 던져 한 줄이 목록 전체를 404로 만들었다. 고객사 삭제는 <b>진행 중</b> 딜만 막으므로(`hasOpenDeals`) 성사된 딜의 주문이 남은 채 고객사만 지워질 수 있어 실제로 도달한다. 주문 상세·전환은 404 → 200(null)로 바뀐다 — 목록과 상세가 이름을 다르게 얻으면 "목록엔 있는데 상세엔 없는" 차이가 생겨 통일했다(D 확인). 프론트 타입도 `string | null`로 맞췄다. 응답 대기(DB-03)는 해당 없음 — 딜이 진행 중이라 삭제가 막힌다 |
 | v1.6.22 | **§B `audit_log` payload 봉투 명시(2026-09-09)** — 변경 필드를 `changes`로 감싸고 부가 필드는 최상위에 둔다. 종전 주석의 예시는 `{"stage": …}` 하나뿐이라 봉투 전체로 읽히는데, 같은 예시에 `dealId`가 없어 06(견적·주문 이벤트 `dealId` 필수)과 어긋났다. 08이 "B가 이벤트 포맷 정의 시 준수"로 위임한 그 정의가 이슈 #22 §2인데 문서에는 담기지 않았다. 적재 리스너가 아직 없어 실데이터가 쌓이기 전인 지금이 맞추는 시점이다. `changes` 자리가 없으면 "값이 바뀐 것"과 "표시용으로 딸려온 값"을 구별할 수 없다. 발견 경로: 감사 로그 조회 구현(#244) |
 | v1.6.21 | **§C `OrderScheduleRequest`가 §B PATCH 규약의 예외임을 명시(2026-09-09)** — 착수일·납기는 **두 날짜를 함께 덮어써서 `null`이 "미변경"이 아니라 "지움"**이다(`Order.updateSchedule`). record가 필드만 적고 있어 §B의 "안 보내면 미변경"이 여기에도 걸리는 것으로 읽혔다. 프론트 목이 실제로 그렇게 받고 있어 목으로 개발하면 통과하고 실 API에서 값이 사라졌다 — 주문 실 API 전환(#248)에서 서버에 `deliveryDate`를 빼고 PATCH해 확인했다. 규약 문장 자체는 여기가 정본이고 11 §1.3은 포인터만 갖는다(#233) |
@@ -378,7 +379,7 @@ public record QuoteDetailResponse(
         Long supplyAmount, Long vatAmount, Long totalAmount,          // 항상 서버 계산 (QT-08·22)
         List<ItemResponse> items,
         UUID clonedFromQuoteId,                                       // QT-19 복제 원본
-        UUID supersededByQuoteId,                                     // QT-28 반려 → 대체 견적 링크
+        UUID supersededByQuoteId,                                     // QT-28 반려·회수 → 마지막 발송된 복제본 (07 v1.6.19)
         String rejectReason,
         String responderName, String responderTitle,                  // v1.6.3 — 승인·반려한 사람(자기 신고, AP-19)
         Instant sentAt, Instant firstViewedAt, Instant respondedAt,
