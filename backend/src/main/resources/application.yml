@@ -18,6 +18,17 @@ spring:
   jackson:
     time-zone: UTC            # 저장·전송은 UTC(TIMESTAMPTZ·Instant), 표시 변환은 프론트 책임
 
+  # SMTP 발송(#319) — twojo.mail.sender=smtp일 때만 SmtpEmailSender가 소비한다.
+  # host 등이 비어 있어도 log 모드에선 빈 채로 자동구성될 뿐 무해하다.
+  mail:
+    host: ${MAIL_SMTP_HOST:}
+    port: ${MAIL_SMTP_PORT:587}
+    username: ${MAIL_SMTP_USERNAME:}
+    password: ${MAIL_SMTP_PASSWORD:}
+    properties:
+      mail.smtp.auth: true
+      mail.smtp.starttls.enable: true
+
 # JWT — HS256 단일 키 (14 §3-4). 저장소에 시크릿을 두지 않는다 (14 §2-8).
 # 기본값 없음 — 미주입 시 기동이 실패한다. local·test 프로필만 개발용 기본값을 갖는다.
 jwt:
@@ -95,6 +106,16 @@ quote:
   expiry:
     cron: "0 30 8 * * *"      # 매일 08:30 (zone 기준)
     zone: "Asia/Seoul"        # cron 해석 시간대 — 만료 경계가 한국 날짜다 (Q-17)
+
+# 메일 발송 어댑터 스위치 (#319) — 값 없으면 log 유지, LoggingEmailSender가 그대로 이긴다.
+# 운영은 twojo.mail.sender=smtp + 아래 값을 배포 시크릿으로 채운다. SES SMTP 인터페이스도 이 어댑터로 커버된다.
+twojo:
+  mail:
+    sender: ${TWOJO_MAIL_SENDER:log}
+    # 발신 주소 — SMTP 인증 계정(spring.mail.username)과 다른 값이다. SES SMTP username은
+    # IAM 파생 토큰(AKIA...)이지 이메일이 아니라서 From에 그대로 쓰면 발송이 100% 실패한다.
+    # 기본값 없음 — smtp 모드로 켰는데 이 값이 없으면 기동이 실패하는 편이 조용히 잘못 나가는 것보다 낫다.
+    from: ${MAIL_FROM}
 
 ---
 # 로컬 개발 — infra/dev/docker-compose.yml의 PostgreSQL 사용
