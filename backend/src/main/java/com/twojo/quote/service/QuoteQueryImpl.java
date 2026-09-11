@@ -35,8 +35,7 @@ import org.springframework.transaction.annotation.Transactional;
 public class QuoteQueryImpl implements QuoteQuery {
 
     /** 응답 대기 = 발송됨·열람됨 (전이표 §6) — 반려·회수·만료는 이미 끝난 건이다 */
-    private static final List<Quote.Status> AWAITING_RESPONSE =
-            List.of(Quote.Status.SENT, Quote.Status.VIEWED);
+    private static final List<Quote.Status> AWAITING_RESPONSE = Quote.IN_PROGRESS;
 
     private final QuoteRepository quoteRepository;
     private final DealQuery dealQuery;

@@ -36,6 +36,16 @@ public class Quote extends BaseTimeEntity {
 
     public enum VatMode { EXCLUDED, INCLUDED }   // 기본 EXCLUDED (Q-16)
 
+    /**
+     * <b>고객 응답을 기다리는 중</b>인 상태 — 발송됨·열람됨 (전이표 §6).
+     *
+     * <p>이 집합이 "진행 중"의 정의다. 회수({@link #withdraw})·기간 만료({@link #expire})·
+     * 딜 실패({@code QuoteCommand.expireOnDealLost})·응답 대기 조회·만료 배치가 전부 같은 축을
+     * 본다. 세 곳에 따로 적혀 있던 것을 여기로 모은다 (#324 리뷰) — 갈라지면 "만료 배치는 닫는데
+     * 응답 대기에는 안 뜨는" 견적이 생긴다.
+     */
+    public static final List<Status> IN_PROGRESS = List.of(Status.SENT, Status.VIEWED);
+
     @Id
     @GeneratedValue(strategy = GenerationType.UUID)
     private UUID id;

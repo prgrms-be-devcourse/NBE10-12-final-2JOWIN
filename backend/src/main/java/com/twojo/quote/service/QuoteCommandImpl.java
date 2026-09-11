@@ -54,9 +54,6 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class QuoteCommandImpl implements QuoteCommand {
 
-    /** 딜 실패가 닫는 대상 — 발송됨·열람됨 (전이표 §5). 판정 자체는 {@code Quote.expire()}가 한다 */
-    private static final List<Quote.Status> IN_PROGRESS = List.of(Quote.Status.SENT, Quote.Status.VIEWED);
-
     private final QuoteRepository quoteRepository;
     private final ViewTokenCommand viewTokenCommand;
     private final ApplicationEventPublisher eventPublisher;
@@ -120,7 +117,9 @@ public class QuoteCommandImpl implements QuoteCommand {
     @Override
     @Transactional(propagation = Propagation.MANDATORY)
     public void expireOnDealLost(UUID dealId) {
-        for (Quote quote : quoteRepository.findByDealIdAndStatusIn(dealId, IN_PROGRESS)) {
+        // IN_PROGRESS는 조회를 좁히는 용도다 — 판정은 Quote.expire()가 한다.
+        // 집합이 넓어져도 응답이 끝난 견적은 expire()가 false를 돌려줘 닫히지 않는다.
+        for (Quote quote : quoteRepository.findByDealIdAndStatusIn(dealId, Quote.IN_PROGRESS)) {
             if (quote.expire()) {
                 viewTokenCommand.expire(quote.getId(), ViewTokenCommand.ExpiredReason.DEAL_LOST);
             }
