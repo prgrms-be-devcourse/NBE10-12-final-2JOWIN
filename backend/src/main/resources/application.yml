@@ -79,6 +79,21 @@ management:
     health:
       probes:
         enabled: true
+  health:
+    # 메일 가용성을 앱 생사 판정에서 뺀다.
+    #
+    # spring.mail.host 가 설정되면 액추에이터가 MailHealthIndicator 를 자동으로
+    # 붙이고, SMTP 접속이 실패하면 /actuator/health 전체가 DOWN 이 된다.
+    # 컨테이너 헬스체크가 그 엔드포인트를 보므로 unhealthy -> 배포 롤백 ·
+    # 평상시엔 컨테이너 재시작으로 이어진다 — 메일 때문에 서비스가 죽는다 (#336).
+    #
+    # 메일은 그런 등급이 아니다. 비동기이고 재시도가 있고 실패하면 email_log 가
+    # FAILED 로 닫히고 알림까지 간다. 발송 실패를 감당하도록 만들어진 경로다.
+    #
+    # 되돌리지 말 것 — SMTP 자격을 제대로 채워도 SES 가 잠깐 안 되는 순간
+    # 같은 일이 일어난다. 값이 없어서 끄는 게 아니라 등급이 달라서 끈다.
+    mail:
+      enabled: false
   # Boot 4 부터 지표 내보내기가 옵트인이다. 이 줄이 없으면
   # management.defaults.metrics.export.enabled 가 false 로 평가되어
   # PrometheusMeterRegistry 빈이 아예 만들어지지 않고,
