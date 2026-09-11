@@ -102,7 +102,8 @@ public class QuoteService {
 
         LocalDate validUntil = LocalDate.now(SEOUL).plusDays(DEFAULT_VALIDITY_DAYS);
         Quote quote = quoteRepository.save(Quote.draft(ctx.companyId(), dealId, quoteNo, validUntil));
-        return QuoteResponses.QuoteDetail.of(quote, deal.title());
+        // 방금 만든 견적을 복제한 것이 있을 수 없다 — 대체 견적은 null이다 (QT-28)
+        return QuoteResponses.QuoteDetail.of(quote, deal.title(), null);
     }
 
     /**
@@ -131,7 +132,8 @@ public class QuoteService {
         LocalDate validUntil = LocalDate.now(SEOUL).plusDays(DEFAULT_VALIDITY_DAYS);
 
         Quote copy = quoteRepository.save(scoped.quote().cloneAsDraft(quoteNo, validUntil));
-        return QuoteResponses.QuoteDetail.of(copy, scoped.dealTitle());
+        // 갓 만든 복제본을 다시 복제한 것이 있을 수 없다 — 대체 견적은 null이다 (QT-28)
+        return QuoteResponses.QuoteDetail.of(copy, scoped.dealTitle(), null);
     }
 
     /**
@@ -228,7 +230,8 @@ public class QuoteService {
         viewTokenCommand.expire(quoteId, ViewTokenCommand.ExpiredReason.WITHDRAWN);
 
         quoteRepository.flush();   // 응답에 최신 version을 싣는다 (08 검증 노트 #4)
-        return QuoteResponses.QuoteDetail.of(scoped.quote(), scoped.dealTitle());
+        return QuoteResponses.QuoteDetail.of(scoped.quote(), scoped.dealTitle(),
+                supersededBy(scoped.quote()));   // 회수 전에 복제해 보낸 것이 있을 수 있다 (QT-28)
     }
 
     /**
@@ -283,10 +286,39 @@ public class QuoteService {
         }
     }
 
+    /**
+     * 이 견적을 <b>대체한</b> 견적의 id (QT-28) — 없으면 {@code null}.
+     *
+     * <p><b>원본이 반려·회수된 경우에만 본다.</b> 복제는 상태와 무관하지만(QT-19) QT-28은
+     * "<b>반려·회수된</b> 견적에서 그것을 대체한 새 견적"이라 적는다. 이 조건이 없으면 진행 중인
+     * 견적을 복제했을 때 발송된 SENT 견적에도 "대체한 견적으로 이동"이 뜬다 — 대체될 이유가 없는
+     * 견적이다. 기간 만료(EXPIRED)도 뺀다: 만료는 시스템 전이라 "다시 제안했다"는 뜻이 아니다.
+     *
+     * <p>어느 복제본인지는 리포지토리가 정한다 — DRAFT 제외 · {@code sentAt} 최신
+     * ({@code findFirstByClonedFromQuoteIdAndStatusNotOrderBySentAtDesc}).
+     *
+     * <p><b>체인은 반려·회수로 이어질 때만 이어진다.</b> 복제본이 다시 반려·회수되고 또 복제되면
+     * 각 견적이 자기 대체본을 가리켜 사슬이 된다. 다만 중간 복제본이 EXPIRED이거나 SENT로 남아
+     * 있으면 그 견적은 위 조건에 걸려 자기 대체본을 가리키지 못한다 — 사슬은 거기서 끊긴다.
+     *
+     * <p>조회는 <b>상세와 회수 응답에서만</b> 한다. 작성·복제·수정은 규칙상 결과가 반드시
+     * {@code null}이라 호출하지 않는다 (호출부 주석) — 목록에 싣지 않는 것은 07 §C의 결정이다.
+     */
+    private UUID supersededBy(Quote quote) {
+        if (quote.getStatus() != Quote.Status.REJECTED && quote.getStatus() != Quote.Status.WITHDRAWN) {
+            return null;
+        }
+        return quoteRepository
+                .findFirstByClonedFromQuoteIdAndStatusNotOrderBySentAtDesc(quote.getId(), Quote.Status.DRAFT)
+                .map(Quote::getId)
+                .orElse(null);
+    }
+
     /** 상세 — 항목 포함 */
     public QuoteResponses.QuoteDetail get(AccessContext ctx, UUID quoteId) {
         ScopedQuote scoped = findInScope(ctx, quoteId);
-        return QuoteResponses.QuoteDetail.of(scoped.quote(), scoped.dealTitle());
+        return QuoteResponses.QuoteDetail.of(scoped.quote(), scoped.dealTitle(),
+                supersededBy(scoped.quote()));
     }
 
     /**
@@ -330,7 +362,8 @@ public class QuoteService {
         // 다음 저장을 하면 409가 난다 — 편집기의 두 번째 저장부터 막힌다.
         quoteRepository.flush();
 
-        return QuoteResponses.QuoteDetail.of(quote, scoped.dealTitle());
+        // 수정은 작성 중에만 열린다 — DRAFT는 반려·회수가 아니라 대체 견적이 null이다 (QT-28)
+        return QuoteResponses.QuoteDetail.of(quote, scoped.dealTitle(), null);
     }
 
     /**

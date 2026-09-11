@@ -121,6 +121,31 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
      */
     List<Quote> findByDealIdAndStatusIn(UUID dealId, Collection<Quote.Status> statuses);
 
+    /**
+     * 이 견적을 <b>대체한</b> 견적 (QT-28) — 복제 계보의 역방향이다.
+     *
+     * <p>전용 컬럼을 두지 않는다. 06 ERD 368행이 {@code cloned_from_quote_id}를 "Q-18 계보 ·
+     * QT-28 대체 이동" 두 용도로 이미 규정했고, 컬럼을 늘리면 두 값이 갈릴 수 있다.
+     *
+     * <p><b>{@code DRAFT}는 제외한다</b> — "대체한"은 과거형이고, 아직 고객에게 가지 않은 초안은
+     * 대체한 것이 아니라 대체할 예정이다. 그 초안이 끝내 발송되지 않으면 화면의 "대체한 견적으로
+     * 이동"이 거짓이 되고, 되돌릴 방법이 없다 (#326 확정).
+     *
+     * <p><b>{@code sentAt} 내림차순</b>이라 발송된 복제본이 여럿이면 가장 최근에 나간 것이다.
+     * {@code createdAt}이 아닌 이유는 "고객에게 마지막으로 간 것"이 대체이기 때문이다 — 먼저 만든
+     * 복제본을 나중에 보내면 둘이 갈린다. {@code DRAFT}를 뺐으므로 {@code sentAt}은 항상 값이 있다
+     * ({@code markSent}가 DRAFT를 벗어나는 유일한 경로다).
+     *
+     * <p>동률 정렬 보정({@code id} 등)을 두지 않는다 — 발송은 요청 하나에 하나씩이라 같은 원본의
+     * 복제본 둘이 같은 {@code sent_at}(마이크로초)을 가질 수 없다. 보정을 붙이면 동률이 일어날 수
+     * 있다는 뜻으로 읽혀 다음 사람이 그 경우를 찾게 된다.
+     *
+     * <p>회사 조건을 두지 않는 것은 {@code fk_quote_deal}이 복합 FK라 계보가 회사를 넘을 수 없고,
+     * 호출자가 이미 스코프 안에서 원본을 찾은 뒤이기 때문이다.
+     */
+    Optional<Quote> findFirstByClonedFromQuoteIdAndStatusNotOrderBySentAtDesc(
+            UUID clonedFromQuoteId, Quote.Status excluded);
+
     /** {@code QuoteQuery.quoteIdsByDeals} — 주문 목록의 SC-04 범위 필터. id만 읽는다 */
     @Query("select q.id from Quote q where q.companyId = :companyId and q.dealId in :dealIds")
     List<UUID> findIdsByDeals(UUID companyId, Collection<UUID> dealIds);

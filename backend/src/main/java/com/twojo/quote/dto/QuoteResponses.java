@@ -47,14 +47,12 @@ public final class QuoteResponses {
      * 상세 — 항목 포함. 정렬은 엔티티의 {@code @OrderBy("sortOrder ASC")}가 보장한다 (QT-07).
      * 필드는 08의 {@code QuoteDetailResponse}를 따른다.
      *
-     * @param supersededByQuoteId QT-28 대체 견적 — <b>아직 항상 null이다.</b>
-     *                            전용 컬럼이 없고 {@code cloned_from_quote_id}의 역방향으로 구하는
-     *                            값이다 (06 ERD: "복제 계보 · QT-28 대체 이동").
-     *                            <b>복제(QT-19)가 생기면서 그 관계를 가진 견적이 실제로 만들어질 수
-     *                            있게 됐다</b> — 채우는 것은 별도 이슈다. 어느 복제본을 "대체"로 볼지
-     *                            (여러 번 복제 · 원본 상태 · DRAFT 복제본)가 먼저 정해져야 한다.
-     *                            <b>키는 그전에도 내보낸다</b> — 프론트가 필드 추가를 기다리지 않아도 되고,
-     *                            화면은 이미 이 값이 있으면 "대체한 견적으로 이동"을 그린다
+     * @param supersededByQuoteId QT-28 대체 견적 — 전용 컬럼 없이 {@code cloned_from_quote_id}의
+     *                            역방향으로 구한다 (06 ERD: "복제 계보 · QT-28 대체 이동").
+     *                            <b>규칙</b>: 원본이 반려·회수됐고, 그 복제본 중 {@code DRAFT}가 아닌 것
+     *                            가운데 가장 최근에 <b>발송된</b> 것. 없으면 {@code null}이다 (#326 확정).
+     *                            셋이 한 판단이다 — <b>"대체"는 고객에게 다시 간 것만 뜻한다</b>
+     *                            (QT-28 "반려·회수된 견적에서 그것을 <b>대체한</b> 새 견적")
      */
     public record QuoteDetail(
             UUID id, String quoteNo, String status, String vatMode,
@@ -81,14 +79,20 @@ public final class QuoteResponses {
             }
         }
 
-        /** {@code dealTitle}은 범위 판정에서 이미 조회한 Deal 요약에서 온다 — 추가 조회가 없다 */
-        public static QuoteDetail of(Quote quote, String dealTitle) {
+        /**
+         * {@code dealTitle}은 범위 판정에서 이미 조회한 Deal 요약에서 온다 — 추가 조회가 없다.
+         *
+         * <p><b>{@code supersededByQuoteId}를 인자로 받는다</b> — 조립기가 스스로 구하지 않는다.
+         * 역방향 조회라 리포지토리가 필요하고, 그것을 DTO가 들면 조립기가 조회 계층을 갖게 된다.
+         * 값이 없을 수 없는 자리(작성·복제·수정)에서는 호출부가 {@code null}을 근거와 함께 넘긴다.
+         */
+        public static QuoteDetail of(Quote quote, String dealTitle, UUID supersededByQuoteId) {
             return new QuoteDetail(quote.getId(), quote.getQuoteNo(),
                     quote.getStatus().name(), quote.getVatMode().name(),
                     quote.getSupplyAmount(), quote.getVatAmount(), quote.getTotalAmount(),
                     quote.getValidUntil(), quote.getTerms(),
                     quote.getDealId(), dealTitle,
-                    quote.getClonedFromQuoteId(), null,
+                    quote.getClonedFromQuoteId(), supersededByQuoteId,
                     quote.getSentAt(), quote.getFirstViewedAt(), quote.getRespondedAt(),
                     quote.getRejectReason(),
                     quote.getResponderName(), quote.getResponderTitle(),
