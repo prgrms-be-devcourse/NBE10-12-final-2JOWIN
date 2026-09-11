@@ -29,9 +29,3 @@ output "configuration_set_name" {
   description = "자격에 기본으로 달린 설정 세트"
   value       = aws_sesv2_configuration_set.main.configuration_set_name
 }
-
-# 키를 발급할 곳. 사람이 IAM 콘솔에서 이 사용자를 찾아 액세스 키를 만든다.
-output "smtp_user_name" {
-  description = "SMTP 자격증명을 발급할 IAM 사용자. 키는 콘솔에서 만든다"
-  value       = aws_iam_user.smtp.name
-}
