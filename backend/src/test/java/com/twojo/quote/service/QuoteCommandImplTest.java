@@ -3,11 +3,13 @@ package com.twojo.quote.service;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 
 import com.twojo.boundary.QuoteCommand;
+import com.twojo.boundary.ViewTokenCommand;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.boundary.AuditActorType;
@@ -17,6 +19,7 @@ import com.twojo.quote.QuoteViewed;
 import com.twojo.quote.entity.Quote;
 import com.twojo.quote.repository.QuoteRepository;
 import java.time.LocalDate;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.DisplayName;
@@ -42,6 +45,7 @@ class QuoteCommandImplTest {
     private static final UUID QUOTE_ID = UUID.randomUUID();
 
     @Mock private QuoteRepository quoteRepository;
+    @Mock private ViewTokenCommand viewTokenCommand;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private QuoteCommandImpl quoteCommand;
 
@@ -200,5 +204,68 @@ class QuoteCommandImplTest {
                 .isInstanceOf(BusinessException.class);
 
         verify(eventPublisher, org.mockito.Mockito.never()).publishEvent(any(Object.class));
+    }
+
+    // ── 딜 실패 시 견적·링크 닫기 (DL-10, #318)
+
+    private static final UUID DEAL_ID = UUID.randomUUID();
+
+    /** id를 심는다 — 링크 만료 대상을 견적별로 구별하려면 필요하다 */
+    private static Quote quoteWithId(Quote.Status status) {
+        Quote quote = quoteAt(status);
+        ReflectionTestUtils.setField(quote, "id", UUID.randomUUID());
+        return quote;
+    }
+
+    private void 딜에_걸린_견적(Quote... quotes) {
+        given(quoteRepository.findByDealIdAndStatusIn(eq(DEAL_ID), any()))
+                .willReturn(List.of(quotes));
+    }
+
+    /**
+     * 딜 하나에 견적이 여럿일 수 있다 (QT-18) — <b>전부</b> 닫아야 한다.
+     * 하나라도 남으면 고객이 그 링크로 승인할 수 있어 문제가 그대로다.
+     */
+    @Test
+    @DisplayName("딜 실패면 진행 중 견적을 전부 닫고 링크도 만료시킨다 (DL-10)")
+    void 딜_실패는_견적과_링크를_닫는다() {
+        Quote 발송됨 = quoteWithId(Quote.Status.SENT);
+        Quote 열람됨 = quoteWithId(Quote.Status.VIEWED);
+        딜에_걸린_견적(발송됨, 열람됨);
+
+        quoteCommand.expireOnDealLost(DEAL_ID);
+
+        assertThat(발송됨.getStatus()).isEqualTo(Quote.Status.EXPIRED);
+        assertThat(열람됨.getStatus()).isEqualTo(Quote.Status.EXPIRED);
+        verify(viewTokenCommand).expire(발송됨.getId(), ViewTokenCommand.ExpiredReason.DEAL_LOST);
+        verify(viewTokenCommand).expire(열람됨.getId(), ViewTokenCommand.ExpiredReason.DEAL_LOST);
+    }
+
+    /**
+     * <b>이미 응답이 끝난 견적은 건드리지 않는다.</b> 조회가 두 상태로 좁히지만 그 사이 고객이
+     * 승인했을 수 있어, 판정은 {@code Quote.expire()}가 다시 한다. 승인된 견적을 닫으면
+     * 주문 전환 경로가 사라진다.
+     */
+    @Test
+    @DisplayName("응답이 끝난 견적은 닫지 않고 링크도 건드리지 않는다")
+    void 응답_완료는_건드리지_않는다() {
+        Quote 승인됨 = quoteWithId(Quote.Status.APPROVED);
+        딜에_걸린_견적(승인됨);
+
+        quoteCommand.expireOnDealLost(DEAL_ID);
+
+        assertThat(승인됨.getStatus()).isEqualTo(Quote.Status.APPROVED);
+        verifyNoInteractions(viewTokenCommand);
+    }
+
+    /** 견적을 만들지 않은 딜을 실패 처리하는 것은 정상이다 — 무동작이지 오류가 아니다 */
+    @Test
+    @DisplayName("닫을 견적이 없으면 아무 일도 하지 않는다")
+    void 대상이_없으면_무동작() {
+        딜에_걸린_견적();
+
+        quoteCommand.expireOnDealLost(DEAL_ID);
+
+        verifyNoInteractions(viewTokenCommand);
     }
 }

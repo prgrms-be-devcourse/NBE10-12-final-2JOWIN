@@ -110,6 +110,17 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
     @Query("select q.id from Quote q where q.status in :statuses and q.validUntil < :today")
     List<UUID> findIdsExpiredBefore(Collection<Quote.Status> statuses, LocalDate today);
 
+    /**
+     * 딜에 걸린 진행 중 견적 (DL-10) — 딜 실패 시 닫을 대상이다.
+     *
+     * <p>엔티티로 읽는다. {@code Quote.expire()}가 상태 판정과 전이를 함께 하고, 더티 체킹으로
+     * 저장된다 — JPQL 일괄 update는 그 판정을 여기로 복제하게 되고 {@code @Version}도 건너뛴다.
+     *
+     * <p><b>회사 조건이 없다.</b> 호출자가 회사 안에서 얻은 dealId를 넘기는 자리이고,
+     * {@code fk_quote_deal}이 남의 회사 딜을 가리키는 견적을 막는다 (계약 javadoc).
+     */
+    List<Quote> findByDealIdAndStatusIn(UUID dealId, Collection<Quote.Status> statuses);
+
     /** {@code QuoteQuery.quoteIdsByDeals} — 주문 목록의 SC-04 범위 필터. id만 읽는다 */
     @Query("select q.id from Quote q where q.companyId = :companyId and q.dealId in :dealIds")
     List<UUID> findIdsByDeals(UUID companyId, Collection<UUID> dealIds);

@@ -40,8 +40,7 @@ class QuoteExpiryBatch {
     private static final Logger log = LoggerFactory.getLogger(QuoteExpiryBatch.class);
 
     /** 만료 대상 — 응답 대기 중인 것만. 승인·반려·회수는 이미 종결이다 (전이표 §6) */
-    private static final List<Quote.Status> AWAITING_RESPONSE =
-            List.of(Quote.Status.SENT, Quote.Status.VIEWED);
+    private static final List<Quote.Status> AWAITING_RESPONSE = Quote.IN_PROGRESS;
 
     private static final ZoneId KST = ZoneId.of("Asia/Seoul");
 

@@ -14,6 +14,7 @@ import com.twojo.boundary.AuditActorType;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.OrderQuery;
+import com.twojo.boundary.QuoteCommand;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.deal.DealStageChanged;
@@ -66,6 +67,7 @@ class DealServiceTest {
     @Mock private MemberQuery memberQuery;
     @Mock private QuoteQuery quoteQuery;
     @Mock private OrderQuery orderQuery;
+    @Mock private QuoteCommand quoteCommand;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private DealService dealService;
 
@@ -481,6 +483,39 @@ class DealServiceTest {
             assertThat(event.actor().type()).isEqualTo(AuditActorType.MEMBER);
             assertThat(event.actor().actorId()).isEqualTo(SALES_ID);
             assertThat(event.lostReason()).isNull();   // 실패가 아니면 비어 있다
+        }
+
+        /**
+         * <b>실패 처리는 견적·링크까지 닫는다</b> (DL-10, 전이표 §5, #318). 닫지 않으면 담당자가
+         * 딜을 접은 뒤에도 고객이 살아 있는 링크로 승인할 수 있고, 그 승인은 주문 전환에서
+         * {@code DEAL_NOT_OPEN}으로 막혀 고객과 담당자가 서로 다른 사실을 본다.
+         */
+        @Test
+        @DisplayName("실패 처리가 진행 중 견적·링크를 닫는다 (DL-10)")
+        void 실패는_견적을_닫는다() {
+            UUID dealId = UUID.randomUUID();
+            담당딜(dealId);
+
+            dealService.lose(SALES, dealId, new DealRequests.LoseDeal("경쟁사 선정", 0));
+
+            then(quoteCommand).should().expireOnDealLost(dealId);
+        }
+
+        /**
+         * 전이가 막히면 견적도 건드리지 않는다 — 실패하지 않은 딜의 견적을 닫으면
+         * 되돌릴 방법이 없다. 같은 트랜잭션이라 롤백되지만, 애초에 부르지 않는 편이 분명하다.
+         */
+        @Test
+        @DisplayName("버전 충돌로 실패 처리가 막히면 견적도 닫지 않는다")
+        void 충돌시_견적을_닫지_않는다() {
+            UUID dealId = UUID.randomUUID();
+            given(dealRepository.findByIdAndCompanyIdAndDeletedAtIsNull(dealId, COMPANY_ID))
+                    .willReturn(Optional.of(deal(dealId, SALES_ID)));
+
+            assertThatThrownBy(() -> dealService.lose(SALES, dealId, new DealRequests.LoseDeal("사유", 7)))
+                    .isInstanceOf(BusinessException.class);
+
+            then(quoteCommand).shouldHaveNoInteractions();
         }
 
         @Test

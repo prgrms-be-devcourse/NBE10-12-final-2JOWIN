@@ -44,6 +44,38 @@ public interface QuoteCommand {
      */
     ConversionSnapshot lockApprovedForConversion(UUID companyId, UUID quoteId);
 
+    /**
+     * 딜 실패 시 그 딜의 진행 중 견적과 열람 링크를 닫는다 (DL-10, 전이표 §5).
+     *
+     * <p><b>실패 처리의 효과이지 별도 기능이 아니다.</b> DL-10이 "실패 처리하면 진행 중이던 견적과
+     * 열람 링크는 만료된다"로 규정하고, 전이표 §5가 그 결과로 "승인 경로가 닫힘"을 적는다.
+     * 이것이 없으면 담당자가 딜을 접은 뒤에도 고객이 살아 있는 링크로 <b>승인할 수 있고</b>,
+     * 그 승인은 주문 전환에서 {@code DEAL_NOT_OPEN}으로 막혀 고객과 담당자가 다른 사실을 본다.
+     *
+     * <p><b>닫는 대상은 발송됨·열람됨뿐이다.</b> 작성 중(DRAFT)은 보낸 적이 없어 닫을 것이 없고,
+     * 승인·반려는 이미 응답이 끝났으며, 회수·기간 만료는 이미 닫혔다. 판정은
+     * {@code Quote.expire()}가 하고 여기서는 딜에 걸린 견적을 모아 넘긴다 —
+     * 기간 만료 배치(Q-37)와 <b>같은 메서드</b>를 써서 규칙이 두 벌이 되지 않게 한다.
+     *
+     * <p>딜 하나에 견적이 여럿일 수 있다 (QT-18) — 전부 닫는다. 닫을 것이 없으면 아무 일도
+     * 하지 않는다(no-op) — 견적을 만들지 않은 딜을 실패 처리하는 것은 정상이다.
+     *
+     * <p><b>{@code MANDATORY}다.</b> 실패 처리와 <b>한 트랜잭션</b>이어야 한다 —
+     * 딜만 LOST이고 견적 일부가 열린 상태는 전이표에 없고, 그게 남으면 지금 고치려는 문제가
+     * 그대로 재현된다. 기간 만료 배치가 건별 {@code REQUIRES_NEW}로 격리하는 것과 갈리는 이유는
+     * <b>대량 처리가 아니기 때문</b>이다 — 이쪽은 담당자 요청 한 건이라 부분 성공이 의미가 없다.
+     * 링크 만료({@code ViewTokenCommand.expire})도 같은 트랜잭션에 합류한다.
+     *
+     * <p><b>호출자의 트랜잭션은 쓰기여야 한다</b> — {@code MANDATORY}는 트랜잭션의 존재만 보고
+     * {@code readOnly}는 걸러내지 못한다. 읽기 전용에서 부르면 flush가 건너뛰어져 만료가
+     * <b>예외 없이 사라진다</b> ({@code DealCommand}·{@link #lockApprovedForConversion}과 같은 한계).
+     * 지금 호출자({@code DealService.lose})는 쓰기 트랜잭션이다.
+     *
+     * <p><b>회사 스코프를 걸지 않는다.</b> 호출자가 이미 회사 안에서 얻은 dealId를 넘기는 자리이고,
+     * 그 경로에서 SC-01·02 판정이 끝나 있다 — {@code DealCommand}의 시스템 전이와 같은 규약이다.
+     */
+    void expireOnDealLost(UUID dealId);
+
     /** v2.0.2 — 자기 신고 신원 (Q-44), title은 null 허용 */
     record Responder(String name, String title) {}
 
