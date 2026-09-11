@@ -28,6 +28,14 @@ spring:
     properties:
       mail.smtp.auth: true
       mail.smtp.starttls.enable: true
+      # STARTTLS "가능하면 씀"이 아니라 강제 — 본문(QUOTE_SENT·PASSWORD_RESET)에 열람 링크 원문
+      # 토큰이 들어가는데, enable만으로는 협상 실패 시 평문으로 나간다 (A 리뷰, SES는 항상 지원해 영향 없음).
+      mail.smtp.starttls.required: true
+      # jakarta.mail 기본값은 세 타임아웃 전부 무한 대기라, SES가 응답 없으면 @Async 유계 풀 스레드가
+      # 안 돌아오고 풀이 차 이후 발송이 TaskRejectedException으로 튄다 (E 리뷰).
+      mail.smtp.connectiontimeout: 5000
+      mail.smtp.timeout: 10000
+      mail.smtp.writetimeout: 10000
 
 # JWT — HS256 단일 키 (14 §3-4). 저장소에 시크릿을 두지 않는다 (14 §2-8).
 # 기본값 없음 — 미주입 시 기동이 실패한다. local·test 프로필만 개발용 기본값을 갖는다.
