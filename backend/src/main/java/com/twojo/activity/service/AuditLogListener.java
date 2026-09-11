@@ -1,7 +1,6 @@
 package com.twojo.activity.service;
 
 import com.twojo.activity.entity.AuditLog;
-import com.twojo.activity.repository.AuditLogRepository;
 import com.twojo.boundary.AuditActor;
 import com.twojo.deal.DealStageChanged;
 import com.twojo.member.event.MemberDeactivated;
@@ -18,8 +17,6 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Propagation;
-import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.event.TransactionPhase;
 import org.springframework.transaction.event.TransactionalEventListener;
 import tools.jackson.databind.ObjectMapper;
@@ -34,8 +31,8 @@ import tools.jackson.databind.ObjectMapper;
  * 그 유실을 되짚을 수단이 없다. 얻는 것은 응답 몇 밀리초인데, 행 하나 {@code INSERT}라
  * 사용자가 느끼지 못한다. 메일이 비동기인 것은 SMTP 를 기다리기 때문이고 여기는 다르다.
  *
- * <p><b>{@code REQUIRES_NEW}다.</b> {@code AFTER_COMMIT} 시점에는 원래 트랜잭션의 동기화 정리가
- * 아직 끝나지 않았을 수 있어, 합류하려 들면 커밋되지 않거나 예외가 난다.
+ * <p><b>이 클래스에는 트랜잭션이 없다.</b> 저장은 {@link AuditLogWriter}가 새 트랜잭션으로 하고,
+ * 그 호출을 {@code write()}의 {@code try} 안에 둔다 — 사유는 {@link AuditLogWriter} (#328).
  *
  * <p>{@code entity_type}·{@code event_type}은 <b>여기서 만든다</b>. 발행자가 문자열로 실어 보내면
  * 오타가 그대로 저장되고, 값이 바뀔 때 발행 지점 전부를 찾아다녀야 한다 (#22).
@@ -49,10 +46,9 @@ import tools.jackson.databind.ObjectMapper;
 @RequiredArgsConstructor
 class AuditLogListener {
 
-    private final AuditLogRepository auditLogRepository;
+    private final AuditLogWriter auditLogWriter;
     private final ObjectMapper objectMapper;
 
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteSent event) {
         write(AuditEventType.QUOTE_SENT.name(), () -> quoteRow(event.companyId(), event.quoteId(),
@@ -67,7 +63,6 @@ class AuditLogListener {
      * 예외 없이 비고, {@code {before, after}} 형식의 절반이 늘 무의미해진다.
      * 실패가 아닌 전이에서는 <b>키 자체를 넣지 않는다</b> — null 이 든 키는 "값이 지워졌다"로 읽힌다.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(DealStageChanged event) {
         write(AuditEventType.STAGE_MOVED.name(), () -> {
@@ -88,7 +83,6 @@ class AuditLogListener {
     }
 
     /** 첫 열람 (AP-02·07) — 재열람은 발행 쪽이 이미 걸러 여기 오지 않는다. */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteViewed event) {
         write(AuditEventType.QUOTE_VIEWED.name(), () -> quoteRow(event.companyId(), event.quoteId(),
@@ -100,7 +94,6 @@ class AuditLogListener {
      * 고객 승인 (AP-08·19) — {@code responderName}은 <b>검증되지 않은 자기 신고</b>다 (Q-44).
      * 값은 싣되 화면이 인증된 신원처럼 그리지 않아야 한다.
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteApproved event) {
         write(AuditEventType.QUOTE_APPROVED.name(), () -> quoteRow(event.companyId(), event.quoteId(),
@@ -109,7 +102,6 @@ class AuditLogListener {
     }
 
     /** 고객 반려 (AP-09·10·19) — 사유도 발생 전에 없던 값이라 부가 필드다. */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(QuoteRejected event) {
         write(AuditEventType.QUOTE_REJECTED.name(), () -> quoteRow(event.companyId(), event.quoteId(),
@@ -121,7 +113,6 @@ class AuditLogListener {
      * 주문 전환 (OD-01) — {@code dealId}는 {@code orders}에 컬럼이 없어 견적을 거쳐 얻은 값이다.
      * 타임라인 병합 키라 반드시 실린다 (AC-06).
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(OrderCreated event) {
         write(AuditEventType.ORDER_CREATED.name(), () -> {
@@ -144,7 +135,6 @@ class AuditLogListener {
      *
      * <p>이벤트 record 가 하위 패키지에 있다 — 발행 모듈마다 위치가 다르다 (#22 코멘트).
      */
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
     @TransactionalEventListener(phase = TransactionPhase.AFTER_COMMIT)
     public void on(MemberDeactivated event) {
         write(AuditEventType.MEMBER_DEACTIVATED.name(), () -> {
@@ -181,18 +171,19 @@ class AuditLogListener {
     }
 
     /**
-     * 만들고 저장한다 — <b>둘 다 이 메서드 안에서 끝낸다.</b>
+     * 만들고 저장한다 — <b>조립·트랜잭션 시작·INSERT·커밋이 전부 이 {@code try} 안에서 끝난다.</b>
      *
      * <p>{@code AFTER_COMMIT}에서 새는 예외는 커밋된 요청을 500으로 뒤집고, 같은 트랜잭션의
-     * 다른 리스너도 실행되지 않는다. 조립(payload 직렬화·null 검사)과 저장을 한 {@code try}로
-     * 감싸는 이유가 그것이다.
+     * 다른 리스너도 실행되지 않는다. 조립(payload 직렬화·null 검사)과
+     * {@link AuditLogWriter#save} 를 한 {@code try}로 감싸는 이유가 그것이다 — 트랜잭션 경계가
+     * 왜 저 호출 안에 있어야 하는지는 {@link AuditLogWriter}.
      *
      * <p><b>실패하면 삼킨다.</b> 남길 곳이 없어 로그만 남긴다 — 사용자 요청은 이미 성공했고,
      * 여기서 되돌릴 수 있는 것이 없다.
      */
     private void write(String eventType, Supplier<AuditLog> row) {
         try {
-            auditLogRepository.save(row.get());
+            auditLogWriter.save(row.get());
         } catch (RuntimeException e) {
             log.error("감사 로그 적재 실패 — 이 사건은 기록되지 않는다. eventType={}, {}",
                     eventType, e.getClass().getName());
