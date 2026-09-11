@@ -1,6 +1,8 @@
-# 개발 워크플로우 v1.2
+# 개발 워크플로우 v1.3
 
 > 🧭 [문서 지도](README.md) · ← [12 프론트엔드 계획](12-frontend-plan.md) · [14 기술 스택](14-tech-stack.md) →
+
+> v1.3 (2026-09-11) — §3.1에 **`MANDATORY` 메서드의 호출자는 쓰기 트랜잭션 안** 규약 추가(#302, #227 후속)
 
 > v1.2 (2026-09-09) — §3에 **클래스 레벨 `@Transactional(readOnly = true)` 서비스의 쓰기 메서드 규약** 신설 + ArchUnit 도입(#184, #154 후속)
 
@@ -195,6 +197,23 @@ flush를 건너뛰고 **변경이 예외도 로그도 없이 버려진다** — 
 - **어노테이션이 붙었는지만으로는 안 된다.** `@Transactional(readOnly = true)`를 복사해 붙이면
   어노테이션은 있는데 여전히 읽기 전용이라 결과가 같다. 규칙도 `readOnly = false`까지 확인한다
 - 클래스 레벨 `readOnly = true` 자체는 금지하지 않는다. 조회 서비스에서는 유용하다
+
+**`@Transactional(propagation = MANDATORY)` 메서드를 부르는 쪽은 쓰기 트랜잭션 안이어야 한다**
+(`MandatoryCallerWriteTransactionTest`, #302). `MANDATORY`는 트랜잭션의 **존재**만 검사하고 `readOnly`를
+보지 않는다 — 읽기 전용 호출자는 검사를 통과하고 변경은 위와 같이 조용히 버려진다 (PR #225 리뷰).
+
+- 대상은 `MANDATORY` 구현 메서드와 그 메서드가 구현하는 **경계 인터페이스 메서드** 둘 다다. 호출부는
+  `DealCommand.markWon`을 부르지 `DealCommandImpl.markWon`을 부르지 않는다
+- **호출 사슬을 거슬러 올라간다.** 호출자에 트랜잭션 어노테이션이 없으면 그 호출자를 부르는 쪽으로
+  올라가고, 모든 경로가 쓰기 트랜잭션(`readOnly = false`인 `REQUIRED`·`REQUIRES_NEW`·`NESTED`)에 닿아야
+  통과한다. `MANDATORY`·`SUPPORTS`는 호출자 트랜잭션을 쓰므로 계속 올라가고, `NOT_SUPPORTED`·`NEVER`나
+  아무도 부르지 않는 어노테이션 없는 진입점(컨트롤러·`@Scheduled`)에 닿으면 위반이다
+- **private 메서드의 어노테이션(클래스 레벨 포함)은 무시한다.** 프록시는 public 메서드의 외부 호출에만
+  끼어들므로 private 헬퍼는 항상 호출자의 트랜잭션에서 돈다 — 클래스 레벨 `readOnly = true` 서비스의
+  private 헬퍼가 쓰기 메서드에서 불리면 쓰기다
+- 실패 메시지가 경로를 보여준다 (`transferOpenDeals ← deactivate [readOnly = true]`). 고치는 방법은 호출
+  경로의 public 메서드에 쓰기 `@Transactional`을 여는 것이지, 호출부 목록을 javadoc에 적는 것이 아니다
+- 호출부가 하나도 없는 `MANDATORY` 메서드도 실패한다 — 죽은 계약이거나 호출 해석이 놓친 경로다
 
 ---
 
