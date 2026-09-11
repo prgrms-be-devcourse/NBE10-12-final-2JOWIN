@@ -261,6 +261,42 @@ check_targets() {
   log "경고: 스크레이프 타깃이 응답하지 않는다 — ${down:-알 수 없음}"
 }
 
+# ── 9-2. 실패했을 때 증거 남기기 ─────────────────────────────────────────
+# 롤백은 방금 뜬 컨테이너를 지운다. 그 전에 남기지 않으면 무엇 때문에
+# 실패했는지 알 방법이 사라진다 — 배포자는 SSH 로 들어가지 못하고(22번은
+# 배포 중에만 열린다), 들어간들 그 컨테이너는 이미 없다.
+#
+# 실제로 그랬다. 메일 어댑터 배포가 롤백됐는데 CI 로그에 남은 것은
+# "헬스체크 실패" 한 줄뿐이었고, 원인을 코드를 읽어 추측해야 했다 (#333).
+#
+# 세 가지를 본다. 이 조합이면 "앱이 안 떴다"와 "앱은 떴는데 health 가
+# DOWN 이다"가 구분된다 — 증상은 같지만 대응이 전혀 다르다.
+dump_failure() {
+  local cid
+  cid="$(container_of backend || true)"
+  if [ -z "$cid" ]; then
+    log "진단 건너뜀 — backend 컨테이너가 없다 (기동 자체가 실패했다는 뜻이다)"
+    return 0
+  fi
+
+  log "── 헬스체크 기록 (마지막 회차들) ──"
+  docker inspect -f \
+    '{{if .State.Health}}{{range .State.Health.Log}}[rc={{.ExitCode}}] {{.Output}}
+{{end}}{{end}}' "$cid" 2>/dev/null | tail -5 || true
+
+  # 컨테이너 헬스체크는 curl -f 라 503 이면 본문을 버린다. 지금 알고 싶은
+  # 것이 그 본문이므로 -f 없이 한 번 더 부른다.
+  log "── /actuator/health 본문 ──"
+  docker exec "$cid" curl -s --max-time 5 http://localhost:8080/actuator/health 2>/dev/null ||
+    log "(응답 없음 — 앱이 포트를 열지 못했다)"
+  echo
+
+  # 여기에 원인이 있다. 기동 실패면 스택트레이스가, health 만 DOWN 이면
+  # 해당 인디케이터의 경고가 찍힌다(Spring 이 예외와 함께 남긴다).
+  log "── 컨테이너 로그 (마지막 80줄) ──"
+  docker logs --tail 80 "$cid" 2>&1 || true
+}
+
 if wait_healthy "$HEALTH_TIMEOUT"; then
   check_targets
   log "OK"
@@ -269,6 +305,7 @@ fi
 
 # ── 10. 롤백 ──────────────────────────────────────────────────────────────
 log "헬스체크 실패"
+dump_failure
 
 if [ -z "$prev_image" ]; then
   log "롤백 대상이 없다 (최초 배포)"
@@ -287,5 +324,9 @@ fi
 # 두 번 연속 실패는 이미지 문제가 아니다. DB 가 죽었거나 디스크가 찼거나
 # 설정이 깨진 것이다. 재시도로 해결되지 않는다.
 # 컨테이너를 내리지 않는다 — 로그와 상태가 사라지면 원인을 못 찾는다.
+#
+# 그래도 여기서 한 번 더 남긴다. 이 상태는 사람이 즉시 들어가야 하는데,
+# 22번은 닫혀 있고 여는 데 시간이 걸린다. 그 사이에 볼 것이 있어야 한다.
+dump_failure
 log "ROLLBACK_FAILED"
 exit 3
