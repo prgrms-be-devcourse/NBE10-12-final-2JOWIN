@@ -431,7 +431,7 @@ C → D: Deal 실패(lose) 시 ViewTokenCommand.expire(DEAL_LOST)   ← 역방�
 | B | `AuditQuery` (**stageChanges** — 기간 안의 단계 전이 이력; DB-07 전환율의 원천. **기간은 한국 날짜**(`LocalDate`) — 경계 계산은 컬럼 소유 모듈이 한다(`OrderQuery.wonTotalsByQuotes`와 같은 축) · `payload` 대신 `before`·`after`를 꺼내 주고 집계는 하지 않는다 · 행위자 축 없음 — 자동 전이가 `SYSTEM`이라 actor로 담당자별 집계를 하면 그 건들이 빠진다) (v2.0.21) | C |
 | C | `QuoteCommand` (markViewed·approve·reject · **lockApprovedForConversion** — 주문 전환용 행 잠금 + 스냅샷, OD-01·02·04) (v2.0.10) · **`ConversionSnapshot.Line`에 `sortOrder`** — 주문이 견적 항목 순서를 물려받는 축 (v2.0.18) | D, C(order) |
 | C | `DealQuery` (assigneeIdOf·isOpen·hasOpenDeals·summariesByCustomer·summariesByIds·assignedDealIds·customerIdOf·countOpenAssigned) · **`DealSummary`에 `customerId`** — 목록이 고객사 이름을 배치로 받는 축 (v2.0.20, #273) | B, D, A |
-| C | `DealCommand` (promoteToQuoteStage — 발송 시 자동 승급 Q-25 · **markWon** — 주문 전환 시 자동 성사 OD-06 (v2.0.10) · reassignOpenDeals — 비활성화 시 진행 중 담당 Deal 이관, 옮긴 id 반환 MB-14 (v2.0.8)) | C(quote·order), A |
+| C | `DealCommand` (promoteToQuoteStage — 발송 시 자동 승급 Q-25 · **markWon** — 주문 전환 시 자동 성사 OD-06 (v2.0.10) · reassignOpenDeals — 비활성화 시 진행 중 담당 Deal 이관, 옮긴 id 반환 MB-14 (v2.0.8)) · **셋 다 `MANDATORY`** — 호출자의 쓰기 트랜잭션 필수 (v2.0.22, #227) | C(quote·order), A |
 | C | `QuoteQuery` (응답 대기·임박 후보 — NT-05·06, DB-03) (v2.0.1) · **originsByIds·quoteIdsByDeals** (주문의 견적 경유 조회·SC-04 범위, OD-08·09) (v2.0.10) · **QuoteSummary에 dealId·companyId** (호출자가 거르는 축) (v2.0.11) | D, C(order) |
 | C | `SalesStatsQuery` (대시보드 집계 — DB-01~08) (v2.0.1) · **`conversions`만 자리표시자** — pipeline·monthlyWon·performance는 실구현 (v2.0.19, #216). 전환율은 `audit_log`의 `STAGE_MOVED` 적재가 선행이다 | D |
 | C | **`OrderQuery`** (wonTotalsByQuotes — 기간 안에 전환된 주문, DB-02·06) (v2.0.19, #216) | C(deal) |

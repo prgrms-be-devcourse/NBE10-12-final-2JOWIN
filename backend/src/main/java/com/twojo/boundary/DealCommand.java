@@ -34,7 +34,11 @@ public interface DealCommand {
      * 여기까지 왔다는 것은 그 판정이 없었거나 뚫렸다는 뜻이다.
      *
      * <p>없거나 소프트 삭제된 Deal이면 {@code RESOURCE_NOT_FOUND}.
-     * <b>호출자의 트랜잭션에 합류한다</b> — 발송이 롤백되면 단계도 함께 되돌아가야 한다.
+     *
+     * <p><b>호출자의 쓰기 트랜잭션이 필수다</b> — 발송이 롤백되면 단계도 함께 되돌아가야 한다.
+     * 트랜잭션 없이 부르면 {@code MANDATORY}가 그 자리에서 실패시킨다 (#227).
+     * <b>{@code readOnly} 트랜잭션은 걸러내지 못한다</b> — 그 경우 flush가 건너뛰어져
+     * 변경이 예외 없이 사라지므로, 호출자가 쓰기임을 보장해야 한다 (PR #225 리뷰).
      */
     void promoteToQuoteStage(UUID dealId);
 
@@ -50,8 +54,11 @@ public interface DealCommand {
      * 두 메서드가 종결 딜을 다르게 다루는 이유가 여기 있다.
      *
      * <p>실패(LOST) Deal이면 {@code DEAL_NOT_OPEN}. 없거나 소프트 삭제된 Deal이면
-     * {@code RESOURCE_NOT_FOUND}. <b>호출자의 트랜잭션에 합류한다</b> —
-     * 주문 생성이 롤백되면 성사도 되돌아가야 한다.
+     * {@code RESOURCE_NOT_FOUND}.
+     *
+     * <p><b>호출자의 쓰기 트랜잭션이 필수다</b> ({@code MANDATORY}, #227) —
+     * 주문 생성이 롤백되면 성사도 되돌아가야 한다. {@code readOnly} 조건은
+     * {@link #promoteToQuoteStage}와 같다.
      */
     void markWon(UUID dealId);
 
@@ -88,8 +95,9 @@ public interface DealCommand {
      * 방어 체크를 두지 않는 것과 같은 규약이다. {@code companyId}는 SC-01 격리를 인자로 <b>명시</b>하기
      * 위해 받는다 — {@code fromMemberId}만으로도 회사가 정해지지만(Q-14) 추론하지 않는다.
      *
-     * <p><b>호출자의 트랜잭션에 합류한다</b> — 비활성화가 롤백되면 이관도 되돌아간다.
-     * "구성원은 비활성인데 Deal은 그대로"나 그 반대는 존재하면 안 되는 상태다 (11 §2 "한 트랜잭션").
+     * <p><b>호출자의 쓰기 트랜잭션이 필수다</b> ({@code MANDATORY}, #227) — 비활성화가 롤백되면
+     * 이관도 되돌아간다. "구성원은 비활성인데 Deal은 그대로"나 그 반대는 존재하면 안 되는
+     * 상태다 (11 §2 "한 트랜잭션"). {@code readOnly} 조건은 {@link #promoteToQuoteStage}와 같다.
      *
      * <p><b>구현 규약</b>: 엔티티를 경유해 옮긴다 — JPQL 일괄 update는 {@code @Version}과
      * {@code updated_at}을 건드리지 않아, 열어 둔 딜 상세의 낙관적 락(DL-05)이 이관을 알아채지 못한다.

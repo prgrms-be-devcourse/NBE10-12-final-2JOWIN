@@ -24,6 +24,8 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 
@@ -51,6 +53,8 @@ class QuoteSendTransactionTest {
     private QuoteService quoteService;
     @Autowired
     private JdbcTemplate jdbc;
+    @Autowired
+    private PlatformTransactionManager transactionManager;
 
     /**
      * 메일 예약을 가로챈다 — 실패를 <b>링크 저장 뒤</b>에 일으키는 자리다.
@@ -184,8 +188,12 @@ class QuoteSendTransactionTest {
     @Test
     @DisplayName("링크 발급 뒤 단계 승급이 실패하면 링크·단계·상태가 전부 되돌아간다 (Q-40)")
     void 링크_발급_뒤_실패는_전부_되돌린다() {
-        willThrow(new IllegalStateException("승급 실패"))
-                .given(dealCommand).promoteToQuoteStage(any());
+        // 스터빙을 트랜잭션 안에서 한다 — promoteToQuoteStage가 MANDATORY라(#227) 스터빙 호출도
+        // Spring 트랜잭션 프록시를 먼저 지나고, 트랜잭션이 없으면 거기서 거부된다.
+        // 스터빙이 중간에 끊기면 Mockito 상태가 깨져 다음 테스트 클래스까지 오염된다.
+        new TransactionTemplate(transactionManager).executeWithoutResult(status ->
+                willThrow(new IllegalStateException("승급 실패"))
+                        .given(dealCommand).promoteToQuoteStage(any()));
 
         assertThatThrownBy(() -> quoteService.send(ctx, quoteId, new QuoteRequests.SendQuote(contactId, null)))
                 .isInstanceOf(IllegalStateException.class);
