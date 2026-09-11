@@ -87,7 +87,8 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
      * <p>{@code Between}은 <b>양 끝을 포함</b>한다 — 계약의 "하한 포함 · 상한 포함"과 같다.
      * 하한이 있어야 이미 만료된 견적에 "임박했습니다"가 나가지 않는다.
      *
-     * <p>유효기간이 가까운 것부터 준다 — 먼저 닫히는 건이 먼저 알려져야 한다.
+     * <p>유효기간 오름차순 — 다만 이 순서는 <b>회사 안에서만</b> 살아남는다. {@code QuoteQueryImpl}이
+     * 회사별로 나눠 이름을 채우면서 회사 간 순서는 버리고, 계약도 전역 정렬을 약속하지 않는다.
      */
     List<Quote> findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(
             Collection<Quote.Status> statuses, LocalDate from, LocalDate to);
