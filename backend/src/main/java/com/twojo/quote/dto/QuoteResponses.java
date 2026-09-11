@@ -47,11 +47,14 @@ public final class QuoteResponses {
      * 상세 — 항목 포함. 정렬은 엔티티의 {@code @OrderBy("sortOrder ASC")}가 보장한다 (QT-07).
      * 필드는 08의 {@code QuoteDetailResponse}를 따른다.
      *
-     * @param supersededByQuoteId QT-28 대체 견적 — <b>지금은 항상 null이다.</b>
+     * @param supersededByQuoteId QT-28 대체 견적 — <b>아직 항상 null이다.</b>
      *                            전용 컬럼이 없고 {@code cloned_from_quote_id}의 역방향으로 구하는
-     *                            값인데(06 ERD: "복제 계보 · QT-28 대체 이동"), 복제(QT-19)가 아직
-     *                            없어 그 관계를 가진 견적이 존재할 수 없다. <b>키는 지금 내보낸다</b> —
-     *                            나중에 생기면 프론트가 필드 추가를 기다리지 않아도 된다
+     *                            값이다 (06 ERD: "복제 계보 · QT-28 대체 이동").
+     *                            <b>복제(QT-19)가 생기면서 그 관계를 가진 견적이 실제로 만들어질 수
+     *                            있게 됐다</b> — 채우는 것은 별도 이슈다. 어느 복제본을 "대체"로 볼지
+     *                            (여러 번 복제 · 원본 상태 · DRAFT 복제본)가 먼저 정해져야 한다.
+     *                            <b>키는 그전에도 내보낸다</b> — 프론트가 필드 추가를 기다리지 않아도 되고,
+     *                            화면은 이미 이 값이 있으면 "대체한 견적으로 이동"을 그린다
      */
     public record QuoteDetail(
             UUID id, String quoteNo, String status, String vatMode,

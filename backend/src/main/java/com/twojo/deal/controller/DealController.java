@@ -7,12 +7,14 @@ import com.twojo.deal.entity.Deal;
 import com.twojo.deal.service.DealService;
 import com.twojo.global.response.PageResponse;
 import jakarta.validation.Valid;
+import java.time.Instant;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.DeleteMapping;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
@@ -113,6 +115,13 @@ public class DealController {
     }
 
     /** 담당자 변경 (DL-05, SC-06) — 기업 관리자 전용, 역할 판정은 서비스가 한다 */
+    /** 삭제 (DL-16) — 소프트 삭제. 견적이 연결돼 있으면 409 (DL-17) */
+    @DeleteMapping("/{dealId}")
+    @ResponseStatus(HttpStatus.NO_CONTENT)
+    public void delete(AccessContext ctx, @PathVariable UUID dealId) {
+        dealService.delete(ctx, dealId, Instant.now());
+    }
+
     @PatchMapping("/{dealId}/assignee")
     public DealResponses.DealItem changeAssignee(AccessContext ctx, @PathVariable UUID dealId,
                                                  @Valid @RequestBody DealRequests.ChangeAssignee request) {

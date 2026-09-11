@@ -120,6 +120,92 @@ class QuoteServiceTest {
     }
 
     @Nested
+    @DisplayName("복제 (QT-19)")
+    class Clone {
+
+        private Quote 반려된_원본() {
+            Quote origin = draft();
+            ReflectionTestUtils.setField(origin, "id", QUOTE_ID);
+            origin.replaceItems(List.of(QuoteItem.of(null, "책상", "EA", 3, 200_000L, null, 0)));
+            ReflectionTestUtils.setField(origin, "status", Quote.Status.REJECTED);
+            ReflectionTestUtils.setField(origin, "sentAt", Instant.parse("2026-09-02T00:00:00Z"));
+            return origin;
+        }
+
+        /**
+         * 반려된 견적을 고쳐 다시 보내는 것이 이 기능의 주 용도다 (Q-18) —
+         * 발송 견적 불변(QT-16)을 지키면서 재제안하는 유일한 경로다.
+         */
+        @Test
+        @DisplayName("반려된 견적도 복제된다 — 새 번호를 받은 DRAFT가 나온다 (Q-18)")
+        void 반려_견적_복제() {
+            Quote origin = 반려된_원본();
+            given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
+                    .willReturn(Optional.of(origin));
+            dealIsVisibleTo(SALES_ID);
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(true);
+            given(documentNumberService.next(COMPANY_ID, DocType.QUOTE)).willReturn("Q-2610-001");
+            given(quoteRepository.save(any())).willAnswer(i -> i.getArgument(0));
+
+            var copy = quoteService.clone(SALES, QUOTE_ID);
+
+            assertThat(copy.quoteNo()).isEqualTo("Q-2610-001");
+            assertThat(copy.status()).isEqualTo("DRAFT");
+            assertThat(copy.clonedFromQuoteId()).isEqualTo(QUOTE_ID);
+            assertThat(copy.totalAmount()).isEqualTo(origin.getTotalAmount());
+            assertThat(copy.sentAt()).isNull();
+            assertThat(origin.getStatus()).isEqualTo(Quote.Status.REJECTED);   // 원본은 그대로
+        }
+
+        @Test
+        @DisplayName("유효기간은 오늘 기준으로 새로 정한다 — 원본 것은 이미 지났을 수 있다")
+        void 유효기간을_새로_정한다() {
+            Quote origin = 반려된_원본();
+            ReflectionTestUtils.setField(origin, "validUntil", LocalDate.now().minusDays(10));
+            given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
+                    .willReturn(Optional.of(origin));
+            dealIsVisibleTo(SALES_ID);
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(true);
+            given(documentNumberService.next(COMPANY_ID, DocType.QUOTE)).willReturn("Q-2610-001");
+            given(quoteRepository.save(any())).willAnswer(i -> i.getArgument(0));
+
+            assertThat(quoteService.clone(SALES, QUOTE_ID).validUntil()).isAfter(LocalDate.now());
+        }
+
+        @Test
+        @DisplayName("종결된 Deal에는 복제할 수 없다 — 채번을 소비하지 않는다 (Q-25)")
+        void 종결_Deal_차단() {
+            given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
+                    .willReturn(Optional.of(반려된_원본()));
+            dealIsVisibleTo(SALES_ID);
+            given(dealQuery.isOpen(DEAL_ID)).willReturn(false);
+
+            assertThatThrownBy(() -> quoteService.clone(SALES, QUOTE_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteServiceTest::errorOf)
+                    .isEqualTo(ErrorCode.QUOTE_DEAL_CLOSED);
+
+            then(documentNumberService).should(never()).next(any(), any());
+            then(quoteRepository).should(never()).save(any());
+        }
+
+        @Test
+        @DisplayName("영업이 남의 담당 견적을 복제하면 404다 — 403이 아니다 (SC-02·09)")
+        void 남의_견적은_404() {
+            given(quoteRepository.findWithItemsByIdAndCompanyId(QUOTE_ID, COMPANY_ID))
+                    .willReturn(Optional.of(반려된_원본()));
+            dealIsVisibleTo(UUID.randomUUID());   // 다른 사람이 담당
+
+            assertThatThrownBy(() -> quoteService.clone(SALES, QUOTE_ID))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteServiceTest::errorOf)
+                    .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+
+            then(documentNumberService).should(never()).next(any(), any());
+        }
+    }
+
+    @Nested
     @DisplayName("작성 시작 (QT-01)")
     class Create {
 

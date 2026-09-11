@@ -41,6 +41,22 @@ public interface AuditLogRepository extends JpaRepository<AuditLog, UUID>, JpaSp
     List<AuditLog> findByDealId(@Param("companyId") UUID companyId, @Param("dealId") UUID dealId);
 
     /**
+     * 기간 안의 단계 전이 (DB-07 전환율의 원천, {@code AuditQuery.stageChanges}).
+     *
+     * <p>기간은 <b>사건이 일어난 시각</b> 기준이다 — 적재 시각이 아니다. 비동기 적재라 둘이
+     * 밀릴 수 있고, 집계가 묻는 것은 "그 기간에 무슨 일이 있었나"다.
+     *
+     * <p><b>하한은 포함, 상한은 제외다.</b> 같은 파일의 목록 조회({@code search})는 양 끝을
+     * 포함하는데 그쪽은 화면 필터라 "1일부터 31일까지"가 자연스럽다. 여기는 집계의 원천이라
+     * 다르다 — 양 끝을 포함하면 인접한 두 기간의 경계에서 한 건이 두 번 세어지고, 그것을 피하려고
+     * 상한을 당기면 그 사이 마이크로초에 일어난 전이가 어느 기간에도 들어가지 않는다.
+     * 상한을 제외하면 다음 구간의 하한과 정확히 맞물린다.
+     */
+    List<AuditLog> findByCompanyIdAndEventTypeAndOccurredAtGreaterThanEqualAndOccurredAtLessThanOrderByOccurredAtAsc(
+            UUID companyId, String eventType, Instant from, Instant to);
+
+
+    /**
      * 목록 (GET /audit-logs?entityType=&from=&to=) — 조건 조립은 {@link AuditLogSpecs}가 한다.
      *
      * <p>파생 쿼리로는 못 짠다. {@code Between}이 null을 못 받아 기간 미지정 호출이 막히고

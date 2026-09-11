@@ -13,6 +13,7 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.AuditActorType;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
+import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.deal.DealStageChanged;
 import com.twojo.deal.dto.DealRequests;
@@ -20,6 +21,7 @@ import com.twojo.deal.entity.Deal;
 import com.twojo.deal.repository.DealRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
+import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
@@ -60,6 +62,7 @@ class DealServiceTest {
     @Mock private DealRepository dealRepository;
     @Mock private CustomerQuery customerQuery;
     @Mock private MemberQuery memberQuery;
+    @Mock private QuoteQuery quoteQuery;
     @Mock private ApplicationEventPublisher eventPublisher;
     @InjectMocks private DealService dealService;
 
@@ -224,6 +227,61 @@ class DealServiceTest {
                     .isInstanceOf(BusinessException.class)
                     .extracting(e -> ((BusinessException) e).getErrorCode())
                     .isEqualTo(ErrorCode.STALE_VERSION);
+        }
+    }
+
+    @Nested
+    @DisplayName("삭제 (DL-16·17)")
+    class Delete {
+
+        private static final Instant NOW = Instant.parse("2026-09-11T00:00:00Z");
+
+        @Test
+        @DisplayName("견적이 없으면 소프트 삭제된다 — 행은 남고 deleted_at만 찍힌다")
+        void 소프트_삭제() {
+            UUID dealId = UUID.randomUUID();
+            Deal target = deal(dealId, SALES_ID);
+            given(dealRepository.findByIdAndCompanyIdAndDeletedAtIsNull(dealId, COMPANY_ID))
+                    .willReturn(Optional.of(target));
+            given(quoteQuery.quoteIdsByDeals(COMPANY_ID, List.of(dealId))).willReturn(List.of());
+
+            dealService.delete(SALES, dealId, NOW);
+
+            assertThat(target.getDeletedAt()).isEqualTo(NOW);
+            then(dealRepository).should(never()).delete(any(Deal.class));   // 하드 삭제가 아니다
+        }
+
+        @Test
+        @DisplayName("견적이 하나라도 연결돼 있으면 DEAL_HAS_QUOTES — 지워지지 않는다 (DL-17)")
+        void 견적_연결시_차단() {
+            UUID dealId = UUID.randomUUID();
+            Deal target = deal(dealId, SALES_ID);
+            given(dealRepository.findByIdAndCompanyIdAndDeletedAtIsNull(dealId, COMPANY_ID))
+                    .willReturn(Optional.of(target));
+            given(quoteQuery.quoteIdsByDeals(COMPANY_ID, List.of(dealId)))
+                    .willReturn(List.of(UUID.randomUUID()));
+
+            assertThatThrownBy(() -> dealService.delete(SALES, dealId, NOW))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.DEAL_HAS_QUOTES);
+
+            assertThat(target.getDeletedAt()).isNull();
+        }
+
+        @Test
+        @DisplayName("영업은 남의 Deal을 지울 수 없다 — 존재를 알리지 않고 404다 (SC-02)")
+        void 남의_Deal은_404() {
+            UUID dealId = UUID.randomUUID();
+            given(dealRepository.findByIdAndCompanyIdAndDeletedAtIsNull(dealId, COMPANY_ID))
+                    .willReturn(Optional.of(deal(dealId, ADMIN_ID)));   // 담당자가 남이다
+
+            assertThatThrownBy(() -> dealService.delete(SALES, dealId, NOW))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(e -> ((BusinessException) e).getErrorCode())
+                    .isEqualTo(ErrorCode.RESOURCE_NOT_FOUND);
+
+            then(quoteQuery).should(never()).quoteIdsByDeals(any(), any());   // 범위 밖이면 견적도 묻지 않는다
         }
     }
 
