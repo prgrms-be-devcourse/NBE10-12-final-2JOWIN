@@ -276,7 +276,7 @@ public interface QuoteQuery {                    // D 소비 — 배치·대시�
                                                               // QuoteSummary: 견적번호·고객사·발송 시각·**첫 열람 시각(null=미열람)**·유효기간 (v2.0.2, GAP-08)
                                                               // + **dealId·companyId** (v2.0.11) — 회사 전체를 돌려주므로
                                                               //   호출자가 dealId로 SC-02를 거르고 companyId로 정지 억제(Q-27)를 판정한다
-    List<QuoteSummary> findExpiringUntil(LocalDate date);     // NT-06 임박 알림 후보 (valid_until 기준)
+    List<QuoteSummary> findExpiringBetween(LocalDate from, LocalDate to);  // NT-06 임박 알림 후보 — 전 회사, 양 끝 포함
 }
 
 public interface SalesStatsQuery {               // D 소비 — 대시보드 집계 (DB-01~08, v2.0.1 보강. SC 범위는 ctx로 적용)
