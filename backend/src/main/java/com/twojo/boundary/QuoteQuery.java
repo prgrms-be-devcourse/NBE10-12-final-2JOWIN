@@ -96,6 +96,39 @@ public interface QuoteQuery {
     List<UUID> quoteIdsByDeals(UUID companyId, Collection<UUID> dealIds);
 
     /**
+     * 딜 상세의 견적 요약 목록 (DL-15) — 딜 묶음에 걸린 견적을 한 줄씩.
+     *
+     * <p><b>{@link #quoteIdsByDeals}와 갈리는 이유는 소비처다.</b> 그쪽은 주문 목록의 범위
+     * 필터라 id만 있으면 되지만, 딜 상세는 화면에 견적번호·상태·금액을 그린다.
+     * 같은 조회를 id만 받아 온 뒤 다시 캐물으면 경계를 두 번 지난다.
+     *
+     * <p><b>최근 것부터 준다</b> — 딜 상세의 견적 탭이 그대로 그리는 순서다. 복제(QT-19)로
+     * 재제안한 건이 원본 아래 묻히면 담당자가 옛 견적을 본다. 여러 딜을 한 번에 물으면
+     * 딜이 섞인 채 시간순이므로, 호출자가 {@code dealId}로 묶으면 그 안에서 순서가 유지된다.
+     *
+     * <p>나머지 규약은 {@code DealQuery.summariesByIds}와 같다 — 없는 id는 예외 없이 빠짐 ·
+     * 빈 묶음이면 빈 목록.
+     * 견적에는 소프트 삭제가 없어(상태로 관리) 종결 견적도 그대로 나온다 —
+     * 딜 상세는 "이 딜에서 무슨 견적이 오갔나"를 보여주는 자리라 회수·반려도 이력이다.
+     */
+    List<QuoteBrief> briefsByDeals(UUID companyId, Collection<UUID> dealIds);
+
+    /**
+     * 딜 상세에 그리는 견적 한 줄 (DL-15).
+     *
+     * <p>{@code dealId}를 함께 싣는 이유는 <b>호출자가 딜별로 묶기 위해서</b>다 —
+     * 계약이 순서를 보장하지 않으므로 이 축이 없으면 여러 딜을 한 번에 물을 수 없다.
+     *
+     * <p>{@code totalAmount}는 VAT 포함이다 ({@code OrderQuery.QuoteWonTotal}과 같은 축) —
+     * 화면이 견적과 주문 금액을 나란히 놓기 때문이다. <b>null이 아니다</b> —
+     * {@code quote.total_amount}가 NOT NULL이고 항목이 없는 작성 중 견적도 0을 갖는다
+     * ({@code Quote.draft}가 {@code QuoteAmounts.of(0L)}로 채운다).
+     * {@code sentAt}은 발송 전이면 null이다.
+     */
+    record QuoteBrief(UUID id, UUID dealId, String quoteNo, String status,
+                      long totalAmount, Instant sentAt) {}
+
+    /**
      * 응답 대기·만료 임박 견적 한 줄 (NT-05·06, DB-03). {@code firstViewedAt}이 null이면 미열람 (v2.0.2, GAP-08).
      *
      * @param dealId    <b>소비자가 범위를 스스로 거르는 축</b> — 영업 대시보드는 SC-02로 담당 딜만 보여야 하고

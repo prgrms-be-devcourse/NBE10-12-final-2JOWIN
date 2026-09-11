@@ -34,4 +34,22 @@ class OrderQueryImpl implements OrderQuery {
                 .map(order -> new QuoteWonTotal(order.getQuoteId(), order.getTotalAmount()))
                 .toList();
     }
+
+    /**
+     * 딜 상세의 주문 목록 (DL-15).
+     *
+     * <p><b>빈 묶음이면 조회하지 않는다</b> — 여기서는 null을 "제한 없음"으로 읽지 않는다
+     * ({@code wonTotalsByQuotes}와 갈리는 지점, 계약 javadoc). 딜 상세는 언제나 특정 딜의
+     * 견적으로 좁혀진 자리라, 빈 묶음에 회사 전체 주문이 붙으면 그대로 사고다.
+     */
+    @Override
+    public List<OrderBrief> briefsByQuotes(UUID companyId, Collection<UUID> quoteIds) {
+        if (quoteIds == null || quoteIds.isEmpty()) {
+            return List.of();
+        }
+        return orderRepository.findByCompanyIdAndQuoteIdInOrderByCreatedAtDesc(companyId, quoteIds).stream()
+                .map(order -> new OrderBrief(order.getId(), order.getQuoteId(), order.getOrderNo(),
+                        order.getTotalAmount(), order.getCreatedAt()))
+                .toList();
+    }
 }

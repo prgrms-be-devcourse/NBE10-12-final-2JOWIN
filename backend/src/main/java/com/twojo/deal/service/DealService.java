@@ -5,6 +5,7 @@ import com.twojo.boundary.AccessScope;
 import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
+import com.twojo.boundary.OrderQuery;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.deal.DealStageChanged;
@@ -50,6 +51,7 @@ public class DealService {
     private final CustomerQuery customerQuery;
     private final MemberQuery memberQuery;
     private final QuoteQuery quoteQuery;
+    private final OrderQuery orderQuery;
     private final ApplicationEventPublisher eventPublisher;
 
     /** 생성 (DL-01~04) — 회사의 모든 고객사에 가능하고, 배정 대상은 활성 구성원이다 */
@@ -63,7 +65,7 @@ public class DealService {
         Deal deal = dealRepository.save(Deal.create(ctx.companyId(), request.customerId(), assigneeId,
                 request.title(), request.expectedAmount(), request.dueDate()));
 
-        return DealResponses.DealItem.of(deal, customerName, assigneeName);
+        return DealResponses.DealItem.of(deal, wonAmountOf(ctx.companyId(), deal), customerName, assigneeName);
     }
 
     /**
@@ -83,18 +85,44 @@ public class DealService {
         // 비활성 담당자의 이름이 사라진다(MB-14로 이관되는 것은 진행 중 딜뿐이다). A 창구가 열리면 여기도 고친다.
         Map<UUID, String> customerNames = customerNamesOf(ctx.companyId(),
                 deals.getContent().stream().map(Deal::getCustomerId).toList());
+        Map<UUID, Long> wonAmounts = wonAmountsOf(ctx.companyId(), deals.getContent());
 
         return PageResponse.from(deals.map(deal -> DealResponses.DealItem.of(deal,
+                wonAmounts.get(deal.getId()),
                 customerNames.get(deal.getCustomerId()),
                 memberQuery.get(deal.getAssigneeMemberId()).name())));
     }
 
-    /** 상세 (DL-15·18) — 견적·주문 요약은 조회 창구가 정해질 때까지 빈 목록이다 */
+    /**
+     * 상세 (DL-15·18) — 견적·주문 요약과 성사 금액을 함께 싣는다.
+     *
+     * <p><b>세 창구를 지난다</b> — 견적·주문은 C 소유의 다른 모듈이라 직접 읽지 않는다.
+     * {@code briefsByDeals}로 견적을 얻고, 그 id로 {@code briefsByQuotes}를 물어 주문을 얻는다.
+     * 주문에는 {@code deal_id}가 없어 <b>견적을 한 홉 지나야</b> 딜에 닿기 때문이다.
+     *
+     * <p><b>성사 금액은 주문 합계다</b> (DL-18) — 예상 금액이 아니다.
+     * 이미 얻은 주문 줄을 더한다. {@code OrderQuery.wonTotalsByQuotes}를 따로 부르지 않는 이유는
+     * 같은 행을 두 번 읽게 되기 때문이다 — 그 창구는 기간 집계(DB-02·06)가 쓰는 자리다.
+     *
+     * <p><b>성사 전에는 null이다.</b> 화면 규칙이 "성사 전 expectedAmount, 성사 후 wonAmount"라
+     * (08 {@code DealDetail} javadoc), 진행 중인 딜에 0을 넣으면 "주문이 0원"으로 읽힌다.
+     * 성사인데 주문이 없는 경우는 없다 — 성사는 주문 전환만이 만든다 (DL-09).
+     */
     public DealResponses.DealDetail get(AccessContext ctx, UUID dealId) {
         Deal deal = findInScope(ctx, dealId);
+
+        List<QuoteQuery.QuoteBrief> quotes = quoteQuery.briefsByDeals(ctx.companyId(), List.of(dealId));
+        List<OrderQuery.OrderBrief> orders = orderQuery.briefsByQuotes(ctx.companyId(),
+                quotes.stream().map(QuoteQuery.QuoteBrief::id).toList());
+
+        Long wonAmount = deal.getStage() == Deal.Stage.WON
+                ? orders.stream().mapToLong(OrderQuery.OrderBrief::totalAmount).sum()
+                : null;
+
         return DealResponses.DealDetail.of(deal,
                 customerQuery.get(ctx, deal.getCustomerId()).name(),
-                memberQuery.get(deal.getAssigneeMemberId()).name());
+                memberQuery.get(deal.getAssigneeMemberId()).name(),
+                quotes, orders, wonAmount);
     }
 
     /** 제목·예상 금액·마감일 수정 (DL-02·03) — null 필드는 변경하지 않는다 */
@@ -104,7 +132,7 @@ public class DealService {
         deal.checkVersion(request.version());
         deal.update(request.title(), request.expectedAmount(), request.dueDate());
 
-        return DealResponses.DealItem.of(deal,
+        return DealResponses.DealItem.of(deal, wonAmountOf(ctx.companyId(), deal),
                 customerQuery.get(ctx, deal.getCustomerId()).name(),
                 memberQuery.get(deal.getAssigneeMemberId()).name());
     }
@@ -151,7 +179,7 @@ public class DealService {
         String assigneeName = requireActiveMemberName(ctx, request.assigneeMemberId());
         deal.changeAssignee(request.assigneeMemberId());
 
-        return DealResponses.DealItem.of(deal,
+        return DealResponses.DealItem.of(deal, wonAmountOf(ctx.companyId(), deal),
                 customerQuery.get(ctx, deal.getCustomerId()).name(), assigneeName);
     }
 
@@ -201,7 +229,7 @@ public class DealService {
         transition.accept(deal);
         publishStageChanged(deal, before, AuditActor.member(ctx.memberId()));
 
-        return DealResponses.DealItem.of(deal,
+        return DealResponses.DealItem.of(deal, wonAmountOf(ctx.companyId(), deal),
                 customerQuery.get(ctx, deal.getCustomerId()).name(),
                 memberQuery.get(deal.getAssigneeMemberId()).name());
     }
@@ -211,6 +239,56 @@ public class DealService {
      * 목록 한 줄 때문에 전체가 404가 되지 않게 하는 것이 {@code namesByIds}의 계약이다 (B javadoc).
      * 단건 경로({@code create}·{@code update} 등)는 그대로 {@code get}이다 — 거기서는 없으면 404가 맞다.
      */
+    /**
+     * 성사 딜의 주문 합계 (DL-18) — <b>페이지 전체를 두 번의 조회로</b> 얻는다.
+     *
+     * <p>보드의 성사 컬럼이 카드 금액과 컬럼 합계에 이 값을 쓴다(08 표시 규칙: 성사 전
+     * {@code expectedAmount}, 성사 후 {@code wonAmount}). 줄마다 물으면 20건짜리 목록에
+     * 조회가 40번이라 배치 창구로 받는다 — 고객사 이름과 같은 방식이다 (#273).
+     *
+     * <p><b>성사(WON) 딜만 묻는다.</b> 진행 중인 딜은 주문이 있을 수 없고(DL-09 — 성사는
+     * 주문 전환만이 만든다) 표시에도 쓰이지 않는다. 성사 딜이 하나도 없는 페이지에서는
+     * 두 창구 모두 부르지 않는다 — 계약이 빈 묶음에 빈 목록을 돌려주기 때문이다.
+     *
+     * <p>주문에는 {@code deal_id}가 없어 <b>견적을 한 홉 지나</b> 딜로 되짚는다.
+     */
+    private Map<UUID, Long> wonAmountsOf(UUID companyId, List<Deal> deals) {
+        List<UUID> wonDealIds = deals.stream()
+                .filter(deal -> deal.getStage() == Deal.Stage.WON)
+                .map(Deal::getId)
+                .toList();
+        if (wonDealIds.isEmpty()) {
+            return Map.of();
+        }
+
+        List<QuoteQuery.QuoteBrief> quotes = quoteQuery.briefsByDeals(companyId, wonDealIds);
+        Map<UUID, UUID> dealByQuote = quotes.stream()
+                .collect(Collectors.toMap(QuoteQuery.QuoteBrief::id, QuoteQuery.QuoteBrief::dealId));
+
+        return orderQuery.briefsByQuotes(companyId, dealByQuote.keySet()).stream()
+                .collect(Collectors.groupingBy(
+                        order -> dealByQuote.get(order.quoteId()),
+                        Collectors.summingLong(OrderQuery.OrderBrief::totalAmount)));
+    }
+
+    /**
+     * 딜 한 건의 성사 금액 — 묶음 헬퍼를 그대로 쓴다.
+     *
+     * <p><b>성사가 아니면 조회가 없다</b> — {@link #wonAmountsOf}가 WON만 걸러 묻고, 비면
+     * 창구를 부르지 않는다. 그래서 진행 중 딜을 다루는 전이(advance·revert·lose·reopen)에서는
+     * 비용이 0이고, 응답에는 규칙대로 {@code null}이 실린다.
+     *
+     * <p>단건 응답에도 이 값을 채우는 이유는 <b>응답 계약을 화면 구현에 기대지 않기 위해서</b>다.
+     * 지금 프론트는 변경 후 목록을 다시 부르지만(invalidate), 나중에 응답으로 카드를 바로
+     * 갱신하도록 바뀌면 여기가 null인 순간 성사 금액이 사라진다.
+     */
+    private Long wonAmountOf(UUID companyId, Deal deal) {
+        if (deal.getStage() != Deal.Stage.WON) {
+            return null;   // 조회할 것도, 실을 값도 없다 — 표시 규칙상 성사 전은 null이다
+        }
+        return wonAmountsOf(companyId, List.of(deal)).get(deal.getId());
+    }
+
     private Map<UUID, String> customerNamesOf(UUID companyId, Collection<UUID> customerIds) {
         return customerQuery.namesByIds(companyId, customerIds.stream().distinct().toList()).stream()
                 .collect(Collectors.toMap(CustomerQuery.CustomerSummary::id,
