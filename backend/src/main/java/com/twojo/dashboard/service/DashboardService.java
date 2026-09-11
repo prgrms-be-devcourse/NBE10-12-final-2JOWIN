@@ -30,10 +30,10 @@ import org.springframework.stereotype.Service;
  * <p><b>무트랜잭션</b> — 각 boundary 구현이 자기 readOnly 트랜잭션을 잡는다. 커넥션 하나를
  * 조립 내내 붙들지 않기 위함이며 {@code PublicQuoteAssembler}·{@code CustomerQuoteService}와 같은 방침이다.
  *
- * <p><b>{@link SalesStatsQuery#conversions}만 아직 자리표시자다</b> — 빈 목록을 돌려준다.
- * 단계 전환율은 {@code audit_log}의 {@code STAGE_MOVED} 적재가 선행인데 그 리스너가 아직 없다.
- * 나머지는 전부 실구현이다 — {@code pipeline}·{@link SalesStatsQuery#monthlyWon}·
- * {@link SalesStatsQuery#performance}(#216)와 {@link QuoteQuery#findAwaitingResponse}.
+ * <p><b>엮는 계약이 전부 실구현이다</b> — {@code pipeline}·{@link SalesStatsQuery#monthlyWon}·
+ * {@link SalesStatsQuery#performance}(#216)·{@link SalesStatsQuery#conversions}(#307)와
+ * {@link QuoteQuery#findAwaitingResponse}. 전환율은 마지막으로 채워졌고, 네 쌍이 항상 선다 —
+ * 값이 없는 기간도 빈 목록이 아니라 0이다.
  *
  * <p><b>백엔드가 실값을 내는 것과 화면에 뜨는 것은 다르다.</b> 프론트의 {@code SALES_STATS_PENDING}이
  * 아직 켜져 있어 이달 성사·담당자별 실적 카드는 "집계 준비 중"으로 남는다 — 해제는 #283이다.
@@ -110,9 +110,15 @@ public class DashboardService {
     /**
      * 실적 분석 (DB-06~08) — <b>기업 관리자 전용</b>. 역할 위반은 403 {@code FORBIDDEN} (Q-43).
      * 기간은 {@code from <= to}이고 간격이 {@link #MAX_RANGE_DAYS}일 미만이어야 하며, 벗어나면 400 {@code VALIDATION_FAILED}.
-     * {@code conversions}만 아직 자리표시자라 빈 목록이다 — {@code members}는 실집계다 (위 클래스 주석).
+     * {@code members}·{@code conversions} 모두 실집계다 (위 클래스 주석). 전환율은 <b>도달 기준</b>이고
+     * 모집단은 기간 안에 등록된 딜이다 — 되돌린 딜의 봉우리만 {@code audit_log}가 보탠다 (#307).
+     *
+     * <p><b>{@code today}는 전환율의 도달 상한으로만 쓴다</b> — {@code from}·{@code to}는 등록일
+     * 범위이고, 코호트에 든 딜의 전이는 그 뒤에도 이어진다. 컨트롤러가 기본 기간을 만들 때 이미
+     * 읽은 값을 그대로 넘긴다 — 이 계층에서 다시 읽으면 시간 판정이 두 곳으로 갈린다 (#322 리뷰).
      */
-    public DashboardPerformanceResponse performance(AccessContext ctx, LocalDate from, LocalDate to) {
+    public DashboardPerformanceResponse performance(AccessContext ctx, LocalDate from, LocalDate to,
+                                                    LocalDate today) {
         if (ctx.role() != Role.COMPANY_ADMIN) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
@@ -126,7 +132,7 @@ public class DashboardService {
                         .toList();
 
         List<DashboardPerformanceResponse.StageConversion> conversions =
-                salesStatsQuery.conversions(ctx.companyId(), from, to).stream()
+                salesStatsQuery.conversions(ctx.companyId(), from, to, today).stream()
                         .map(DashboardService::toStageConversion)
                         .toList();
 

@@ -35,8 +35,9 @@ import org.springframework.test.context.ActiveProfiles;
  *       실값이다 — B의 namesByIds 창구가 열려 채웠다 (#269 → #273).</li>
  *   <li>C의 {@code monthlyWon}·{@code performance}는 실구현이다 (#216) — 이 시드에는 주문이 없어
  *       금액이 0으로 나오지만 <b>자리표시자가 아니라 실제 집계 결과</b>다.</li>
- *   <li>C의 {@code conversions}만 아직 자리표시자라 빈 목록이다 — 화면은 "0%"가 아니라
- *       "집계 준비 중"으로 표시한다.</li>
+ *   <li>C의 {@code conversions}도 실구현이다 (#307) — 인접 네 쌍이 항상 서고, 시드 딜이
+ *       코호트에 없는 기간이면 빈 목록이 아니라 0으로 온다. 화면이 "집계 준비 중"을 언제
+ *       걷을지는 별개 판단이다 — 리스너 이전 전이는 되살릴 수 없다.</li>
  * </ul>
  *
  * <p>클래스에 {@code @Transactional}을 붙이지 않는다 — 붙이면 커밋이 미뤄져 JdbcTemplate이 확정 전
@@ -193,13 +194,15 @@ class DashboardIntegrationTest {
      * {@code members}는 실구현이 됐다 (#216) — 활성 구성원이 전부 서고, 실적이 없으면 0으로 채워진다.
      * {@code activeDealCount}는 기간과 무관한 현재 스냅샷이라, 시드의 QUOTE 단계 딜이 담당자에게 1건 잡힌다.
      *
-     * <p>{@code conversions}만 아직 빈 목록이다 — 전이 이력(audit_log STAGE_MOVED) 적재가 선행이다.
+     * <p>{@code conversions}도 실구현이다 (#307) — 네 쌍이 순서대로 서고 {@code rate}는 0~1이다.
+     * 구체적인 값은 시드 딜의 등록일에 달려 있어 여기서 고정하지 않는다 — 그 계산은
+     * {@code SalesStatsConversionIntegrationTest}가 실 DB로 본다.
      */
     @Test
-    @DisplayName("관리자 performance — members는 실집계, conversions만 자리표시자로 빈 목록")
+    @DisplayName("관리자 performance — members·conversions 모두 실집계로 온다")
     void 관리자_performance는_구성원별로_나온다() {
         DashboardPerformanceResponse res =
-                dashboardService.performance(admin(), LocalDate.now().minusMonths(1), LocalDate.now());
+                dashboardService.performance(admin(), LocalDate.now().minusMonths(1), LocalDate.now(), LocalDate.now());
 
         assertThat(res.members())
                 .extracting(DashboardPerformanceResponse.MemberPerformance::name)
@@ -213,14 +216,19 @@ class DashboardIntegrationTest {
                     assertThat(m.activeDealCount()).isEqualTo(1);   // 시드의 QUOTE 단계 딜
                 });
 
-        assertThat(res.conversions()).isEmpty();
+        assertThat(res.conversions())
+                .hasSize(4)
+                .extracting(DashboardPerformanceResponse.StageConversion::fromStage)
+                .containsExactly("LEAD", "CONSULT", "QUOTE", "NEGOTIATION");
+        assertThat(res.conversions())
+                .allSatisfy(c -> assertThat(c.rate()).isBetween(0d, 1d));
     }
 
     @Test
     @DisplayName("영업 담당자가 performance를 부르면 403 FORBIDDEN이다")
     void 영업담당자의_performance는_FORBIDDEN이다() {
         assertThatThrownBy(() ->
-                dashboardService.performance(rep(), LocalDate.now().minusMonths(1), LocalDate.now()))
+                dashboardService.performance(rep(), LocalDate.now().minusMonths(1), LocalDate.now(), LocalDate.now()))
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     }

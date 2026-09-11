@@ -1,6 +1,7 @@
 package com.twojo.deal.repository;
 
 import com.twojo.deal.entity.Deal;
+import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
 import java.util.Optional;
@@ -128,6 +129,44 @@ public interface DealRepository extends JpaRepository<Deal, UUID>, JpaSpecificat
             """)
     List<AssigneeCount> countOpenByAssignee(@Param("companyId") UUID companyId,
                                             @Param("stages") Collection<Deal.Stage> stages);
+
+    /**
+     * 기간 안에 <b>등록된</b> 딜의 단계 스냅샷 (DB-07 전환율의 모집단, #307).
+     *
+     * <p><b>왜 등록일로 코호트를 끊는가</b> — 전환율은 "들어온 딜이 어디까지 갔나"이고,
+     * 그 모집단은 전이 이력으로 만들 수 없다. {@code audit_log}에는 <b>움직인 딜만</b> 남아
+     * 리드에 멈춰 있는 딜이 통째로 빠지기 때문이다 (딜 생성은 감사 이벤트 7종에 없다).
+     * 정체된 딜이 분모에서 빠지면 전환율은 늘 1에 가깝게 나온다 — 전환율이 드러내야 할
+     * 바로 그 딜들이다.
+     *
+     * <p><b>{@code lostFromStage}를 함께 싣는다.</b> 실패(LOST)는 단계 순서 밖이라 현재 값으로는
+     * 도달 지점을 알 수 없고, 실패 직전 단계가 그 딜이 닿은 곳이다 (DL-10·12, 전이표 §5).
+     *
+     * <p>되돌린 딜(DL-08)은 현재 단계가 최고 도달보다 낮다 — 그 차이는 이력에만 있어
+     * 호출자가 {@code AuditQuery.stageChanges}로 보정한다. 이 쿼리는 보정의 <b>바닥</b>이다.
+     *
+     * <p>상한은 <b>미만</b>이다 — 호출자가 다음 날 0시(KST)를 넘겨 그날까지 포함시킨다.
+     */
+    @Query("""
+            select d.id as id, d.stage as stage, d.lostFromStage as lostFromStage
+            from Deal d
+            where d.companyId = :companyId
+              and d.deletedAt is null
+              and d.createdAt >= :from
+              and d.createdAt < :until
+            """)
+    List<StageSnapshot> findStageSnapshotsCreatedBetween(@Param("companyId") UUID companyId,
+                                                         @Param("from") Instant from,
+                                                         @Param("until") Instant until);
+
+    /** {@link #findStageSnapshotsCreatedBetween} 투영 — 실패 딜은 {@code lostFromStage}가 도달 지점이다 */
+    interface StageSnapshot {
+        UUID getId();
+
+        Deal.Stage getStage();
+
+        String getLostFromStage();
+    }
 
     /** {@link #countOpenByAssignee} 투영 */
     interface AssigneeCount {

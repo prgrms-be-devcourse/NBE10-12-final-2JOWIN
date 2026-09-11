@@ -8,10 +8,14 @@ import static org.mockito.BDDMockito.given;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditQuery;
 import com.twojo.boundary.Role;
+import com.twojo.boundary.SalesStatsQuery.StageConversion;
 import com.twojo.boundary.SalesStatsQuery.StageCount;
 import com.twojo.deal.entity.Deal;
 import com.twojo.deal.repository.DealRepository;
+import java.time.Instant;
+import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -37,7 +41,13 @@ class SalesStatsQueryImplTest {
     private static final UUID COMPANY_ID = UUID.randomUUID();
     private static final UUID MEMBER_ID = UUID.randomUUID();
 
+    private static final LocalDate FROM = LocalDate.of(2026, 9, 1);
+    private static final LocalDate TO = LocalDate.of(2026, 9, 30);
+    /** 조회 시점 — 등록 기간이 끝난 뒤다. 이력 상한이 TO가 아니라 이 값이어야 한다 (#322 리뷰) */
+    private static final LocalDate TODAY = LocalDate.of(2026, 10, 15);
+
     @Mock private DealRepository dealRepository;
+    @Mock private AuditQuery auditQuery;
     @InjectMocks private SalesStatsQueryImpl salesStatsQuery;
 
     private static DealRepository.StageAggregate row(Deal.Stage stage, long count, Long amount) {
@@ -126,5 +136,157 @@ class SalesStatsQueryImplTest {
         assertThat(stages.getValue())
                 .containsExactly(Deal.Stage.LEAD, Deal.Stage.CONSULT, Deal.Stage.QUOTE, Deal.Stage.NEGOTIATION)
                 .doesNotContain(Deal.Stage.WON, Deal.Stage.LOST);
+    }
+
+    // ----- 전환율 (DB-07, #307) — 도달 기준 -----
+
+    private static DealRepository.StageSnapshot deal(UUID id, Deal.Stage stage, String lostFrom) {
+        return new DealRepository.StageSnapshot() {
+            @Override public UUID getId() {
+                return id;
+            }
+
+            @Override public Deal.Stage getStage() {
+                return stage;
+            }
+
+            @Override public String getLostFromStage() {
+                return lostFrom;
+            }
+        };
+    }
+
+    private static AuditQuery.StageChange moved(UUID dealId, String before, String after) {
+        return new AuditQuery.StageChange(dealId, before, after, Instant.now());
+    }
+
+    private void 모집단(DealRepository.StageSnapshot... deals) {
+        given(dealRepository.findStageSnapshotsCreatedBetween(eq(COMPANY_ID), any(), any()))
+                .willReturn(List.of(deals));
+    }
+
+    private static double rateOf(List<StageConversion> rows, String from) {
+        return rows.stream().filter(r -> r.fromStage().equals(from)).findFirst().orElseThrow().rate();
+    }
+
+    /**
+     * <b>이 테스트가 이 이슈의 핵심이다.</b> 모집단을 전이 이력에서 뽑으면 리드에 멈춘 딜은
+     * {@code audit_log}에 행이 없어 분모에서 통째로 빠지고, 전환율이 늘 1에 가깝게 나온다
+     * (딜 생성은 감사 이벤트가 아니다). 모집단이 {@code deal} 테이블이라 그 딜도 분모에 들어간다.
+     */
+    @Test
+    @DisplayName("한 번도 안 움직인 리드 딜도 분모에 들어간다 — 전환율이 1로 붙지 않는다")
+    void 정체된_딜이_분모에_있다() {
+        모집단(deal(UUID.randomUUID(), Deal.Stage.LEAD, null),
+                deal(UUID.randomUUID(), Deal.Stage.LEAD, null),
+                deal(UUID.randomUUID(), Deal.Stage.LEAD, null),
+                deal(UUID.randomUUID(), Deal.Stage.CONSULT, null));
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY)).willReturn(List.of());
+
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
+
+        assertThat(rateOf(rows, "LEAD")).isEqualTo(0.25d);   // 4건 중 1건만 상담 이상
+    }
+
+    /**
+     * 실패(LOST)는 단계 순서 밖이라 현재 값으로는 도달 지점을 알 수 없다 — 실패 직전 단계가
+     * 그 딜이 닿은 곳이다 (DL-10·12). 실패했다는 사실이 딜을 분모에서 빼지도 않는다.
+     */
+    @Test
+    @DisplayName("실패한 딜은 실패 직전 단계까지 도달한 것으로 센다")
+    void 실패는_직전_단계로_되짚는다() {
+        모집단(deal(UUID.randomUUID(), Deal.Stage.LOST, "QUOTE"),
+                deal(UUID.randomUUID(), Deal.Stage.LOST, "LEAD"));
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY)).willReturn(List.of());
+
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
+
+        assertThat(rateOf(rows, "LEAD")).isEqualTo(0.5d);      // 둘 중 하나만 상담 이상
+        assertThat(rateOf(rows, "CONSULT")).isEqualTo(1.0d);   // 상담 도달 1건이 전부 견적까지
+        assertThat(rateOf(rows, "QUOTE")).isZero();            // 협상에 닿은 딜은 없다
+    }
+
+    /**
+     * 되돌리기(DL-08)를 겪은 딜은 <b>현재 단계가 최고 도달보다 낮다.</b> 그 차이는 이력에만 있고,
+     * 이것이 {@code audit_log}가 이 계산에 필요한 유일한 이유다 — 나머지는 {@code deal}이 답한다.
+     */
+    @Test
+    @DisplayName("되돌린 딜의 봉우리는 이력이 보정한다 — 현재 단계보다 멀리 갔던 것을 센다")
+    void 되돌린_딜은_이력이_보정한다() {
+        UUID 되돌아온딜 = UUID.randomUUID();
+        모집단(deal(되돌아온딜, Deal.Stage.CONSULT, null));
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY))
+                .willReturn(List.of(moved(되돌아온딜, "CONSULT", "QUOTE"),
+                        moved(되돌아온딜, "QUOTE", "CONSULT")));
+
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
+
+        assertThat(rateOf(rows, "CONSULT")).isEqualTo(1.0d);   // 현재는 상담이지만 견적까지 갔었다
+    }
+
+    /**
+     * 같은 딜이 여러 번 오가도 최고 도달 단계 하나로 접힌다 — 고유 딜로 센다 (D 확정 3).
+     * 연인원으로 세면 {@code rate}가 1을 넘어 계약(0~1)을 깬다.
+     */
+    @Test
+    @DisplayName("같은 딜이 여러 번 오가도 한 건이다 — rate가 1을 넘지 않는다")
+    void 왕복해도_한_건이다() {
+        UUID 왕복딜 = UUID.randomUUID();
+        모집단(deal(왕복딜, Deal.Stage.CONSULT, null));
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY))
+                .willReturn(List.of(moved(왕복딜, "LEAD", "CONSULT"),
+                        moved(왕복딜, "CONSULT", "LEAD"),
+                        moved(왕복딜, "LEAD", "CONSULT")));
+
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
+
+        assertThat(rows).allSatisfy(r -> assertThat(r.rate()).isBetween(0d, 1d));
+        assertThat(rateOf(rows, "LEAD")).isEqualTo(1.0d);
+    }
+
+    /**
+     * 자동 성사(OD-06)는 단계와 무관하게 WON으로 직행한다 — 리드에서 바로 성사된 딜도
+     * 중간 단계를 전부 도달한 것으로 본다. 도달 기준을 택한 이유 중 하나다 (D 확정 4).
+     */
+    @Test
+    @DisplayName("리드에서 바로 성사된 딜도 중간 단계를 도달로 센다 (OD-06)")
+    void 자동_성사는_전_단계_도달이다() {
+        모집단(deal(UUID.randomUUID(), Deal.Stage.WON, null));
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY)).willReturn(List.of());
+
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
+
+        assertThat(rows).hasSize(4).allSatisfy(r -> assertThat(r.rate()).isEqualTo(1.0d));
+    }
+
+    /**
+     * 코호트 밖 딜의 전이가 섞여 들어와도 분모·분자를 흔들지 않는다 —
+     * {@code stageChanges}는 기간 안 전이를 <b>전부</b> 주므로 기간 전에 등록된 딜의 행도 온다.
+     */
+    @Test
+    @DisplayName("기간 밖에 등록된 딜의 전이는 무시한다")
+    void 코호트_밖_전이는_버린다() {
+        모집단(deal(UUID.randomUUID(), Deal.Stage.LEAD, null));
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY))
+                .willReturn(List.of(moved(UUID.randomUUID(), "QUOTE", "NEGOTIATION")));
+
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
+
+        assertThat(rows).allSatisfy(r -> assertThat(r.rate()).isZero());
+    }
+
+    /** 이력도 딜도 없는 기간은 예외가 아니다 — 초기 상태가 곧 정상 상태다 (완료 조건 4) */
+    @Test
+    @DisplayName("기간에 등록된 딜이 없으면 네 칸이 0으로 선다 — 예외가 아니다")
+    void 모집단이_없으면_0이다() {
+        모집단();
+
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
+
+        assertThat(rows).hasSize(4).allSatisfy(r -> assertThat(r.rate()).isZero());
+        assertThat(rows).extracting(StageConversion::fromStage)
+                .containsExactly("LEAD", "CONSULT", "QUOTE", "NEGOTIATION");
+        assertThat(rows).extracting(StageConversion::toStage)
+                .containsExactly("CONSULT", "QUOTE", "NEGOTIATION", "WON");
     }
 }

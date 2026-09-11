@@ -2,6 +2,7 @@ package com.twojo.deal.service;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
+import com.twojo.boundary.AuditQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.OrderQuery;
 import com.twojo.boundary.QuoteQuery;
@@ -25,17 +26,14 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
- * {@link SalesStatsQuery} 구현 — <b>전환율({@code conversions}, DB-07)만 아직 자리표시자다.</b>
+ * {@link SalesStatsQuery} 구현 — <b>넷 다 실값이다</b> (전환율은 #307에서 마지막으로 채웠다).
  *
- * <p>D의 대시보드가 이 빈을 주입받는다. 파이프라인·이달 성사·담당자별 실적은 실값이고,
- * 전환율만 빈 목록이다 — 화면에 "0%"로 보이면 안 되는 값이라 D가 "집계 준비 중"으로
- * 구분해 표시한다 (2026-09-08 요청 협의 · 2026-09-10 재확인).
+ * <p>D의 대시보드가 이 빈을 주입받는다.
  *
- * <p><b>빈 값이 예외보다 나은지</b> — 원래 이 클래스는 {@code UnsupportedOperationException}을
- * 던졌고, 그 편이 "틀린 답이 조용히 나가는 것"보다 낫다는 것이 원칙이었다
- * ({@code QuoteQueryImpl} javadoc). 다만 그 예외가 <b>대시보드 전체를 500으로</b>
- * 만들어 D가 화면을 세울 수조차 없다. 그래서 남은 하나도 빈 값으로 두되,
- * 값이 진짜가 아니라는 사실을 계약 문서와 이 javadoc에 남긴다.
+ * <p><b>전환율은 코드가 끝나도 화면이 바로 열리지는 않는다</b> — 되돌린 딜(DL-08)의 봉우리는
+ * {@code audit_log}에만 있고 리스너(#303)가 붙기 전 전이는 남지 않았다. 모집단과 도달의 바닥은
+ * {@code deal} 테이블에서 나오므로 수치가 무너지지는 않지만, 언제 "집계 준비 중"을 걷을지는
+ * D가 판단한다 (2026-09-10 D 정리).
  *
  * <p><b>금액은 전부 {@code total_amount}(VAT 포함)다</b> — 파이프라인의 예상 금액과 축을 맞춘다
  * (2026-09-10 D 확정). 0건이어도 null이 아니라 0을 내보낸다 (#85 D 합의).
@@ -49,10 +47,33 @@ import org.springframework.transaction.annotation.Transactional;
 public class SalesStatsQueryImpl implements SalesStatsQuery {
 
 
+    /**
+     * 도달 판정의 단계 순서 (DB-07) — 실패(LOST)는 <b>순서 밖</b>이라 여기 없다.
+     *
+     * <p>{@link Deal#PIPELINE_ORDER}를 쓰지 않는 이유는 그쪽이 <b>진행 중</b> 넷이라 성사(WON)가
+     * 빠지기 때문이다. 전환율의 마지막 쌍이 {@code NEGOTIATION→WON}이라 성사가 순서 안에 있어야 한다.
+     */
+    private static final List<Deal.Stage> REACH_ORDER = List.of(
+            Deal.Stage.LEAD, Deal.Stage.CONSULT, Deal.Stage.QUOTE, Deal.Stage.NEGOTIATION, Deal.Stage.WON);
+
+    private static final Map<String, Deal.Stage> REACH_BY_NAME = REACH_ORDER.stream()
+            .collect(Collectors.toMap(Deal.Stage::name, Function.identity()));
+
+    /** 내보내는 쌍 — <b>인접 4쌍 고정</b>이다 (2026-09-11 D 확정). 화면의 네 칸과 1:1이다 */
+    private static final List<ConversionPair> CONVERSION_PAIRS = List.of(
+            new ConversionPair(Deal.Stage.LEAD, Deal.Stage.CONSULT),
+            new ConversionPair(Deal.Stage.CONSULT, Deal.Stage.QUOTE),
+            new ConversionPair(Deal.Stage.QUOTE, Deal.Stage.NEGOTIATION),
+            new ConversionPair(Deal.Stage.NEGOTIATION, Deal.Stage.WON));
+
     private final DealRepository dealRepository;
     private final QuoteQuery quoteQuery;
     private final OrderQuery orderQuery;
     private final MemberQuery memberQuery;
+    private final AuditQuery auditQuery;
+
+    private record ConversionPair(Deal.Stage from, Deal.Stage to) {
+    }
 
     /**
      * 진행 단계별 건수·예상 금액 (DB-01) — 종결(WON·LOST)은 제외한다.
@@ -187,12 +208,114 @@ public class SalesStatsQueryImpl implements SalesStatsQuery {
     }
 
     /**
-     * <b>자리표시자 — 빈 목록이다.</b> 단계별 전환율(DB-07)은 "언제 어느 단계에서 어디로 갔는지"가 필요한데
-     * <b>전이 이력 테이블이 없다</b> — {@code deal.stage}는 현재 값 하나뿐이다. 이력을 남길지부터 정해야 하는
-     * 설계 결정이라 별도 이슈로 다룬다.
+     * 단계별 전환율 (DB-07) — <b>도달 기준</b>이다 (2026-09-11 D 확정, #307).
+     *
+     * <pre>
+     * 단계 순서: LEAD &lt; CONSULT &lt; QUOTE &lt; NEGOTIATION &lt; WON   (LOST는 순서 밖)
+     * 도달(S)   = 그 딜이 S 이상 단계에 도달한 적 있음
+     * rate(X→Y) = |도달(Y) 고유 딜| / |도달(X) 고유 딜|      (도달(X)=0이면 0)
+     * </pre>
+     *
+     * <p><b>진입 이벤트가 아니라 도달로 세는 이유</b> — 되돌리기(DL-08)와 같은 딜의 왕복이
+     * 모델 안에서 저절로 접힌다. 도달은 내려가지 않으므로 {@code QUOTE→CONSULT} 뒤에도
+     * "QUOTE 도달"은 남고, {@code LEAD→CONSULT→LEAD→CONSULT}도 CONSULT 도달 <b>1딜</b>이다.
+     * 자동 승급(Q-25)·자동 성사(OD-06)처럼 단계를 건너뛰는 전이도 최고 도달에 자연히 반영돼
+     * 쌍을 인접 4개로 닫을 수 있다.
+     *
+     * <p><b>모집단은 기간 안에 등록된 딜이다</b> — 전이 이력이 아니다. {@code audit_log}에는
+     * 움직인 딜만 남아 리드에 멈춘 딜이 분모에서 통째로 빠지고, 그러면 전환율이 늘 1 근처로 나온다
+     * ({@code findStageSnapshotsCreatedBetween} javadoc). 기간은 "이때 들어온 딜이 어디까지 갔나"로
+     * 읽는다 — 코호트다.
+     *
+     * <p><b>도달 지점은 세 원천의 최댓값이다.</b> 현재 단계가 바닥이고, 실패 딜은 실패 직전 단계로
+     * 되짚으며, 되돌린 딜의 봉우리만 이력이 보탠다. 이력이 <b>보정</b>이지 원천이 아니라서
+     * 리스너가 붙기 전 기간을 물어도 수치가 무너지지 않는다 — 되돌린 딜의 봉우리만 놓친다.
+     *
+     * <p>소수 셋째 자리에서 반올림한다 — 화면이 % 소수 첫째 자리까지 쓰기에 충분하고,
+     * 프론트 목({@code mocks/handlers/dashboard.ts})과 같은 값이 나와 목↔실 API 전환에서
+     * 수치가 튀지 않는다.
+     *
+     * <p>범위는 {@code companyId}뿐이다 — {@link #performance}와 같이 기업 관리자 전용이라
+     * {@code AccessContext}를 받지 않는다 (역할 판정은 호출자가 이미 했다).
      */
     @Override
-    public List<StageConversion> conversions(UUID companyId, LocalDate from, LocalDate to) {
-        return List.of();
+    public List<StageConversion> conversions(UUID companyId, LocalDate from, LocalDate to, LocalDate today) {
+        Map<UUID, Integer> peakByDeal = new LinkedHashMap<>();
+        for (DealRepository.StageSnapshot snapshot : dealRepository.findStageSnapshotsCreatedBetween(
+                companyId, DealPeriod.startOfDay(from), DealPeriod.startOfNextDay(to))) {
+            peakByDeal.put(snapshot.getId(), rankOf(currentReached(snapshot)));
+        }
+        if (peakByDeal.isEmpty()) {
+            return zeroRates();   // 이력이 없는 기간은 예외가 아니라 0이다 — 초기 상태가 곧 정상이다
+        }
+
+        // 되돌린 딜의 봉우리만 보탠다 — 코호트 밖 딜의 전이는 버린다.
+        // 상한은 to가 아니라 today다 — 코호트에 든 딜의 전이는 등록 기간이 끝난 뒤에도 이어지고,
+        // 도달 정의에는 기간 제한이 없다. to로 끊으면 지난 기간을 물을 때 그 뒤의 봉우리가 빠진다.
+        // 하한은 from 그대로다 — 전이는 등록보다 앞설 수 없다 (#322 리뷰).
+        for (AuditQuery.StageChange change : auditQuery.stageChanges(companyId, from, today)) {
+            peakByDeal.computeIfPresent(change.dealId(),
+                    (dealId, peak) -> Math.max(peak, rankOf(reachedBy(change))));
+        }
+
+        int[] reachedAtLeast = new int[REACH_ORDER.size()];
+        for (int peak : peakByDeal.values()) {
+            for (int rank = 0; rank <= peak; rank++) {
+                reachedAtLeast[rank]++;
+            }
+        }
+
+        return CONVERSION_PAIRS.stream()
+                .map(pair -> {
+                    int denominator = reachedAtLeast[rankOf(pair.from())];
+                    double rate = denominator == 0
+                            ? 0d
+                            : Math.round(reachedAtLeast[rankOf(pair.to())] * 1000d / denominator) / 1000d;
+                    return new StageConversion(pair.from().name(), pair.to().name(), rate);
+                })
+                .toList();
+    }
+
+    /**
+     * 현재 값이 말하는 도달 지점 — <b>보정의 바닥</b>이다.
+     *
+     * <p>실패(LOST)는 단계 순서 밖이라 실패 직전 단계로 되짚는다 (DL-10·12).
+     *
+     * <p><b>읽히지 않는 {@code lostFromStage}는 리드로 본다</b> — 비었거나 순서 밖 값일 때다.
+     * {@link Deal#lose}가 진행 중 단계만 넣으므로 정상 흐름에는 없지만, 그때 {@code valueOf}로
+     * 던지면 대시보드 전체가 500이 되고 순서 밖 값을 그대로 흘리면 그 딜이 <b>모집단에서
+     * 조용히 빠진다</b> — 분모가 줄면 전환율이 올라가는 방향이라 더 나쁘다. 바닥으로 흘려
+     * 딜을 분모에 남긴다 ({@link #reachedBy}와 같은 처리다).
+     */
+    private static Deal.Stage currentReached(DealRepository.StageSnapshot snapshot) {
+        if (snapshot.getStage() != Deal.Stage.LOST) {
+            return snapshot.getStage();
+        }
+        return REACH_BY_NAME.getOrDefault(snapshot.getLostFromStage(), Deal.Stage.LEAD);
+    }
+
+    /**
+     * 전이 한 줄이 말하는 도달 지점.
+     *
+     * <p>{@code *→LOST}는 도착이 순서 밖이라 <b>출발</b>이 도달 지점이다 — 실패했다는 사실이
+     * 그 딜을 분모에서 빼지는 않는다. 그 밖의 값(표에 없는 단계)은 바닥으로 흘려 무시한다.
+     */
+    private static Deal.Stage reachedBy(AuditQuery.StageChange change) {
+        String reached = Deal.Stage.LOST.name().equals(change.afterStage())
+                ? change.beforeStage()
+                : change.afterStage();
+        return REACH_BY_NAME.getOrDefault(reached, Deal.Stage.LEAD);
+    }
+
+    /** 순서 안 단계의 위치 — 클수록 멀리 간 것이다 */
+    private static int rankOf(Deal.Stage stage) {
+        return REACH_ORDER.indexOf(stage);
+    }
+
+    /** 모집단이 없을 때의 응답 — 화면의 네 칸은 그대로 서 있어야 한다 */
+    private static List<StageConversion> zeroRates() {
+        return CONVERSION_PAIRS.stream()
+                .map(pair -> new StageConversion(pair.from().name(), pair.to().name(), 0d))
+                .toList();
     }
 }
