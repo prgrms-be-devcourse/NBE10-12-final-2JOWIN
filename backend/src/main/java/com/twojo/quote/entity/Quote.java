@@ -376,10 +376,19 @@ public class Quote extends BaseTimeEntity {
      * <p><b>종결 Deal 여부를 따로 보지 않는다.</b> 실패(LOST)한 딜의 진행 중 견적은 이미
      * 기간 만료(EXPIRED)로 닫혀 있고(전이표 §5의 효과), 성사(WON)한 딜의 발송된 견적은
      * 끝까지 유효하다(Q-25). 두 경우 모두 <b>견적 상태만 보면 답이 나온다.</b>
+     *
+     * <p><b>유효기간은 따로 봐야 한다</b> (Q-17, 07 v1.6.7 — 발송·재발송 <b>둘 다</b>).
+     * 상태만 보면 부족하다: 만료 배치(Q-37)가 아직 없어 {@code validUntil}이 지난 SENT 견적이
+     * 그대로 남아 있고, 그 상태에서 재발송하면 {@code ViewTokenCommandImpl.toExpiresAt}이
+     * <b>이미 지난 시각</b>을 {@code expiresAt}으로 넣는다 — 고객이 <b>열자마자 만료된 링크</b>를
+     * 받는다. 발송 경로는 {@link #requireSendable}이 같은 판정으로 막고 있었고, 여기만 비어 있었다.
      */
-    public void requireResendable() {
+    public void requireResendable(LocalDate today) {
         if (status != Status.SENT && status != Status.VIEWED) {
             throw new BusinessException(ErrorCode.QUOTE_NOT_RESENDABLE);
+        }
+        if (validUntil.isBefore(today)) {
+            throw new BusinessException(ErrorCode.QUOTE_VALID_UNTIL_PASSED);   // Q-17
         }
     }
 

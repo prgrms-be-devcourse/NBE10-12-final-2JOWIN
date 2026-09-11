@@ -167,7 +167,7 @@ class QuoteSendTransitionTest {
         @EnumSource(value = Status.class, names = {"SENT", "VIEWED"})
         @DisplayName("발송됨·열람됨이면 통과한다")
         void 통과(Status from) {
-            assertThatCode(() -> quoteAt(from).requireResendable()).doesNotThrowAnyException();
+            assertThatCode(() -> quoteAt(from).requireResendable(오늘)).doesNotThrowAnyException();
         }
 
         /**
@@ -178,10 +178,38 @@ class QuoteSendTransitionTest {
         @EnumSource(value = Status.class, names = {"DRAFT", "APPROVED", "REJECTED", "WITHDRAWN", "EXPIRED"})
         @DisplayName("그 밖의 상태는 QUOTE_NOT_RESENDABLE")
         void 그_밖은_차단(Status from) {
-            assertThatThrownBy(() -> quoteAt(from).requireResendable())
+            assertThatThrownBy(() -> quoteAt(from).requireResendable(오늘))
                     .isInstanceOf(BusinessException.class)
                     .extracting(QuoteSendTransitionTest::errorOf)
                     .isEqualTo(ErrorCode.QUOTE_NOT_RESENDABLE);
+        }
+
+        /**
+         * <b>상태만 보면 부족하다</b> (Q-17, 07 v1.6.7 — 발송·재발송 둘 다).
+         *
+         * <p>만료 배치(Q-37)가 아직 없어 {@code validUntil}이 지난 SENT 견적이 그대로 남아 있고,
+         * 그 상태에서 재발송하면 링크의 {@code expiresAt}이 <b>이미 지난 시각</b>으로 발급된다 —
+         * 고객이 열자마자 만료된 링크를 받는다. 발송 경로는 이 판정이 있었고 여기만 비어 있었다.
+         */
+        @ParameterizedTest(name = "{0}이어도 유효기간이 지났으면 재발송할 수 없다")
+        @EnumSource(value = Status.class, names = {"SENT", "VIEWED"})
+        @DisplayName("유효기간이 지났으면 QUOTE_VALID_UNTIL_PASSED")
+        void 유효기간_경과는_차단(Status from) {
+            Quote 만료된 = quoteAt(from, 오늘.minusDays(1));
+
+            assertThatThrownBy(() -> 만료된.requireResendable(오늘))
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(QuoteSendTransitionTest::errorOf)
+                    .isEqualTo(ErrorCode.QUOTE_VALID_UNTIL_PASSED);
+        }
+
+        /** 경계 — 만료일 <b>당일</b>은 아직 유효하다. 발송의 {@code requireSendable}과 같은 규칙이다 */
+        @Test
+        @DisplayName("유효기간 당일은 재발송할 수 있다 — isBefore라 당일은 지나지 않았다")
+        void 만료일_당일은_통과() {
+            Quote 당일 = quoteAt(Status.SENT, 오늘);
+
+            assertThatCode(() -> 당일.requireResendable(오늘)).doesNotThrowAnyException();
         }
     }
 }
