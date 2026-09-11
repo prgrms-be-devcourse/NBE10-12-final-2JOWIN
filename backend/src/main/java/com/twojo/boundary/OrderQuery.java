@@ -45,15 +45,6 @@ public interface OrderQuery {
                                           LocalDate from, LocalDate to);
 
     /**
-     * 견적 하나가 만든 주문의 금액.
-     *
-     * <p>금액은 {@code total_amount}(VAT 포함)다 — 파이프라인의 예상 금액과 축을 맞춘다
-     * (2026-09-10 D 확정). 공급가로 바꾸면 "예상 → 성사" 전환이 화면에서 어긋난다.
-     *
-     * <p>{@code quoteId}를 함께 싣는 이유는 <b>호출자가 담당자를 되짚기 위해서</b>다 —
-     * {@code QuoteQuery.originsByIds}로 딜을 얻고, 딜에서 담당자가 나온다 (DB-06).
-     */
-    /**
      * 딜 상세의 주문 요약 목록 (DL-15) — 견적 묶음이 만든 주문을 한 줄씩.
      *
      * <p><b>{@link #wonTotalsByQuotes}와 갈리는 이유는 소비처다.</b> 그쪽은 집계라 금액만
@@ -70,6 +61,15 @@ public interface OrderQuery {
      */
     List<OrderBrief> briefsByQuotes(UUID companyId, Collection<UUID> quoteIds);
 
+    /**
+     * 견적 하나가 만든 주문의 금액.
+     *
+     * <p>금액은 {@code total_amount}(VAT 포함)다 — 파이프라인의 예상 금액과 축을 맞춘다
+     * (2026-09-10 D 확정). 공급가로 바꾸면 "예상 → 성사" 전환이 화면에서 어긋난다.
+     *
+     * <p>{@code quoteId}를 함께 싣는 이유는 <b>호출자가 담당자를 되짚기 위해서</b>다 —
+     * {@code QuoteQuery.originsByIds}로 딜을 얻고, 딜에서 담당자가 나온다 (DB-06).
+     */
     record QuoteWonTotal(UUID quoteId, long totalAmount) {}
 
     /**
