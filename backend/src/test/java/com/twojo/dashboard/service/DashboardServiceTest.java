@@ -51,6 +51,7 @@ class DashboardServiceTest {
     private static final YearMonth MONTH = YearMonth.of(2026, 9);
     private static final LocalDate FROM = LocalDate.of(2026, 8, 1);
     private static final LocalDate TO = LocalDate.of(2026, 8, 31);
+    private static final LocalDate TODAY = LocalDate.of(2026, 9, 11);
 
     @Mock
     private SalesStatsQuery salesStatsQuery;
@@ -254,11 +255,11 @@ class DashboardServiceTest {
     void performance는_관리자에게_두_섹션을_매핑한다() {
         given(salesStatsQuery.performance(eq(COMPANY_ID), any(), any()))
                 .willReturn(List.of(perf("박지훈", 4_000_000L)));
-        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any()))
+        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any(), any()))
                 .willReturn(List.of(conv("QUOTE", "NEGOTIATION", 0.5)));
 
         DashboardPerformanceResponse res =
-                dashboardService.performance(ctx(AccessScope.COMPANY_ALL), FROM, TO);
+                dashboardService.performance(ctx(AccessScope.COMPANY_ALL), FROM, TO, TODAY);
 
         assertThat(res.members())
                 .extracting(DashboardPerformanceResponse.MemberPerformance::name)
@@ -271,7 +272,7 @@ class DashboardServiceTest {
     @Test
     @DisplayName("영업 담당자가 performance를 부르면 403 FORBIDDEN이다")
     void 영업담당자의_performance는_FORBIDDEN이다() {
-        assertThatThrownBy(() -> dashboardService.performance(ctx(AccessScope.OWNED_ONLY), FROM, TO))
+        assertThatThrownBy(() -> dashboardService.performance(ctx(AccessScope.OWNED_ONLY), FROM, TO, TODAY))
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     }
@@ -279,7 +280,7 @@ class DashboardServiceTest {
     @Test
     @DisplayName("from이 to보다 뒤면 400 VALIDATION_FAILED다")
     void 기간_역전이면_VALIDATION_FAILED다() {
-        assertThatThrownBy(() -> dashboardService.performance(ctx(AccessScope.COMPANY_ALL), TO, FROM))
+        assertThatThrownBy(() -> dashboardService.performance(ctx(AccessScope.COMPANY_ALL), TO, FROM, TODAY))
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
     }
@@ -288,7 +289,7 @@ class DashboardServiceTest {
     @DisplayName("기간이 366일을 넘으면 400 VALIDATION_FAILED다")
     void 기간이_상한을_넘으면_VALIDATION_FAILED다() {
         assertThatThrownBy(() -> dashboardService.performance(
-                ctx(AccessScope.COMPANY_ALL), LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 3)))
+                ctx(AccessScope.COMPANY_ALL), LocalDate.of(2026, 1, 1), LocalDate.of(2027, 1, 3), TODAY))
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.VALIDATION_FAILED));
     }
@@ -297,10 +298,10 @@ class DashboardServiceTest {
     @DisplayName("performance 자리표시자(빈 목록)는 그대로 나간다 - 화면이 집계 준비 중으로 표시")
     void performance_자리표시자_빈_목록은_그대로_나간다() {
         given(salesStatsQuery.performance(eq(COMPANY_ID), any(), any())).willReturn(List.of());
-        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any())).willReturn(List.of());
+        given(salesStatsQuery.conversions(eq(COMPANY_ID), any(), any(), any())).willReturn(List.of());
 
         DashboardPerformanceResponse res =
-                dashboardService.performance(ctx(AccessScope.COMPANY_ALL), FROM, TO);
+                dashboardService.performance(ctx(AccessScope.COMPANY_ALL), FROM, TO, TODAY);
 
         assertThat(res.members()).isEmpty();
         assertThat(res.conversions()).isEmpty();

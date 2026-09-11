@@ -112,8 +112,13 @@ public class DashboardService {
      * 기간은 {@code from <= to}이고 간격이 {@link #MAX_RANGE_DAYS}일 미만이어야 하며, 벗어나면 400 {@code VALIDATION_FAILED}.
      * {@code members}·{@code conversions} 모두 실집계다 (위 클래스 주석). 전환율은 <b>도달 기준</b>이고
      * 모집단은 기간 안에 등록된 딜이다 — 되돌린 딜의 봉우리만 {@code audit_log}가 보탠다 (#307).
+     *
+     * <p><b>{@code today}는 전환율의 도달 상한으로만 쓴다</b> — {@code from}·{@code to}는 등록일
+     * 범위이고, 코호트에 든 딜의 전이는 그 뒤에도 이어진다. 컨트롤러가 기본 기간을 만들 때 이미
+     * 읽은 값을 그대로 넘긴다 — 이 계층에서 다시 읽으면 시간 판정이 두 곳으로 갈린다 (#322 리뷰).
      */
-    public DashboardPerformanceResponse performance(AccessContext ctx, LocalDate from, LocalDate to) {
+    public DashboardPerformanceResponse performance(AccessContext ctx, LocalDate from, LocalDate to,
+                                                    LocalDate today) {
         if (ctx.role() != Role.COMPANY_ADMIN) {
             throw new BusinessException(ErrorCode.FORBIDDEN);
         }
@@ -127,7 +132,7 @@ public class DashboardService {
                         .toList();
 
         List<DashboardPerformanceResponse.StageConversion> conversions =
-                salesStatsQuery.conversions(ctx.companyId(), from, to).stream()
+                salesStatsQuery.conversions(ctx.companyId(), from, to, today).stream()
                         .map(DashboardService::toStageConversion)
                         .toList();
 

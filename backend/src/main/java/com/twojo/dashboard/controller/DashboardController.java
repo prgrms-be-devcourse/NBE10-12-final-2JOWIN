@@ -52,6 +52,6 @@ public class DashboardController {
         LocalDate today = LocalDate.now(KST);
         LocalDate start = from != null ? from : today.withDayOfMonth(1);
         LocalDate end = to != null ? to : today;
-        return dashboardService.performance(ctx, start, end);
+        return dashboardService.performance(ctx, start, end, today);
     }
 }

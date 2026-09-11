@@ -43,6 +43,8 @@ class SalesStatsQueryImplTest {
 
     private static final LocalDate FROM = LocalDate.of(2026, 9, 1);
     private static final LocalDate TO = LocalDate.of(2026, 9, 30);
+    /** 조회 시점 — 등록 기간이 끝난 뒤다. 이력 상한이 TO가 아니라 이 값이어야 한다 (#322 리뷰) */
+    private static final LocalDate TODAY = LocalDate.of(2026, 10, 15);
 
     @Mock private DealRepository dealRepository;
     @Mock private AuditQuery auditQuery;
@@ -179,9 +181,9 @@ class SalesStatsQueryImplTest {
                 deal(UUID.randomUUID(), Deal.Stage.LEAD, null),
                 deal(UUID.randomUUID(), Deal.Stage.LEAD, null),
                 deal(UUID.randomUUID(), Deal.Stage.CONSULT, null));
-        given(auditQuery.stageChanges(eq(COMPANY_ID), any(), any())).willReturn(List.of());
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY)).willReturn(List.of());
 
-        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO);
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
 
         assertThat(rateOf(rows, "LEAD")).isEqualTo(0.25d);   // 4건 중 1건만 상담 이상
     }
@@ -195,9 +197,9 @@ class SalesStatsQueryImplTest {
     void 실패는_직전_단계로_되짚는다() {
         모집단(deal(UUID.randomUUID(), Deal.Stage.LOST, "QUOTE"),
                 deal(UUID.randomUUID(), Deal.Stage.LOST, "LEAD"));
-        given(auditQuery.stageChanges(eq(COMPANY_ID), any(), any())).willReturn(List.of());
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY)).willReturn(List.of());
 
-        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO);
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
 
         assertThat(rateOf(rows, "LEAD")).isEqualTo(0.5d);      // 둘 중 하나만 상담 이상
         assertThat(rateOf(rows, "CONSULT")).isEqualTo(1.0d);   // 상담 도달 1건이 전부 견적까지
@@ -213,11 +215,11 @@ class SalesStatsQueryImplTest {
     void 되돌린_딜은_이력이_보정한다() {
         UUID 되돌아온딜 = UUID.randomUUID();
         모집단(deal(되돌아온딜, Deal.Stage.CONSULT, null));
-        given(auditQuery.stageChanges(eq(COMPANY_ID), any(), any()))
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY))
                 .willReturn(List.of(moved(되돌아온딜, "CONSULT", "QUOTE"),
                         moved(되돌아온딜, "QUOTE", "CONSULT")));
 
-        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO);
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
 
         assertThat(rateOf(rows, "CONSULT")).isEqualTo(1.0d);   // 현재는 상담이지만 견적까지 갔었다
     }
@@ -231,12 +233,12 @@ class SalesStatsQueryImplTest {
     void 왕복해도_한_건이다() {
         UUID 왕복딜 = UUID.randomUUID();
         모집단(deal(왕복딜, Deal.Stage.CONSULT, null));
-        given(auditQuery.stageChanges(eq(COMPANY_ID), any(), any()))
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY))
                 .willReturn(List.of(moved(왕복딜, "LEAD", "CONSULT"),
                         moved(왕복딜, "CONSULT", "LEAD"),
                         moved(왕복딜, "LEAD", "CONSULT")));
 
-        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO);
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
 
         assertThat(rows).allSatisfy(r -> assertThat(r.rate()).isBetween(0d, 1d));
         assertThat(rateOf(rows, "LEAD")).isEqualTo(1.0d);
@@ -250,9 +252,9 @@ class SalesStatsQueryImplTest {
     @DisplayName("리드에서 바로 성사된 딜도 중간 단계를 도달로 센다 (OD-06)")
     void 자동_성사는_전_단계_도달이다() {
         모집단(deal(UUID.randomUUID(), Deal.Stage.WON, null));
-        given(auditQuery.stageChanges(eq(COMPANY_ID), any(), any())).willReturn(List.of());
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY)).willReturn(List.of());
 
-        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO);
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
 
         assertThat(rows).hasSize(4).allSatisfy(r -> assertThat(r.rate()).isEqualTo(1.0d));
     }
@@ -265,10 +267,10 @@ class SalesStatsQueryImplTest {
     @DisplayName("기간 밖에 등록된 딜의 전이는 무시한다")
     void 코호트_밖_전이는_버린다() {
         모집단(deal(UUID.randomUUID(), Deal.Stage.LEAD, null));
-        given(auditQuery.stageChanges(eq(COMPANY_ID), any(), any()))
+        given(auditQuery.stageChanges(COMPANY_ID, FROM, TODAY))
                 .willReturn(List.of(moved(UUID.randomUUID(), "QUOTE", "NEGOTIATION")));
 
-        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO);
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
 
         assertThat(rows).allSatisfy(r -> assertThat(r.rate()).isZero());
     }
@@ -279,7 +281,7 @@ class SalesStatsQueryImplTest {
     void 모집단이_없으면_0이다() {
         모집단();
 
-        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO);
+        List<StageConversion> rows = salesStatsQuery.conversions(COMPANY_ID, FROM, TO, TODAY);
 
         assertThat(rows).hasSize(4).allSatisfy(r -> assertThat(r.rate()).isZero());
         assertThat(rows).extracting(StageConversion::fromStage)

@@ -202,7 +202,7 @@ class DashboardIntegrationTest {
     @DisplayName("관리자 performance — members·conversions 모두 실집계로 온다")
     void 관리자_performance는_구성원별로_나온다() {
         DashboardPerformanceResponse res =
-                dashboardService.performance(admin(), LocalDate.now().minusMonths(1), LocalDate.now());
+                dashboardService.performance(admin(), LocalDate.now().minusMonths(1), LocalDate.now(), LocalDate.now());
 
         assertThat(res.members())
                 .extracting(DashboardPerformanceResponse.MemberPerformance::name)
@@ -228,7 +228,7 @@ class DashboardIntegrationTest {
     @DisplayName("영업 담당자가 performance를 부르면 403 FORBIDDEN이다")
     void 영업담당자의_performance는_FORBIDDEN이다() {
         assertThatThrownBy(() ->
-                dashboardService.performance(rep(), LocalDate.now().minusMonths(1), LocalDate.now()))
+                dashboardService.performance(rep(), LocalDate.now().minusMonths(1), LocalDate.now(), LocalDate.now()))
                 .isInstanceOfSatisfying(BusinessException.class,
                         ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.FORBIDDEN));
     }

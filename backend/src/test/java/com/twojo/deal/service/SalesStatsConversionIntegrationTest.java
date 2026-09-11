@@ -39,6 +39,8 @@ class SalesStatsConversionIntegrationTest {
 
     private static final LocalDate FROM = LocalDate.of(2026, 9, 1);
     private static final LocalDate TO = LocalDate.of(2026, 9, 30);
+    /** 조회 시점 — 등록 기간이 <b>끝난 뒤</b>다. 코호트 딜의 전이가 그 뒤에도 이어지는 상황을 만든다 */
+    private static final LocalDate TODAY = LocalDate.of(2026, 10, 15);
 
     @Autowired
     private SalesStatsQuery salesStatsQuery;
@@ -154,7 +156,7 @@ class SalesStatsConversionIntegrationTest {
     }
 
     private List<StageConversion> 전환율() {
-        return salesStatsQuery.conversions(companyId, FROM, TO);
+        return salesStatsQuery.conversions(companyId, FROM, TO, TODAY);
     }
 
     /**
@@ -240,6 +242,27 @@ class SalesStatsConversionIntegrationTest {
         assertThat(rateOf(rows, "LEAD")).isEqualTo(0.5d);   // 타사 WON 딜이 섞이면 0.667이 된다
         assertThat(rateOf(rows, "NEGOTIATION")).isZero();   // 성사 도달은 우리 회사에 없다
         jdbc.update("delete from audit_log where entity_id = ?", 타사딜);
+    }
+
+    /**
+     * <b>등록 기간이 끝난 뒤의 전이도 도달에 든다</b> (#322 리뷰, @horangnabi97).
+     *
+     * <p>도달 정의에는 기간 제한이 없다 — "그때 들어온 딜이 <b>지금까지</b> 어디까지 갔나"다.
+     * 보정 창을 코호트 상한({@code to})으로 끊으면 9/28 등록 → 10/3 QUOTE → 10/5 되돌림인 딜을
+     * 10월에 "9월"로 조회할 때 봉우리 QUOTE가 빠진다.
+     *
+     * <p><b>기본 조회에서는 안 드러난다</b> — 화면 기본값이 이달 1일~오늘이라 {@code to}가 곧
+     * {@code today}다. 지난 기간을 물을 때만 나타나는 자리라 전이를 전부 기간 안에 심은
+     * 기존 테스트로는 잡히지 않았다.
+     */
+    @Test
+    @DisplayName("등록 기간이 끝난 뒤의 되돌림도 봉우리로 센다 — 보정 상한은 to가 아니라 today다")
+    void 기간_뒤_전이도_도달이다() {
+        UUID 늦게_움직인딜 = 딜("CONSULT", "2026-09-28 10:00:00+09");   // 9월 코호트
+        전이이력(늦게_움직인딜, "CONSULT", "QUOTE", "2026-10-03 10:00:00+09");   // to 이후
+        전이이력(늦게_움직인딜, "QUOTE", "CONSULT", "2026-10-05 10:00:00+09");   // 되돌림
+
+        assertThat(rateOf(전환율(), "CONSULT")).isEqualTo(1.0d);   // 현재는 상담, 도달은 견적
     }
 
     /** 딜이 없는 기간을 물어도 네 칸이 0으로 선다 — 초기 상태가 곧 정상 상태다 (완료 조건 4) */

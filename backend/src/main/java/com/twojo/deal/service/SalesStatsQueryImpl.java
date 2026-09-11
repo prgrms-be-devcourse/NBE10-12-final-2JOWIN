@@ -239,7 +239,7 @@ public class SalesStatsQueryImpl implements SalesStatsQuery {
      * {@code AccessContext}를 받지 않는다 (역할 판정은 호출자가 이미 했다).
      */
     @Override
-    public List<StageConversion> conversions(UUID companyId, LocalDate from, LocalDate to) {
+    public List<StageConversion> conversions(UUID companyId, LocalDate from, LocalDate to, LocalDate today) {
         Map<UUID, Integer> peakByDeal = new LinkedHashMap<>();
         for (DealRepository.StageSnapshot snapshot : dealRepository.findStageSnapshotsCreatedBetween(
                 companyId, DealPeriod.startOfDay(from), DealPeriod.startOfNextDay(to))) {
@@ -249,8 +249,11 @@ public class SalesStatsQueryImpl implements SalesStatsQuery {
             return zeroRates();   // 이력이 없는 기간은 예외가 아니라 0이다 — 초기 상태가 곧 정상이다
         }
 
-        // 되돌린 딜의 봉우리만 보탠다 — 코호트 밖 딜의 전이는 버린다
-        for (AuditQuery.StageChange change : auditQuery.stageChanges(companyId, from, to)) {
+        // 되돌린 딜의 봉우리만 보탠다 — 코호트 밖 딜의 전이는 버린다.
+        // 상한은 to가 아니라 today다 — 코호트에 든 딜의 전이는 등록 기간이 끝난 뒤에도 이어지고,
+        // 도달 정의에는 기간 제한이 없다. to로 끊으면 지난 기간을 물을 때 그 뒤의 봉우리가 빠진다.
+        // 하한은 from 그대로다 — 전이는 등록보다 앞설 수 없다 (#322 리뷰).
+        for (AuditQuery.StageChange change : auditQuery.stageChanges(companyId, from, today)) {
             peakByDeal.computeIfPresent(change.dealId(),
                     (dealId, peak) -> Math.max(peak, rankOf(reachedBy(change))));
         }

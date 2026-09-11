@@ -31,8 +31,12 @@ public interface SalesStatsQuery {
      * </pre>
      *
      * <p><b>모집단은 기간 안에 등록된 딜이다</b> — 전이 이력이 아니다. 이력에는 움직인 딜만 남아
-     * 리드에 멈춘 딜이 분모에서 빠지고, 그러면 수치가 늘 1 근처가 된다. 기간은 "이때 들어온 딜이
-     * 어디까지 갔나"로 읽는다 — 코호트다. 기간은 한국 날짜이고 <b>양 끝을 포함</b>한다.
+     * 리드에 멈춘 딜이 분모에서 빠지고, 그러면 수치가 늘 1 근처가 된다.
+     * {@code from}~{@code to}는 <b>등록일</b> 범위이고 한국 날짜이며 양 끝을 포함한다.
+     *
+     * <p><b>도달에는 기간 제한이 없다</b> — "이때 들어온 딜이 <b>지금까지</b> 어디까지 갔나"다.
+     * 코호트에 든 딜의 전이는 {@code to} 이후에도 이어지므로, 도달 판정은 {@code today}까지
+     * 본다 ({@code to}로 끊으면 지난 기간을 물을 때 그 뒤의 봉우리가 빠진다 — #322 리뷰).
      *
      * <p><b>항상 인접 네 쌍이 순서대로 온다</b> — {@code LEAD→CONSULT}·{@code CONSULT→QUOTE}·
      * {@code QUOTE→NEGOTIATION}·{@code NEGOTIATION→WON}. 딜이 한 건도 없는 기간도 빈 목록이
@@ -45,8 +49,12 @@ public interface SalesStatsQuery {
      * <p><b>되돌린 딜의 봉우리만 {@code audit_log}에 기댄다</b> — 나머지는 {@code deal}이 답한다.
      * 리스너(#303) 이전에 되돌려진 딜은 그 봉우리를 복원할 수 없어 그만큼 낮게 나온다.
      * 화면에서 "집계 준비 중"을 언제 걷을지는 소비처가 판단한다.
+     *
+     * @param today 조회 시점의 한국 날짜 — 도달 판정의 상한이다. <b>계약이 스스로 읽지 않는다</b>:
+     *              시간은 호출자가 넘긴다(`requireSendable(today)`와 같은 축). 컨트롤러가
+     *              기본 기간을 만들 때 이미 갖고 있는 값이다
      */
-    List<StageConversion> conversions(UUID companyId, LocalDate from, LocalDate to);
+    List<StageConversion> conversions(UUID companyId, LocalDate from, LocalDate to, LocalDate today);
 
     record StageCount(String stage, int count, Long expectedAmountSum) {}
 
