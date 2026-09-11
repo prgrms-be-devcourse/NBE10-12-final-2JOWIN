@@ -65,3 +65,8 @@ output "mail_identity_verification_status" {
   description = "도메인 검증 상태. CNAME 반영 전에는 PENDING"
   value       = module.mail.identity_verification_status
 }
+
+output "mail_smtp_user_name" {
+  description = "SMTP 액세스 키를 발급할 IAM 사용자 이름"
+  value       = module.mail.smtp_user_name
+}
