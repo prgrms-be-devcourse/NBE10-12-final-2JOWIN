@@ -93,6 +93,23 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
     List<Quote> findByStatusInAndValidUntilBetweenOrderByValidUntilAsc(
             Collection<Quote.Status> statuses, LocalDate from, LocalDate to);
 
+    /**
+     * 기간 만료 배치(Q-37) — 유효기간이 지난 응답 대기 견적. <b>id만 읽는다.</b>
+     *
+     * <p>회사 스코프를 걸지 않는다 — 만료는 알림이 아니라 <b>상태 전이</b>라
+     * 정지 회사(Q-27)도 그대로 닫혀야 한다 ({@code ViewTokenCommand.expire} javadoc:
+     * "회사 정지 중에도 만료 전이는 계속 돈다 — 알림 억제 판정은 D가 한다").
+     *
+     * <p>{@code Before}는 <b>상한을 포함하지 않는다</b> — 오늘 자정까지는 아직 유효하기
+     * 때문이다. 유효기간이 오늘인 견적은 내일 배치에서 닫힌다 (링크 만료도
+     * {@code valid_until 23:59:59}라 같은 경계다, Q-17).
+     *
+     * <p>엔티티가 아니라 id를 읽는 이유는 <b>워커가 견적마다 새 트랜잭션을 열기 때문</b>이다 —
+     * 배치 트랜잭션에서 읽은 엔티티를 넘기면 그 영속성 컨텍스트 밖에서 만지게 된다.
+     */
+    @Query("select q.id from Quote q where q.status in :statuses and q.validUntil < :today")
+    List<UUID> findIdsExpiredBefore(Collection<Quote.Status> statuses, LocalDate today);
+
     /** {@code QuoteQuery.quoteIdsByDeals} — 주문 목록의 SC-04 범위 필터. id만 읽는다 */
     @Query("select q.id from Quote q where q.companyId = :companyId and q.dealId in :dealIds")
     List<UUID> findIdsByDeals(UUID companyId, Collection<UUID> dealIds);
