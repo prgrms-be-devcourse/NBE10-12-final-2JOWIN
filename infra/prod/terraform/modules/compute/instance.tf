@@ -40,10 +40,20 @@ resource "aws_instance" "main" {
     http_endpoint = "enabled"
     http_tokens   = "required"
 
-    # hop limit 1 이면 도커 컨테이너가 IMDS 에 닿지 못한다. 이게 의도다 —
-    # AWS 를 호출하는 것은 호스트의 deploy.sh · backup.sh 뿐이다.
-    # 컨테이너가 자격증명이 필요해지면 그때 2 로 올린다.
-    http_put_response_hop_limit = 1
+    # 2 로 올린 것은 컨테이너가 자격증명을 필요로 하게 됐기 때문이다.
+    # 백엔드가 SES API 로 메일을 보내는데, SMTP 는 이 계정에서 쓸 수 없다 —
+    # 인증에 필요한 IAM 액세스 키 생성이 거부된다 (#320 · #346).
+    #
+    # 대가가 분명하다. hop 2 는 backend 만 여는 게 아니라 컨테이너 9개
+    # 전부를 연다. 컨테이너별로 나눌 수 있는 설정이 아니다. 그 안에는
+    # Grafana · Loki 같은 외부 이미지도 있다.
+    #
+    # 그래도 이쪽을 택한 이유는 대안이 장기 키인데 그것을 만들 수 없고,
+    # 만들 수 있더라도 임시 자격이 "그 서버에서만 · 몇 시간" 인 반면
+    # 정적 키는 "어디서든 · 교체할 때까지" 이기 때문이다.
+    #
+    # 이 값을 되돌리면 메일 발송이 조용히 전부 실패한다.
+    http_put_response_hop_limit = 2
   }
 
   user_data = templatefile("${path.module}/user_data.sh", {

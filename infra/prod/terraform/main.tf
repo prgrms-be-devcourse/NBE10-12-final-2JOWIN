@@ -62,6 +62,10 @@ module "compute" {
 
   key_name          = var.key_name
   deploy_public_key = var.deploy_public_key
+
+  # SES 발송 권한. 이 값이 있어야 백엔드가 메일을 보낼 수 있고,
+  # 그러려면 instance.tf 의 hop limit 이 2 여야 한다 (#346).
+  mail_policy_arn = module.mail.send_policy_arn
 }
 
 # mail 은 다른 모듈과 의존이 없다. SES 는 VPC 밖 서비스이고, 발송은
