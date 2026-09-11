@@ -9,6 +9,7 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 
 import com.twojo.activity.entity.AuditLog;
+import com.twojo.activity.repository.AuditLogRepository;
 import com.twojo.boundary.AuditActor;
 import com.twojo.deal.DealStageChanged;
 import com.twojo.member.event.MemberDeactivated;
@@ -29,7 +30,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.core.task.TaskRejectedException;
 import tools.jackson.databind.ObjectMapper;
 
 /**
@@ -44,7 +44,7 @@ class AuditLogListenerTest {
     private static final UUID MEMBER_ID = UUID.randomUUID();
     private static final Instant OCCURRED_AT = Instant.parse("2026-09-10T02:00:00Z");
 
-    @Mock private AuditLogWriter auditLogWriter;
+    @Mock private AuditLogRepository auditLogRepository;
     @Captor private ArgumentCaptor<AuditLog> saved;
 
     /** payload 조립이 검증 대상이라 ObjectMapper 는 목이 아니라 실제 인스턴스를 쓴다. */
@@ -52,7 +52,7 @@ class AuditLogListenerTest {
 
     @BeforeEach
     void setUp() {
-        auditLogListener = new AuditLogListener(auditLogWriter, new ObjectMapper());
+        auditLogListener = new AuditLogListener(auditLogRepository, new ObjectMapper());
     }
 
     @Test
@@ -61,7 +61,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 AuditActor.member(MEMBER_ID), OCCURRED_AT));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getCompanyId()).isEqualTo(COMPANY_ID);
         assertThat(row.getEntityType()).isEqualTo("QUOTE");
@@ -75,39 +75,6 @@ class AuditLogListenerTest {
                 .contains("\"quoteNo\":\"Q-2608-014\"");
     }
 
-    /**
-     * 메일과 달리 감사 로그에는 {@code email_log = SCHEDULED} 같은 선행 내구 기록이 없다.
-     * 제출 거부를 흘리면 그 사건은 어디에도 남지 않는다 — 비동기가 안 되면 동기로라도 남긴다.
-     */
-    @Test
-    @DisplayName("제출이 거부되면 그 자리에서 직접 적재한다")
-    void submitRejected_writesDirectly() {
-        willThrow(new TaskRejectedException("큐 포화"))
-                .given(auditLogWriter).writeAsync(any(AuditLog.class));
-
-        auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
-                AuditActor.member(MEMBER_ID), OCCURRED_AT));
-
-        then(auditLogWriter).should().writeNow(saved.capture());
-        assertThat(saved.getValue().getEventType()).isEqualTo("QUOTE_SENT");
-    }
-
-    /**
-     * {@code AFTER_COMMIT}에서 새는 예외는 <b>커밋된 요청을 500으로 뒤집는다</b>.
-     * 같은 트랜잭션의 다른 리스너도 실행되지 않는다 — 적재 실패는 여기서 끝낸다.
-     */
-    @Test
-    @DisplayName("직접 적재까지 실패해도 예외를 밖으로 내보내지 않는다")
-    void directWriteFails_swallows() {
-        willThrow(new TaskRejectedException("큐 포화"))
-                .given(auditLogWriter).writeAsync(any(AuditLog.class));
-        willThrow(new IllegalStateException("커넥션 없음"))
-                .given(auditLogWriter).writeNow(any(AuditLog.class));
-
-        assertThatCode(() -> auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID,
-                "Q-2608-014", AuditActor.member(MEMBER_ID), OCCURRED_AT)))
-                .doesNotThrowAnyException();
-    }
 
     /** 값이 바뀌는 유일한 이벤트다 — 나머지는 없던 일이 생긴 것이라 changes 키가 없다 (#22 2번). */
     @Test
@@ -116,7 +83,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new DealStageChanged(COMPANY_ID, DEAL_ID,
                 AuditActor.system(), OCCURRED_AT, "CONSULT", "QUOTE", null));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEntityType()).isEqualTo("DEAL");
         assertThat(row.getEntityId()).isEqualTo(DEAL_ID);
@@ -137,7 +104,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new DealStageChanged(COMPANY_ID, DEAL_ID,
                 AuditActor.member(MEMBER_ID), OCCURRED_AT, "NEGOTIATION", "LOST", "경쟁사 선정"));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         assertThat(saved.getValue().getPayload())
                 .contains("\"lostReason\":\"경쟁사 선정\"")
                 .doesNotContain("\"lostReason\":null");
@@ -149,7 +116,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new DealStageChanged(COMPANY_ID, DEAL_ID,
                 AuditActor.system(), OCCURRED_AT, "CONSULT", "QUOTE", null));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         assertThat(saved.getValue().getPayload()).doesNotContain("lostReason");
     }
 
@@ -159,7 +126,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteViewed(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 AuditActor.customerLink(), OCCURRED_AT));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEventType()).isEqualTo("QUOTE_VIEWED");
         assertThat(row.getActorType()).isEqualTo(AuditActorType.CUSTOMER_LINK);
@@ -173,7 +140,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteApproved(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 "김철수", AuditActor.customerLink(), OCCURRED_AT));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         assertThat(saved.getValue().getEventType()).isEqualTo("QUOTE_APPROVED");
         assertThat(saved.getValue().getPayload())
                 .contains("\"responderName\":\"김철수\"")
@@ -186,7 +153,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteRejected(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 "김철수", "예산 초과", AuditActor.customerLink(), OCCURRED_AT));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         assertThat(saved.getValue().getEventType()).isEqualTo("QUOTE_REJECTED");
         assertThat(saved.getValue().getPayload()).contains("\"reason\":\"예산 초과\"");
     }
@@ -199,7 +166,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new OrderCreated(COMPANY_ID, orderId, DEAL_ID, "O-2609-001",
                 QUOTE_ID, AuditActor.member(MEMBER_ID), OCCURRED_AT));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEntityType()).isEqualTo("ORDER");
         assertThat(row.getEntityId()).isEqualTo(orderId);
@@ -222,7 +189,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new MemberDeactivated(COMPANY_ID, target,
                 AuditActor.member(MEMBER_ID), OCCURRED_AT, transferTo, List.of(DEAL_ID)));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEntityType()).isEqualTo("MEMBER");
         assertThat(row.getEntityId()).isEqualTo(target);
@@ -239,7 +206,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new MemberDeactivated(COMPANY_ID, UUID.randomUUID(),
                 AuditActor.member(MEMBER_ID), OCCURRED_AT, null, List.of()));
 
-        then(auditLogWriter).should().writeAsync(saved.capture());
+        then(auditLogRepository).should().save(saved.capture());
         assertThat(saved.getValue().getPayload())
                 .doesNotContain("transferToMemberId")
                 .contains("\"dealIds\":[]");
@@ -252,13 +219,13 @@ class AuditLogListenerTest {
     @Test
     @DisplayName("행을 만들지 못해도 예외를 밖으로 내보내지 않는다")
     void buildFails_swallows() {
-        auditLogListener = new AuditLogListener(auditLogWriter, brokenMapper());
+        auditLogListener = new AuditLogListener(auditLogRepository, brokenMapper());
 
         assertThatCode(() -> auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID,
                 "Q-2608-014", AuditActor.member(MEMBER_ID), OCCURRED_AT)))
                 .doesNotThrowAnyException();
 
-        then(auditLogWriter).shouldHaveNoInteractions();
+        then(auditLogRepository).shouldHaveNoInteractions();
     }
 
     /** 직렬화가 터지는 상황을 만든다 — 실제로는 순환 참조나 직렬화 불가 타입이 그렇다. */
@@ -266,5 +233,20 @@ class AuditLogListenerTest {
         ObjectMapper mapper = mock(ObjectMapper.class);
         given(mapper.writeValueAsString(any())).willThrow(new IllegalStateException("직렬화 실패"));
         return mapper;
+    }
+
+    /**
+     * {@code AFTER_COMMIT} 에서 새는 예외는 <b>커밋된 요청을 500 으로 뒤집는다</b>.
+     * 같은 트랜잭션의 다른 리스너도 실행되지 않는다 — 적재 실패는 여기서 끝낸다.
+     */
+    @Test
+    @DisplayName("저장이 실패해도 예외를 밖으로 내보내지 않는다")
+    void saveFails_swallows() {
+        willThrow(new IllegalStateException("커넥션 없음"))
+                .given(auditLogRepository).save(any(AuditLog.class));
+
+        assertThatCode(() -> auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID,
+                "Q-2608-014", AuditActor.member(MEMBER_ID), OCCURRED_AT)))
+                .doesNotThrowAnyException();
     }
 }
