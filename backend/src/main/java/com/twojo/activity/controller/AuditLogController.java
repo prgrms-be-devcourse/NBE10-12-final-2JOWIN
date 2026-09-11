@@ -5,12 +5,13 @@ import com.twojo.activity.dto.AuditLogResponse;
 import com.twojo.activity.service.AuditLogService;
 import com.twojo.boundary.AccessContext;
 import com.twojo.global.response.PageResponse;
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
+import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -38,14 +39,15 @@ public class AuditLogController {
 
     /**
      * 목록 (AC-11) — payload는 싣지 않는다. 세 파라미터는 전부 선택이고 안 보내면 조건에서 빠진다.
-     * 기간은 사건이 일어난 시각 기준이다.
+     * 기간은 사건이 일어난 시각 기준이고, {@code from}·{@code to}는 한국 날짜({@code yyyy-MM-dd})다 —
+     * {@code to}는 그날을 포함한다 (07 §B, #289).
      */
     @GetMapping
     public PageResponse<AuditLogResponse> list(
             AccessContext ctx,
             @RequestParam(required = false) String entityType,
-            @RequestParam(required = false) Instant from,
-            @RequestParam(required = false) Instant to,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate from,
+            @RequestParam(required = false) @DateTimeFormat(iso = DateTimeFormat.ISO.DATE) LocalDate to,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "20") int size) {
         return auditLogService.list(ctx, entityType, from, to, pageable(page, size));

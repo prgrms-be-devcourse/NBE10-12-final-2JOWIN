@@ -23,6 +23,7 @@ import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -165,17 +166,25 @@ class AuditLogServiceTest {
         then(auditLogRepository).should(never()).findByIdAndCompanyId(any(), any());
     }
 
+    /**
+     * 기간은 한국 날짜로 받아 시각으로 끊어 넘긴다 (#289). 하한은 그날 0시 KST, 상한은 <b>다음 날</b>
+     * 0시 KST — "26일까지"가 26일 23:59:59.999999까지 들어가고 다음 구간과 맞물린다.
+     * 기대값은 KST = UTC+9 를 손으로 계산한 리터럴이다.
+     */
     @Test
-    @DisplayName("보낸 필터는 그대로 넘어간다 — 서비스가 값을 바꾸거나 떨어뜨리지 않는다")
-    void list_filtersPassedThrough() {
-        Instant from = Instant.parse("2026-08-25T00:00:00Z");
-        Instant to = Instant.parse("2026-08-26T00:00:00Z");
-        given(auditLogRepository.search(eq(COMPANY_ID), eq("QUOTE"), eq(from), eq(to), any()))
+    @DisplayName("날짜 필터는 KST 하루 경계의 시각으로 바뀌어 넘어간다 — 상한은 다음 날 0시 (#289)")
+    void list_datesConvertedToKstBounds() {
+        LocalDate from = LocalDate.of(2026, 8, 25);
+        LocalDate to = LocalDate.of(2026, 8, 26);
+        Instant fromAt = Instant.parse("2026-08-24T15:00:00Z");
+        Instant toExclusive = Instant.parse("2026-08-26T15:00:00Z");
+        given(auditLogRepository.search(eq(COMPANY_ID), eq("QUOTE"), eq(fromAt), eq(toExclusive), any()))
                 .willReturn(new PageImpl<>(List.of()));
 
         auditLogService.list(ADMIN, "QUOTE", from, to, PageRequest.of(0, 20));
 
-        then(auditLogRepository).should().search(eq(COMPANY_ID), eq("QUOTE"), eq(from), eq(to), any());
+        then(auditLogRepository).should()
+                .search(eq(COMPANY_ID), eq("QUOTE"), eq(fromAt), eq(toExclusive), any());
     }
 
     @Test
@@ -206,14 +215,15 @@ class AuditLogServiceTest {
     }
 
     @Test
-    @DisplayName("기간만 보내면 entityType 은 null 로 넘어간다")
+    @DisplayName("하한만 보내면 entityType 과 상한은 null 로 넘어간다 — 한쪽만 있는 기간도 열린다")
     void list_periodOnly() {
-        Instant from = Instant.parse("2026-08-25T00:00:00Z");
-        given(auditLogRepository.search(eq(COMPANY_ID), isNull(), eq(from), isNull(), any()))
+        LocalDate from = LocalDate.of(2026, 8, 25);
+        Instant fromAt = Instant.parse("2026-08-24T15:00:00Z");
+        given(auditLogRepository.search(eq(COMPANY_ID), isNull(), eq(fromAt), isNull(), any()))
                 .willReturn(new PageImpl<>(List.of()));
 
         auditLogService.list(ADMIN, null, from, null, PageRequest.of(0, 20));
 
-        then(auditLogRepository).should().search(eq(COMPANY_ID), isNull(), eq(from), isNull(), any());
+        then(auditLogRepository).should().search(eq(COMPANY_ID), isNull(), eq(fromAt), isNull(), any());
     }
 }

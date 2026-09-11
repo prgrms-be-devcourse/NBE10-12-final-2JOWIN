@@ -14,7 +14,7 @@ import com.twojo.boundary.Role;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.global.response.PageResponse;
-import java.time.Instant;
+import java.time.LocalDate;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -44,12 +44,19 @@ public class AuditLogService {
     private final MemberQuery memberQuery;
     private final ObjectMapper objectMapper;
 
-    /** 목록 (AC-11) — payload는 싣지 않는다 (07 §B). 안 보낸 필터는 조건에서 빠진다. */
+    /**
+     * 목록 (AC-11) — payload는 싣지 않는다 (07 §B). 안 보낸 필터는 조건에서 빠진다.
+     *
+     * <p>기간은 <b>한국 날짜</b>로 받는다 (#289). 화면이 날짜 선택기이고, 날짜를 시각으로 끊는
+     * 규칙은 {@code occurred_at}을 소유한 이 모듈이 갖는다({@link AuditPeriod}) — 호출자가 끊어
+     * 넘기면 클라이언트마다 경계가 갈린다. {@code to}는 그날을 <b>포함</b>한다.
+     */
     public PageResponse<AuditLogResponse> list(AccessContext ctx, String entityType,
-                                               Instant from, Instant to, Pageable pageable) {
+                                               LocalDate from, LocalDate to, Pageable pageable) {
         requireAdmin(ctx);
         return PageResponse.from(
-                auditLogRepository.search(ctx.companyId(), entityType, from, to, pageable)
+                auditLogRepository.search(ctx.companyId(), entityType,
+                                AuditPeriod.startOfDay(from), AuditPeriod.startOfNextDay(to), pageable)
                         .map(this::toResponse));
     }
 

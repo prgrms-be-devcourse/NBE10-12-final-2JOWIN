@@ -24,8 +24,8 @@ final class AuditLogSpecs {
 
     /**
      * @param entityType null이면 전 엔티티
-     * @param from       null이면 시작 제한 없음. 기준은 사건이 일어난 시각이다 (기록 시각이 아니다)
-     * @param to         null이면 끝 제한 없음. 경계를 포함한다
+     * @param from       null이면 시작 제한 없음. 기준은 사건이 일어난 시각이다 (기록 시각이 아니다). 포함
+     * @param to         null이면 끝 제한 없음. <b>제외</b> — 반개구간, {@code stageChanges} 파생 쿼리와 같다 (#289)
      */
     static Specification<AuditLog> search(UUID companyId, String entityType,
                                           Instant from, Instant to) {
@@ -37,7 +37,7 @@ final class AuditLogSpecs {
             spec = spec.and((root, query, cb) -> cb.greaterThanOrEqualTo(root.get("occurredAt"), from));
         }
         if (to != null) {
-            spec = spec.and((root, query, cb) -> cb.lessThanOrEqualTo(root.get("occurredAt"), to));
+            spec = spec.and((root, query, cb) -> cb.lessThan(root.get("occurredAt"), to));
         }
         return spec;
     }
