@@ -9,7 +9,6 @@ import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.mock;
 
 import com.twojo.activity.entity.AuditLog;
-import com.twojo.activity.repository.AuditLogRepository;
 import com.twojo.boundary.AuditActor;
 import com.twojo.deal.DealStageChanged;
 import com.twojo.member.event.MemberDeactivated;
@@ -44,7 +43,7 @@ class AuditLogListenerTest {
     private static final UUID MEMBER_ID = UUID.randomUUID();
     private static final Instant OCCURRED_AT = Instant.parse("2026-09-10T02:00:00Z");
 
-    @Mock private AuditLogRepository auditLogRepository;
+    @Mock private AuditLogWriter auditLogWriter;
     @Captor private ArgumentCaptor<AuditLog> saved;
 
     /** payload 조립이 검증 대상이라 ObjectMapper 는 목이 아니라 실제 인스턴스를 쓴다. */
@@ -52,7 +51,7 @@ class AuditLogListenerTest {
 
     @BeforeEach
     void setUp() {
-        auditLogListener = new AuditLogListener(auditLogRepository, new ObjectMapper());
+        auditLogListener = new AuditLogListener(auditLogWriter, new ObjectMapper());
     }
 
     @Test
@@ -61,7 +60,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 AuditActor.member(MEMBER_ID), OCCURRED_AT));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getCompanyId()).isEqualTo(COMPANY_ID);
         assertThat(row.getEntityType()).isEqualTo("QUOTE");
@@ -83,7 +82,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new DealStageChanged(COMPANY_ID, DEAL_ID,
                 AuditActor.system(), OCCURRED_AT, "CONSULT", "QUOTE", null));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEntityType()).isEqualTo("DEAL");
         assertThat(row.getEntityId()).isEqualTo(DEAL_ID);
@@ -104,7 +103,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new DealStageChanged(COMPANY_ID, DEAL_ID,
                 AuditActor.member(MEMBER_ID), OCCURRED_AT, "NEGOTIATION", "LOST", "경쟁사 선정"));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         assertThat(saved.getValue().getPayload())
                 .contains("\"lostReason\":\"경쟁사 선정\"")
                 .doesNotContain("\"lostReason\":null");
@@ -116,7 +115,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new DealStageChanged(COMPANY_ID, DEAL_ID,
                 AuditActor.system(), OCCURRED_AT, "CONSULT", "QUOTE", null));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         assertThat(saved.getValue().getPayload()).doesNotContain("lostReason");
     }
 
@@ -126,7 +125,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteViewed(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 AuditActor.customerLink(), OCCURRED_AT));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEventType()).isEqualTo("QUOTE_VIEWED");
         assertThat(row.getActorType()).isEqualTo(AuditActorType.CUSTOMER_LINK);
@@ -140,7 +139,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteApproved(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 "김철수", AuditActor.customerLink(), OCCURRED_AT));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         assertThat(saved.getValue().getEventType()).isEqualTo("QUOTE_APPROVED");
         assertThat(saved.getValue().getPayload())
                 .contains("\"responderName\":\"김철수\"")
@@ -153,7 +152,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new QuoteRejected(COMPANY_ID, QUOTE_ID, DEAL_ID, "Q-2608-014",
                 "김철수", "예산 초과", AuditActor.customerLink(), OCCURRED_AT));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         assertThat(saved.getValue().getEventType()).isEqualTo("QUOTE_REJECTED");
         assertThat(saved.getValue().getPayload()).contains("\"reason\":\"예산 초과\"");
     }
@@ -166,7 +165,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new OrderCreated(COMPANY_ID, orderId, DEAL_ID, "O-2609-001",
                 QUOTE_ID, AuditActor.member(MEMBER_ID), OCCURRED_AT));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEntityType()).isEqualTo("ORDER");
         assertThat(row.getEntityId()).isEqualTo(orderId);
@@ -189,7 +188,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new MemberDeactivated(COMPANY_ID, target,
                 AuditActor.member(MEMBER_ID), OCCURRED_AT, transferTo, List.of(DEAL_ID)));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         AuditLog row = saved.getValue();
         assertThat(row.getEntityType()).isEqualTo("MEMBER");
         assertThat(row.getEntityId()).isEqualTo(target);
@@ -206,7 +205,7 @@ class AuditLogListenerTest {
         auditLogListener.on(new MemberDeactivated(COMPANY_ID, UUID.randomUUID(),
                 AuditActor.member(MEMBER_ID), OCCURRED_AT, null, List.of()));
 
-        then(auditLogRepository).should().save(saved.capture());
+        then(auditLogWriter).should().save(saved.capture());
         assertThat(saved.getValue().getPayload())
                 .doesNotContain("transferToMemberId")
                 .contains("\"dealIds\":[]");
@@ -219,13 +218,13 @@ class AuditLogListenerTest {
     @Test
     @DisplayName("행을 만들지 못해도 예외를 밖으로 내보내지 않는다")
     void buildFails_swallows() {
-        auditLogListener = new AuditLogListener(auditLogRepository, brokenMapper());
+        auditLogListener = new AuditLogListener(auditLogWriter, brokenMapper());
 
         assertThatCode(() -> auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID,
                 "Q-2608-014", AuditActor.member(MEMBER_ID), OCCURRED_AT)))
                 .doesNotThrowAnyException();
 
-        then(auditLogRepository).shouldHaveNoInteractions();
+        then(auditLogWriter).shouldHaveNoInteractions();
     }
 
     /** 직렬화가 터지는 상황을 만든다 — 실제로는 순환 참조나 직렬화 불가 타입이 그렇다. */
@@ -238,12 +237,16 @@ class AuditLogListenerTest {
     /**
      * {@code AFTER_COMMIT} 에서 새는 예외는 <b>커밋된 요청을 500 으로 뒤집는다</b>.
      * 같은 트랜잭션의 다른 리스너도 실행되지 않는다 — 적재 실패는 여기서 끝낸다.
+     *
+     * <p>{@code AuditLogWriter.save} 한 호출에 트랜잭션 시작·INSERT·커밋이 전부 들어 있다 (#328).
+     * 이 테스트가 고정하는 것은 <b>그 호출이 던지면 리스너가 삼킨다</b>까지다. 시작·커밋 실패가
+     * 실제로 그 호출 안에서 나는지는 빈을 나눈 구조의 성질이라 목으로는 검증되지 않는다.
      */
     @Test
-    @DisplayName("저장이 실패해도 예외를 밖으로 내보내지 않는다")
-    void saveFails_swallows() {
+    @DisplayName("writer 가 던져도 예외를 밖으로 내보내지 않는다")
+    void writeFails_swallows() {
         willThrow(new IllegalStateException("커넥션 없음"))
-                .given(auditLogRepository).save(any(AuditLog.class));
+                .given(auditLogWriter).save(any(AuditLog.class));
 
         assertThatCode(() -> auditLogListener.on(new QuoteSent(COMPANY_ID, QUOTE_ID, DEAL_ID,
                 "Q-2608-014", AuditActor.member(MEMBER_ID), OCCURRED_AT)))
