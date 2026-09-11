@@ -6,6 +6,7 @@ import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.CustomerQuery;
 import com.twojo.boundary.MemberQuery;
 import com.twojo.boundary.OrderQuery;
+import com.twojo.boundary.QuoteCommand;
 import com.twojo.boundary.QuoteQuery;
 import com.twojo.boundary.Role;
 import com.twojo.deal.DealStageChanged;
@@ -52,6 +53,7 @@ public class DealService {
     private final MemberQuery memberQuery;
     private final QuoteQuery quoteQuery;
     private final OrderQuery orderQuery;
+    private final QuoteCommand quoteCommand;
     private final ApplicationEventPublisher eventPublisher;
 
     /** 생성 (DL-01~04) — 회사의 모든 고객사에 가능하고, 배정 대상은 활성 구성원이다 */
@@ -204,7 +206,14 @@ public class DealService {
      */
     @Transactional
     public DealResponses.DealItem lose(AccessContext ctx, UUID dealId, DealRequests.LoseDeal request) {
-        return moveStage(ctx, dealId, request.version(), deal -> deal.lose(request.reason()));
+        DealResponses.DealItem item = moveStage(ctx, dealId, request.version(),
+                deal -> deal.lose(request.reason()));
+
+        // 실패 처리의 효과 — 진행 중 견적과 열람 링크를 함께 닫는다 (DL-10, 전이표 §5, #318).
+        // 전이가 성공한 뒤에만 부른다: moveStage가 버전 충돌·종결 딜에서 던지면 여기 닿지 않는다.
+        // 같은 트랜잭션이라 링크 만료가 실패하면 실패 처리도 되돌아간다 — 계약이 MANDATORY인 이유다.
+        quoteCommand.expireOnDealLost(dealId);
+        return item;
     }
 
     /** 재개 (DL-12) — 실패 직전 단계로. 만료된 견적·링크는 복원하지 않는다 */

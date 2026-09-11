@@ -2,6 +2,7 @@ package com.twojo.quote.service;
 
 import com.twojo.boundary.AuditActor;
 import com.twojo.boundary.QuoteCommand;
+import com.twojo.boundary.ViewTokenCommand;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import com.twojo.quote.QuoteApproved;
@@ -10,6 +11,7 @@ import com.twojo.quote.QuoteViewed;
 import com.twojo.quote.entity.Quote;
 import com.twojo.quote.repository.QuoteRepository;
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
@@ -52,7 +54,11 @@ import org.springframework.transaction.annotation.Transactional;
 @RequiredArgsConstructor
 public class QuoteCommandImpl implements QuoteCommand {
 
+    /** 딜 실패가 닫는 대상 — 발송됨·열람됨 (전이표 §5). 판정 자체는 {@code Quote.expire()}가 한다 */
+    private static final List<Quote.Status> IN_PROGRESS = List.of(Quote.Status.SENT, Quote.Status.VIEWED);
+
     private final QuoteRepository quoteRepository;
+    private final ViewTokenCommand viewTokenCommand;
     private final ApplicationEventPublisher eventPublisher;
 
     /**
@@ -99,6 +105,26 @@ public class QuoteCommandImpl implements QuoteCommand {
         eventPublisher.publishEvent(new QuoteRejected(quote.getCompanyId(), quote.getId(),
                 quote.getDealId(), quote.getQuoteNo(), responder.name(), reason,
                 AuditActor.customerLink(), now));
+    }
+
+    /**
+     * 딜 실패 시 견적·링크 닫기 (DL-10) — 계약의 이유는 {@link QuoteCommand} javadoc에 있다.
+     *
+     * <p><b>{@code Quote.expire()}가 판정한다.</b> 발송됨·열람됨이 아니면 {@code false}를 돌려주므로
+     * 여기서 상태를 다시 보지 않는다 — 기간 만료 배치(Q-37)와 같은 메서드라 규칙이 한 곳에 있다.
+     * 조회에서 이미 두 상태로 좁혔지만, 그 사이 고객이 응답했을 수 있어 판정을 건너뛰지 않는다.
+     *
+     * <p>링크는 견적이 실제로 닫힌 건만 만료시킨다 — 이미 응답 완료된 견적의 링크를 건드릴 이유가 없다.
+     * {@code ViewTokenCommand.expire}는 멱등이라 활성 링크가 없어도 안전하다.
+     */
+    @Override
+    @Transactional(propagation = Propagation.MANDATORY)
+    public void expireOnDealLost(UUID dealId) {
+        for (Quote quote : quoteRepository.findByDealIdAndStatusIn(dealId, IN_PROGRESS)) {
+            if (quote.expire()) {
+                viewTokenCommand.expire(quote.getId(), ViewTokenCommand.ExpiredReason.DEAL_LOST);
+            }
+        }
     }
 
     /**
