@@ -97,7 +97,6 @@ public class DashboardService {
     /**
      * DB-03 응답 대기. {@link QuoteQuery#findAwaitingResponse}는 {@code AccessContext}를 받지 못해
      * 회사 전체를 돌려주므로, 영업 담당자는 {@link DealQuery#assignedDealIds}로 본인 담당 딜만 남긴다.
-     * ({@code customerName}은 계약상 아직 {@code null} — B의 회사 스코프 이름 조회 창구 대기 #218.)
      */
     private List<DashboardSummaryResponse.WaitingQuote> waitingQuotes(AccessContext ctx) {
         List<QuoteQuery.QuoteSummary> awaiting = quoteQuery.findAwaitingResponse(ctx.companyId());
