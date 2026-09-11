@@ -136,6 +136,12 @@ public interface QuoteRepository extends JpaRepository<Quote, UUID>, JpaSpecific
      * 복제본을 나중에 보내면 둘이 갈린다. {@code DRAFT}를 뺐으므로 {@code sentAt}은 항상 값이 있다
      * ({@code markSent}가 DRAFT를 벗어나는 유일한 경로다).
      *
+     * <p><b>다만 이것은 DB 제약이 아니라 코드 불변식이다</b> — {@code sent_at}은 nullable이고
+     * status와 엮인 CHECK도 없다. 불변식이 깨져 비-DRAFT 행에 {@code sent_at}이 비면
+     * PostgreSQL이 {@code DESC}에서 NULL을 <b>먼저</b> 놓으므로 그 행이 대체 견적으로 뽑힌다 —
+     * 예외 없이 틀린 링크가 뜬다. 지금 고치지 않는 것은 불변식을 깰 경로가 없기 때문이고,
+     * 생긴다면 {@code NULLS LAST}를 명시한 {@code @Query}로 바꿔야 한다 (#340 리뷰, @horangnabi97).
+     *
      * <p>동률 정렬 보정({@code id} 등)을 두지 않는다 — 발송은 요청 하나에 하나씩이라 같은 원본의
      * 복제본 둘이 같은 {@code sent_at}(마이크로초)을 가질 수 없다. 보정을 붙이면 동률이 일어날 수
      * 있다는 뜻으로 읽혀 다음 사람이 그 경우를 찾게 된다.
