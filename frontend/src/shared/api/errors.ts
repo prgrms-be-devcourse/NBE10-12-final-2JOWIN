@@ -49,8 +49,10 @@ export const ERROR_MESSAGES = {
   QUOTE_NOT_DRAFT: '작성 중인 견적만 수정·발송할 수 있습니다.',
   QUOTE_EMPTY_ITEMS: '견적 항목을 1개 이상 추가해 주세요.',
   QUOTE_NOT_WITHDRAWABLE: '이 상태의 견적은 회수할 수 없습니다.',
+  // 행동 안내는 화면이 경로별로 한다 — 발송(작성 중)은 날짜를 고치면 되고, 재발송은 복제뿐이다
+  // (QuoteActionDialogs의 ACTION_HINTS, 07 v1.6.20)
   QUOTE_NOT_RESENDABLE: '이 상태의 견적은 재발송할 수 없습니다.',
-  QUOTE_VALID_UNTIL_PASSED: '유효기간이 지났습니다. 유효기간을 다시 지정한 뒤 발송해 주세요.',
+  QUOTE_VALID_UNTIL_PASSED: '유효기간이 지났습니다.',
   QUOTE_DEAL_CLOSED: '종결된 Deal에는 견적을 작성할 수 없습니다. 새 Deal을 만들어 진행해 주세요.',
   // 링크는 유효한데 견적 상태가 어긋난 응답 — LINK_*와 판정 축이 다르다 (07 v1.6.11)
   QUOTE_NOT_RESPONDABLE: '이 상태의 견적에는 응답할 수 없습니다.',

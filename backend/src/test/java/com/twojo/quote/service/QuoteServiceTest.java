@@ -593,10 +593,32 @@ class QuoteServiceTest {
             given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
             given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(true);
 
-            quoteService.resendViewToken(SALES, QUOTE_ID, new QuoteRequests.ResendViewToken(CONTACT_ID));
+            quoteService.resendViewToken(SALES, QUOTE_ID,
+                    new QuoteRequests.ResendViewToken(CONTACT_ID, null));
 
-            then(viewTokenCommand).should().issue(QUOTE_ID, CONTACT_ID, null);   // 재발송엔 message가 없다
+            then(viewTokenCommand).should().issue(QUOTE_ID, CONTACT_ID, null);
             assertThat(quote.getStatus()).isEqualTo(Quote.Status.VIEWED);   // 그대로다
+        }
+
+        /**
+         * <b>한마디가 실제로 메일까지 간다</b> (#214). 계약과 본문 렌더는 전부터 {@code message}를
+         * 받고 있었고, 요청 DTO에 필드가 없어 서비스가 {@code null}을 넘기고 있었을 뿐이다 —
+         * 그 한 줄이 되돌아가면 새 수신인이 다시 빈약한 메일을 받는다.
+         *
+         * <p>수신인을 바꾸는 흐름이라 받는 사람에게 앞선 맥락이 없다. 첫 발송보다 오히려 필요한 자리다.
+         */
+        @Test
+        @DisplayName("재발송에도 담당자 한마디가 실린다 (#214)")
+        void 재발송_한마디() {
+            quoteAt(Quote.Status.SENT);
+            given(dealQuery.customerIdOf(DEAL_ID)).willReturn(DEAL_CUSTOMER_ID);
+            given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(true);
+
+            quoteService.resendViewToken(SALES, QUOTE_ID,
+                    new QuoteRequests.ResendViewToken(CONTACT_ID, "담당자가 바뀌어 다시 보냅니다."));
+
+            then(viewTokenCommand).should()
+                    .issue(QUOTE_ID, CONTACT_ID, "담당자가 바뀌어 다시 보냅니다.");
         }
 
         @Test
@@ -607,7 +629,7 @@ class QuoteServiceTest {
             given(customerQuery.existsContactInCustomer(DEAL_CUSTOMER_ID, CONTACT_ID)).willReturn(false);
 
             assertThatThrownBy(() -> quoteService.resendViewToken(
-                    SALES, QUOTE_ID, new QuoteRequests.ResendViewToken(CONTACT_ID)))
+                    SALES, QUOTE_ID, new QuoteRequests.ResendViewToken(CONTACT_ID, null)))
                     .isInstanceOf(BusinessException.class)
                     .extracting(QuoteServiceTest::errorOf)
                     .isEqualTo(ErrorCode.CONTACT_NOT_IN_CUSTOMER);
