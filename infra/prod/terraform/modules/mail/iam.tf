@@ -19,6 +19,10 @@
 # ─────────────────────────────────────────────────────────────────────────────
 
 resource "aws_iam_user" "smtp" {
+  # checkov:skip=CKV_AWS_273: SES SMTP 인증은 IAM 사용자로만 가능하다. SMTP 는
+  # 사용자명·비밀번호로 인증하는 프로토콜이라 SSO·역할로 대체할 수단이 없다.
+  # 대체안(SES API + 인스턴스 역할)은 IMDS hop limit 을 2로 올려 컨테이너
+  # 9개 전부에 인스턴스 자격을 여는 대가가 따른다 — mail.md §3 참조.
   name = "${var.project}-ses-smtp"
 
   # 키를 사람이 콘솔에서 만들기 때문에 terraform 은 그 키의 존재를 모른다.
@@ -51,8 +55,22 @@ data "aws_iam_policy_document" "smtp_send" {
   }
 }
 
-resource "aws_iam_user_policy" "smtp_send" {
+# 정책을 사용자에 직접 붙이지 않고 그룹을 거친다.
+#
+# 사용자 하나에 그룹 하나가 과해 보이지만, SES 콘솔이 자동 생성하던 구성도
+# 같은 모양이었다(AWSSESSendingGroupDoNotRename). 권한이 사용자에 흩어지면
+# 누가 무엇을 할 수 있는지 세는 방법이 사람마다 달라진다.
+resource "aws_iam_group" "smtp" {
+  name = "${var.project}-ses-smtp"
+}
+
+resource "aws_iam_group_policy" "smtp_send" {
   name   = "ses-send"
-  user   = aws_iam_user.smtp.name
+  group  = aws_iam_group.smtp.name
   policy = data.aws_iam_policy_document.smtp_send.json
+}
+
+resource "aws_iam_user_group_membership" "smtp" {
+  user   = aws_iam_user.smtp.name
+  groups = [aws_iam_group.smtp.name]
 }
