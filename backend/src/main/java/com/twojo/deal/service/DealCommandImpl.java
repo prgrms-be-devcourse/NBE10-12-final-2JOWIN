@@ -13,6 +13,7 @@ import java.util.UUID;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 /**
@@ -26,6 +27,17 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>{@code REQUIRES_NEW}를 붙이지 않는다 — 발송(또는 비활성화) 트랜잭션이 롤백되면 단계 승급(또는 이관)도
  * 함께 되돌아가야 한다. 별도 커밋되면 "발송은 실패했는데 딜만 견적 단계로 올라간" 상태가 남는다.
  * D의 {@code ViewTokenCommandImpl}이 같은 이유로 합류한다.
+ *
+ * <p><b>세 메서드 모두 {@code MANDATORY}다</b> (#227). 계약 javadoc이 "호출자의 트랜잭션에 합류한다"로
+ * 약속하는데 기본 {@code REQUIRED}는 <b>호출자 트랜잭션이 없으면 조용히 자기 것을 연다</b> —
+ * 그러면 "발송이 롤백되면 단계도 되돌아간다"는 약속이 그 경로에서 깨지고, 아무 신호도 남지 않는다.
+ * 조용히 무력해지느니 그 자리에서 실패하는 편이 낫다 ({@code DocumentNumberService}, #72와 같은 판단).
+ *
+ * <p><b>{@code MANDATORY}는 {@code readOnly}를 걸러내지 못한다</b> — 트랜잭션의 존재만 본다.
+ * 읽기 전용 호출자는 검사를 통과하고 flush가 건너뛰어져 <b>변경이 예외 없이 사라진다</b>
+ * (PR #225 리뷰). 현재 호출부 셋은 전부 쓰기 트랜잭션 안이다 —
+ * {@code QuoteService.send} · {@code OrderService.convert} ·
+ * {@code MemberAdminService.deactivate}({@code transferOpenDeals} 경유).
  */
 @Service
 @RequiredArgsConstructor
@@ -35,7 +47,7 @@ class DealCommandImpl implements DealCommand {
     private final ApplicationEventPublisher eventPublisher;
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public void promoteToQuoteStage(UUID dealId) {
         Deal deal = find(dealId);
         Deal.Stage before = deal.getStage();
@@ -44,7 +56,7 @@ class DealCommandImpl implements DealCommand {
     }
 
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public void markWon(UUID dealId) {
         Deal deal = find(dealId);
         Deal.Stage before = deal.getStage();
@@ -87,7 +99,7 @@ class DealCommandImpl implements DealCommand {
      * <p>{@code toMemberId}가 같은 회사의 활성 구성원인지는 계약대로 호출자(A)가 먼저 봤다고 믿는다.
      */
     @Override
-    @Transactional
+    @Transactional(propagation = Propagation.MANDATORY)
     public List<UUID> reassignOpenDeals(UUID companyId, UUID fromMemberId, UUID toMemberId) {
         List<Deal> deals = dealRepository.findByCompanyIdAndAssigneeMemberIdAndStageInAndDeletedAtIsNull(
                 companyId, fromMemberId, Deal.OPEN_STAGES);
