@@ -66,6 +66,11 @@ public interface QuoteCommand {
      * <b>대량 처리가 아니기 때문</b>이다 — 이쪽은 담당자 요청 한 건이라 부분 성공이 의미가 없다.
      * 링크 만료({@code ViewTokenCommand.expire})도 같은 트랜잭션에 합류한다.
      *
+     * <p><b>호출자의 트랜잭션은 쓰기여야 한다</b> — {@code MANDATORY}는 트랜잭션의 존재만 보고
+     * {@code readOnly}는 걸러내지 못한다. 읽기 전용에서 부르면 flush가 건너뛰어져 만료가
+     * <b>예외 없이 사라진다</b> ({@code DealCommand}·{@link #lockApprovedForConversion}과 같은 한계).
+     * 지금 호출자({@code DealService.lose})는 쓰기 트랜잭션이다.
+     *
      * <p><b>회사 스코프를 걸지 않는다.</b> 호출자가 이미 회사 안에서 얻은 dealId를 넘기는 자리이고,
      * 그 경로에서 SC-01·02 판정이 끝나 있다 — {@code DealCommand}의 시스템 전이와 같은 규약이다.
      */

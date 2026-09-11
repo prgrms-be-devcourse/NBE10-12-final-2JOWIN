@@ -9,6 +9,7 @@ import com.twojo.boundary.QuoteCommand;
 import com.twojo.boundary.Role;
 import com.twojo.deal.dto.DealRequests;
 import com.twojo.global.error.BusinessException;
+import com.twojo.global.error.ErrorCode;
 import java.time.LocalDate;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
@@ -136,6 +137,11 @@ class DealLostSideEffectIntegrationTest {
      * <b>이 테스트가 이 이슈의 핵심이다.</b> 전이표 105행이 "승인 경로가 닫힌다"고 규정하는데,
      * 그 차단은 견적이 EXPIRED가 되어야만 일어난다 — 승인은 견적 상태만 보기 때문이다
      * ({@code QuoteCommandImpl.approve}는 딜 상태를 보지 않는다).
+     *
+     * <p><b>여기서 보는 것은 두 번째 방어선이다.</b> 실제 고객 경로는 링크가 먼저 {@code DEAL_LOST}로
+     * 걸러 410을 준다 — 그 앞단이 뚫려도 견적 상태가 막는지를 고정한다. 예외를
+     * {@code QUOTE_NOT_RESPONDABLE}로 좁히는 이유도 그것이다: 아무 사유로나 막히면
+     * "EXPIRED라서 막혔다"가 고정되지 않는다 (#324 리뷰).
      */
     @Test
     @DisplayName("실패 처리 뒤에는 고객이 승인할 수 없다 — 전이표 §5가 규정한 차단 (DL-10)")
@@ -145,7 +151,8 @@ class DealLostSideEffectIntegrationTest {
         실패처리();
 
         assertThatThrownBy(() -> quoteCommand.approve(quoteId, new QuoteCommand.Responder("이수정", "구매팀장")))
-                .isInstanceOf(BusinessException.class);
+                .isInstanceOfSatisfying(BusinessException.class,
+                        ex -> assertThat(ex.getErrorCode()).isEqualTo(ErrorCode.QUOTE_NOT_RESPONDABLE));
         assertThat(quoteStatus(quoteId)).isEqualTo("EXPIRED");   // 승인으로 바뀌지 않았다
     }
 

@@ -200,9 +200,9 @@ public class DealService {
     /**
      * 실패 처리 (DL-10·11).
      *
-     * <p><b>진행 중 견적·열람 링크 만료(전이표 §5의 효과)는 아직 붙지 않았다</b> —
-     * quote가 Modulith상 다른 모듈이라 조회 창구가 없다. 이슈 #61 「리뷰 필요」 1번이
-     * 정해지면 이 메서드 안에서 같은 트랜잭션으로 호출한다.
+     * <p><b>진행 중 견적·열람 링크 만료(전이표 §5의 효과)를 같은 트랜잭션에서 함께 처리한다</b> —
+     * {@link QuoteCommand#expireOnDealLost}를 부른다 (#318). 무엇을 닫고 무엇을 남기는지는
+     * 그쪽 javadoc이 정본이다 — 판정이 여기 복제되면 만료 배치(Q-37)와 갈린다.
      */
     @Transactional
     public DealResponses.DealItem lose(AccessContext ctx, UUID dealId, DealRequests.LoseDeal request) {
