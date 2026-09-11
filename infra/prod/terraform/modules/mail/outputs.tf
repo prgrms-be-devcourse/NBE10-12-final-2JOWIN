@@ -29,9 +29,3 @@ output "configuration_set_name" {
   description = "자격에 기본으로 달린 설정 세트"
   value       = aws_sesv2_configuration_set.main.configuration_set_name
 }
-
-# compute 가 인스턴스 역할에 붙인다. storage 의 instance_access_policy_arn 과 같은 쓰임이다.
-output "send_policy_arn" {
-  description = "인스턴스 역할에 붙일 SES 발송 정책 ARN"
-  value       = aws_iam_policy.send.arn
-}

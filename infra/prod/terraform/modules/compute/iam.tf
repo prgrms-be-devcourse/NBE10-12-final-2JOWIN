@@ -43,12 +43,3 @@ resource "aws_iam_instance_profile" "instance" {
   name = "${var.project}-instance"
   role = aws_iam_role.instance.name
 }
-
-# SES 발송. 정책 본체는 mail 모듈에 있다 — 자격을 아는 쪽이 정책도 갖는다.
-#
-# 이 권한은 컨테이너가 IMDS 에 닿을 수 있어야 쓸모가 있다. instance.tf 의
-# hop limit 이 그 조건이고, 둘은 같이 움직여야 한다 (#346).
-resource "aws_iam_role_policy_attachment" "mail" {
-  role       = aws_iam_role.instance.name
-  policy_arn = var.mail_policy_arn
-}
