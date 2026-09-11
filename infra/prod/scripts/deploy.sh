@@ -293,8 +293,19 @@ dump_failure() {
 
   # 여기에 원인이 있다. 기동 실패면 스택트레이스가, health 만 DOWN 이면
   # 해당 인디케이터의 경고가 찍힌다(Spring 이 예외와 함께 남긴다).
-  log "── 컨테이너 로그 (마지막 80줄) ──"
-  docker logs --tail 80 "$cid" 2>&1 || true
+  #
+  # `at ...` 프레임을 걷어내고 본다. 처음에 마지막 80줄을 그대로 찍었더니
+  # 80줄이 전부 Spring Security 필터 체인 프레임이었고, 정작 필요한
+  # 예외 첫 줄과 Caused by 는 그 위로 밀려나 안 보였다.
+  #
+  # 프레임을 버려도 손해가 없다. 어느 클래스에서 났는지보다 "무엇이
+  # 실패했는가"가 먼저 필요하고, 그건 메시지 줄과 Caused by 에 있다.
+  log "── 컨테이너 로그 (스택 프레임 제외, 마지막 60줄) ──"
+  docker logs --tail 400 "$cid" 2>&1 | grep -vE '^[[:space:]]+at ' | tail -60 || true
+
+  # 프레임을 지운 탓에 놓치는 것이 있을 수 있어 원본 꼬리도 짧게 남긴다.
+  log "── 컨테이너 로그 (원본 마지막 15줄) ──"
+  docker logs --tail 15 "$cid" 2>&1 || true
 }
 
 if wait_healthy "$HEALTH_TIMEOUT"; then
