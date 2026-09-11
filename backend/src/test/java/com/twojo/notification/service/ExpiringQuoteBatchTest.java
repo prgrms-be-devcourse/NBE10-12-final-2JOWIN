@@ -30,7 +30,7 @@ import org.mockito.junit.jupiter.MockitoExtension;
 
 /**
  * {@link ExpiringQuoteBatch} — 회사 그룹핑(회사당 get 1회), Q-27 정지 회사 스킵, 2단 격리(회사·견적),
- * {@code findExpiringUntil} 구간 인자를 검증한다. 실 스케줄 트리거·실 PG는
+ * {@code findExpiringBetween} 구간 인자를 검증한다. 실 스케줄 트리거·실 PG는
  * {@code ExpiringQuoteIntegrationTest}가 덮는다.
  */
 @ExtendWith(MockitoExtension.class)
@@ -69,7 +69,7 @@ class ExpiringQuoteBatchTest {
     @Test
     @DisplayName("후보를 회사별로 묶어 회사당 get을 1회만 부르고 견적마다 worker에 위임한다")
     void 회사_그룹핑() {
-        given(quoteQuery.findExpiringUntil(any(), any())).willReturn(List.of(
+        given(quoteQuery.findExpiringBetween(any(), any())).willReturn(List.of(
                 quote(QUOTE_1, COMPANY_A), quote(QUOTE_2, COMPANY_A), quote(QUOTE_3, COMPANY_B)));
         given(companyQuery.get(COMPANY_A)).willReturn(company(COMPANY_A, true));
         given(companyQuery.get(COMPANY_B)).willReturn(company(COMPANY_B, true));
@@ -82,15 +82,15 @@ class ExpiringQuoteBatchTest {
     }
 
     @Test
-    @DisplayName("findExpiringUntil을 오늘 ~ 오늘+before-days 구간으로 부른다")
+    @DisplayName("findExpiringBetween을 오늘 ~ 오늘+before-days 구간으로 부른다")
     void 구간_인자() {
-        given(quoteQuery.findExpiringUntil(any(), any())).willReturn(List.of());
+        given(quoteQuery.findExpiringBetween(any(), any())).willReturn(List.of());
 
         batch.run();
 
         ArgumentCaptor<LocalDate> from = ArgumentCaptor.forClass(LocalDate.class);
         ArgumentCaptor<LocalDate> to = ArgumentCaptor.forClass(LocalDate.class);
-        then(quoteQuery).should().findExpiringUntil(from.capture(), to.capture());
+        then(quoteQuery).should().findExpiringBetween(from.capture(), to.capture());
         assertThat(from.getValue()).isEqualTo(LocalDate.now(ZoneId.of("Asia/Seoul")));
         assertThat(to.getValue()).isEqualTo(from.getValue().plusDays(BEFORE_DAYS));
     }
@@ -98,7 +98,7 @@ class ExpiringQuoteBatchTest {
     @Test
     @DisplayName("정지된 회사는 견적을 worker에 넘기지 않는다 (Q-27)")
     void 정지_회사_스킵() {
-        given(quoteQuery.findExpiringUntil(any(), any()))
+        given(quoteQuery.findExpiringBetween(any(), any()))
                 .willReturn(List.of(quote(QUOTE_1, COMPANY_A)));
         given(companyQuery.get(COMPANY_A)).willReturn(company(COMPANY_A, false));
 
@@ -110,7 +110,7 @@ class ExpiringQuoteBatchTest {
     @Test
     @DisplayName("한 회사에서 예외가 나도 다음 회사는 정상 처리한다 (회사 단위 격리)")
     void 회사_단위_격리() {
-        given(quoteQuery.findExpiringUntil(any(), any())).willReturn(List.of(
+        given(quoteQuery.findExpiringBetween(any(), any())).willReturn(List.of(
                 quote(QUOTE_1, COMPANY_A), quote(QUOTE_3, COMPANY_B)));
         given(companyQuery.get(COMPANY_A)).willThrow(new RuntimeException("db blip"));
         given(companyQuery.get(COMPANY_B)).willReturn(company(COMPANY_B, true));
@@ -123,7 +123,7 @@ class ExpiringQuoteBatchTest {
     @Test
     @DisplayName("한 견적에서 예외가 나도 같은 회사 다음 견적은 시도된다 (견적 단위 격리)")
     void 견적_단위_격리() {
-        given(quoteQuery.findExpiringUntil(any(), any())).willReturn(List.of(
+        given(quoteQuery.findExpiringBetween(any(), any())).willReturn(List.of(
                 quote(QUOTE_1, COMPANY_A), quote(QUOTE_2, COMPANY_A)));
         given(companyQuery.get(COMPANY_A)).willReturn(company(COMPANY_A, true));
         willThrow(new RuntimeException("boom")).given(worker).remind(any(), any());
@@ -136,7 +136,7 @@ class ExpiringQuoteBatchTest {
     @Test
     @DisplayName("후보가 없으면 회사 조회도 worker 위임도 하지 않는다")
     void 빈_후보() {
-        given(quoteQuery.findExpiringUntil(any(), any())).willReturn(List.of());
+        given(quoteQuery.findExpiringBetween(any(), any())).willReturn(List.of());
 
         batch.run();
 

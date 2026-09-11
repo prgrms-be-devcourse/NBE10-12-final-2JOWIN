@@ -20,7 +20,7 @@ import org.springframework.stereotype.Component;
  * 찾아 회사별로 묶고 {@link ExpiringQuoteWorker}에 견적 단위로 넘긴다.
  * (docs/03-requirements.md §2.13, Q-17·26·27)
  *
- * <p><b>회사 그룹핑 + 2단 격리</b> — {@code findExpiringUntil}은 전 회사를 평평하게 돌려준다.
+ * <p><b>회사 그룹핑 + 2단 격리</b> — {@code findExpiringBetween}은 전 회사를 평평하게 돌려준다.
  * {@code groupingBy(companyId)}로 묶어 회사당 {@code companyQuery.get}을 1회만 부른다 — 플랫 루프면
  * 한 회사의 조회 실패가 그 회사 견적 수만큼 재실패한다. 회사 루프와 견적 루프를 각각 {@code try/catch}로
  * 감싸 한 회사/견적의 실패가 나머지를 막지 않게 한다. {@code Error}(OOM 등)는 삼키지 않는다.
@@ -62,7 +62,7 @@ class ExpiringQuoteBatch {
     public void run() {
         LocalDate today = LocalDate.now(zone);
         List<QuoteQuery.QuoteSummary> quotes =
-                quoteQuery.findExpiringUntil(today, today.plusDays(beforeDays));
+                quoteQuery.findExpiringBetween(today, today.plusDays(beforeDays));
         Map<UUID, List<QuoteQuery.QuoteSummary>> byCompany = quotes.stream()
                 .collect(Collectors.groupingBy(QuoteQuery.QuoteSummary::companyId));
         int failedCompanies = 0;
