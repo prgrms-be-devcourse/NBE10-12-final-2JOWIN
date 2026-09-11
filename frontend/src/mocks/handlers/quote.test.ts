@@ -3,8 +3,8 @@ import type { RequestHandler } from 'msw'
 import { quoteHandlers } from './quote'
 import { publicQuoteHandlers } from './publicQuote'
 import { activeTokenOf, db, session } from '../store'
-import { demoAccounts } from '../fixtures'
-import type { ErrorResponse, PageResponse, QuoteResponse } from '../../shared/api/types'
+import { demoAccounts, quoteId } from '../fixtures'
+import type { ErrorResponse, PageResponse, QuoteDetailResponse, QuoteResponse } from '../../shared/api/types'
 
 /**
  * 견적 목이 백엔드(QuoteService #101·#154 · CustomerQuoteService #156)와 같은 규칙으로 답하는지.
@@ -60,6 +60,33 @@ describe('GET /api/v1/quotes — 목록 (QT-20)', () => {
     expect((await get(`/quotes/${otherQuote.id}`, salesRep))!.status).toBe(404)
     session.login(admin)
     expect((await get(`/quotes/${otherQuote.id}`, admin))!.status).toBe(200)
+  })
+})
+
+describe('GET /api/v1/quotes/{id} — 대체 견적 supersededByQuoteId (QT-28)', () => {
+  /**
+   * 서버(QuoteService.supersededBy, #326·#340)와 같은 규칙: 반려·회수된 원본 → DRAFT가 아닌 복제본 중 sentAt 최신.
+   * 목이 "복제 즉시·먼저 만든 것"으로 잡으면 목에서는 링크가 뜨는데 실 API에서는 발송해야 뜬다 — 그 갈림만 고정한다.
+   */
+  const detail = async (id: string) => (await (await get(`/quotes/${id}`, admin))!.json()) as QuoteDetailResponse
+
+  it('시드는 7(반려)→16·9(회수)→14 — 저장된 값이 아니라 clonedFrom의 역방향으로 나온다', async () => {
+    session.login(admin)
+    expect((await detail(quoteId(7))).supersededByQuoteId).toBe(quoteId(16))
+    expect((await detail(quoteId(9))).supersededByQuoteId).toBe(quoteId(14))
+    expect((await detail(quoteId(16))).supersededByQuoteId).toBeNull()   // 진행 중인 견적은 대체될 이유가 없다
+  })
+
+  it('복제 직후의 DRAFT는 대체가 아니고, 발송되면 가장 최근에 발송된 것이 대체다', async () => {
+    session.login(admin)
+    const original = db.quotes.find((q) => q.id === quoteId(7))!
+    const cloned = (await (await post(`/quotes/${original.id}/clone`, admin))!.json()) as QuoteDetailResponse
+    expect((await detail(original.id)).supersededByQuoteId).toBe(quoteId(16))   // 아직 안 보냈다 — 16 그대로
+
+    const deal = db.deals.find((d) => d.id === original.dealId)!
+    const recipient = (db.contacts.get(deal.customerId) ?? [])[0]!.id
+    expect((await post(`/quotes/${cloned.id}/send`, admin, { recipientContactId: recipient }))!.status).toBe(200)
+    expect((await detail(original.id)).supersededByQuoteId).toBe(cloned.id)   // 16(08-26)보다 늦게 발송됐다
   })
 })
 
