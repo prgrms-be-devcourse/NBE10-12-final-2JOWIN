@@ -78,3 +78,8 @@ variable "app_dir" {
   type        = string
   default     = "/opt/2jo"
 }
+
+variable "mail_policy_arn" {
+  description = "SES 발송 정책 ARN. mail 모듈 출력"
+  type        = string
+}
