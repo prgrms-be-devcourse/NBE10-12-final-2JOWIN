@@ -57,6 +57,7 @@ class EmailFailedNotificationWriter {
         return switch (event.templateType()) {
             case QUOTE_SENT -> viewTokenQuery.quoteIdOf(event.refId()).orElse(null); // ref_id = 발송 토큰 id
             case QUOTE_REMIND -> event.refId();                                      // ref_id = 견적 id 직접 (NT-05 배치)
+            case QUOTE_EXPIRING -> event.refId();                                    // ref_id = 견적 id 직접 (NT-06 배치)
             case SIGNUP_APPROVED, SIGNUP_REJECTED, PASSWORD_RESET, INVITATION -> throw new IllegalStateException(
                     "EmailFailedNotificationWriter가 처리할 수 없는 template - notifiesInApp과 어긋남: " + event.templateType());
         };
@@ -66,6 +67,7 @@ class EmailFailedNotificationWriter {
         return switch (type) {
             case QUOTE_SENT -> "[" + quoteNo + "] 견적서 발송 메일이 전송되지 않았습니다. 수신인을 확인하고 재발송해 주세요.";
             case QUOTE_REMIND -> "[" + quoteNo + "] 리마인드 안내 메일이 전송되지 않았습니다. 메일 채널을 확인해 주세요.";
+            case QUOTE_EXPIRING -> "[" + quoteNo + "] 유효기간 임박 안내 메일이 전송되지 않았습니다. 고객에게 별도로 안내해 주세요.";
             case SIGNUP_APPROVED, SIGNUP_REJECTED, PASSWORD_RESET, INVITATION -> throw new IllegalStateException(
                     "message 미정의 template: " + type);
         };

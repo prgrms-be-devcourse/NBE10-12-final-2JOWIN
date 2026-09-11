@@ -56,6 +56,7 @@ class EmailFailedNotifier {
         return switch (type) {
             case QUOTE_SENT -> true;         // 딜 담당 구성원, Q-26 폴백 (NT-12 v1, #213)
             case QUOTE_REMIND -> true;       // NT-05 병행분 — 메일 채널 이상 인지용, 원 수신 구성원 = 딜 담당자 (§2.13, #247)
+            case QUOTE_EXPIRING -> true;     // NT-06 임박 배치 — 고객사 담당자는 계정 없음, 실패 통보는 딜 담당 구성원 (§2.13, #249)
             case INVITATION,                 // 별건 — invited_by 되짚기 통로 필요, E 별도 채번
                  PASSWORD_RESET,            // NT-14 — 수신자 로그인 불가 (§2.13 "인앱 수신자 없음")
                  SIGNUP_APPROVED,           // NT-13 — 사내 인앱 수신자 없음

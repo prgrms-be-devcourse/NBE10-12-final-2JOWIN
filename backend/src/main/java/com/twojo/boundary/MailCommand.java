@@ -135,7 +135,25 @@ public interface MailCommand {
          * {@code ref_type}은 {@code "QUOTE"} — {@code refId}가 토큰이 아니라 견적을 직접 가리킨다
          * ({@code NotificationCommand.RefType.QUOTE}와 같은 값).
          */
-        QUOTE_REMIND("QUOTE");
+        QUOTE_REMIND("QUOTE"),
+
+        /**
+         * NT-06 유효기간 임박 배치 — 고객사 담당자 수신 (notification, {@code ExpiringQuoteBatch}).
+         *
+         * <p>{@code refId}는 <b>견적 행 id</b>로 배치 재실행 간 고정된다({@code QUOTE_REMIND}와 같음).
+         * <b>견적당 1회</b> — 고객사 담당자는 계정이 없어 인앱 레그가 없고, 따라서 {@code notification}
+         * 가드를 못 쓴다. {@code uk_email_log_dedup(template_type, ref_id, recipient_email)}가 유일한
+         * 멱등 장치이며({@code QUOTE_REMIND}에선 백스톱이지만 여기선 정면 방어), 배치가 {@code schedule}
+         * 전에 {@code EmailLogRepository.existsBy…}로 사전 체크도 한다.
+         *
+         * <p>최종 실패 시 인앱 {@code EMAIL_FAILED}는 해당 Deal 담당 구성원에게 간다 (§2.13 NT-12 표,
+         * Q-26 폴백 — 고객사 담당자가 못 받으므로). {@code EmailFailedNotifier}가 {@code refId}(견적 id)를
+         * 직접 써서 {@code getPublicView} &rarr; {@code notifyForDeal}로 간다.
+         *
+         * <p>메일 본문엔 클릭 링크가 없다 — 원문 토큰을 저장하지 않아(docs/14 §7.3) 재구성 불가.
+         * {@code ref_type}은 {@code "QUOTE"}.
+         */
+        QUOTE_EXPIRING("QUOTE");
 
         private final String refType;
 

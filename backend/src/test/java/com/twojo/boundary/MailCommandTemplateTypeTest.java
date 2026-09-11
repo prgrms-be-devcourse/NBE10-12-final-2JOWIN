@@ -19,4 +19,16 @@ class MailCommandTemplateTypeTest {
     void quoteRemind_notPlatformIssued() {
         assertThat(TemplateType.QUOTE_REMIND.isPlatformIssued()).isFalse();
     }
+
+    @Test
+    @DisplayName("QUOTE_EXPIRING의 ref_type은 QUOTE — refId가 토큰이 아닌 견적을 가리킨다")
+    void quoteExpiring_refType() {
+        assertThat(TemplateType.QUOTE_EXPIRING.refType()).isEqualTo("QUOTE");
+    }
+
+    @Test
+    @DisplayName("QUOTE_EXPIRING은 플랫폼 발송이 아니다 — companyId가 필수다")
+    void quoteExpiring_notPlatformIssued() {
+        assertThat(TemplateType.QUOTE_EXPIRING.isPlatformIssued()).isFalse();
+    }
 }

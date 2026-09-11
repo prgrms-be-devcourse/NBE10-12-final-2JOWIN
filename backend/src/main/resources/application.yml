@@ -77,12 +77,17 @@ management:
     tags:
       application: ${spring.application.name}
 
-# NT-05 무응답 리마인드 배치 (docs/03 §2.13 · docs/14 §1.2 단일 인스턴스 스케줄러)
+# NT-05 무응답 리마인드 · NT-06 유효기간 임박 배치 (docs/03 §2.13 · docs/14 §1.2 단일 인스턴스 스케줄러)
 notification:
   remind:
     cron: "0 0 9 * * *"       # 매일 09:00 (zone 기준)
     zone: "Asia/Seoul"        # cron 해석 시간대
     after-days: 3             # 발송 후 이 일수(경과 시간, 24h 단위)가 지나도록 무응답이면 리마인드 (sentAt 기준)
+  expiring:
+    cron: "0 0 9 * * *"       # 매일 09:00 (zone 기준) — ExpiringQuoteIntegrationTest(실 PG)로
+                              # 구간 경계·전 회사 반환·Q-27·활성 토큰 부재·메일 실패 관통까지 확인 후 활성화
+    zone: "Asia/Seoul"        # cron 해석 시간대 · "오늘" 날짜 계산 시간대
+    before-days: 3            # valid_until이 오늘 ~ 이 일수 뒤 구간에 들면 임박 (KST 날짜 기준)
 
 # 견적 기간 만료 배치 (Q-37 — 배치 소유는 C · 전이표 §6)
 # 리마인드(09:00)보다 앞선다 — 오늘 만료된 견적에 "응답이 없습니다" 리마인드가 나가면 틀린 안내다.

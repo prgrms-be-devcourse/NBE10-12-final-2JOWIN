@@ -14,8 +14,8 @@ import org.springframework.transaction.annotation.Transactional;
  * notification 모듈의 NT-12 실패 알림 경로용.
  *
  * <p>{@code quote_view_token}은 D(approval) 소유라 다른 모듈이 직접 조회할 수 없어 이 경계로 답한다
- * (docs/11-work-breakdown.md §7.2). 삭제 차단({@code CONTACT_HAS_QUOTES}) 판정과 NT-12 수신자 해석은
- * 호출자에 있고, 여기서는 토큰 행의 사실만 리포지토리에 위임한다.
+ * (docs/11-work-breakdown.md §7.2). 삭제 차단({@code CONTACT_HAS_QUOTES}) 판정, NT-12 수신자 해석,
+ * NT-06 임박 메일 수신 연락처 선택은 호출자에 있고, 여기서는 토큰 행의 사실만 리포지토리에 위임한다.
  */
 @Service
 @RequiredArgsConstructor
@@ -32,5 +32,11 @@ class ViewTokenQueryImpl implements ViewTokenQuery {
     @Override
     public Optional<UUID> quoteIdOf(UUID tokenId) {
         return quoteViewTokenRepository.findById(tokenId).map(QuoteViewToken::getQuoteId);
+    }
+
+    @Override
+    public Optional<UUID> recipientContactIdOf(UUID quoteId) {
+        return quoteViewTokenRepository.findActiveByQuoteId(quoteId)
+                .map(QuoteViewToken::getRecipientContactId);
     }
 }
