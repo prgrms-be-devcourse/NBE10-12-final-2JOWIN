@@ -49,7 +49,7 @@ class ReadOnlyServiceWriteMethodTest {
      * 없는 이름이면 그 테스트가 먼저 실패해서, 동사를 추가하라고 말한다.
      */
     private static final List<String> WRITE_PREFIXES = List.of(
-            "accept", "add", "advance", "approve", "cancel", "change", "convert", "create",
+            "accept", "add", "advance", "approve", "cancel", "change", "clone", "convert", "create",
             "deactivate", "delete", "discontinue", "expire", "invite", "issue", "lose", "mark",
             "promote", "reactivate", "reassign", "record", "reject", "reopen", "replace",
             "resend", "revert", "schedule", "send", "set", "suspend", "update", "withdraw");

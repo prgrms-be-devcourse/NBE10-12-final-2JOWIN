@@ -249,10 +249,16 @@ public class Deal extends BaseTimeEntity {
      *
      * <p><b>만료된 견적·링크는 복원되지 않는다</b> (전이표 §5). 고객이 이미 만료 안내를 본
      * 링크를 되살리면 "우리가 본 것"과 "고객이 본 것"이 갈린다 (PB-02). 재제안은 복제(QT-19)로 한다.
+     *
+     * <p><b>성사(WON)에서 던지는 코드가 {@code DEAL_NOT_OPEN}인 이유</b> — 07 §C 에러 표가
+     * 이 조합을 그렇게 확정했다(v1.6.7). {@code DEAL_NOT_OPEN}은 애초에 <b>종결(LOST·WON) Deal에서
+     * 나가는 전이가 막힌 자리</b>를 위해 신설된 코드이고, 재개는 실패(LOST)에만 있는 전이라
+     * 성사는 그 "종결" 쪽에 속한다. {@code DEAL_ALREADY_WON}은 {@link #requireOpen()}이 쓴다 —
+     * 그쪽은 <b>단계 변경·실패 처리</b>가 대상이라 07의 범위와 맞는다(07 §C 223행).
      */
     public void reopen() {
         if (stage == Stage.WON) {
-            throw new BusinessException(ErrorCode.DEAL_ALREADY_WON);
+            throw new BusinessException(ErrorCode.DEAL_NOT_OPEN);
         }
         if (stage != Stage.LOST) {
             throw new BusinessException(ErrorCode.DEAL_NOT_LOST);

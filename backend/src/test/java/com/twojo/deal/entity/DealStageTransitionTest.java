@@ -270,7 +270,7 @@ class DealStageTransitionTest {
     class Closed {
 
         @Test
-        @DisplayName("성사 Deal은 어떤 전이도 할 수 없다 — DEAL_ALREADY_WON")
+        @DisplayName("성사 Deal은 단계 변경·실패 처리가 막힌다 — DEAL_ALREADY_WON")
         void 성사는_전부_차단() {
             assertThatThrownBy(dealAt(Stage.WON)::advance)
                     .extracting(DealStageTransitionTest::errorOf).isEqualTo(ErrorCode.DEAL_ALREADY_WON);
@@ -278,8 +278,20 @@ class DealStageTransitionTest {
                     .extracting(DealStageTransitionTest::errorOf).isEqualTo(ErrorCode.DEAL_ALREADY_WON);
             assertThatThrownBy(() -> dealAt(Stage.WON).lose("사유"))
                     .extracting(DealStageTransitionTest::errorOf).isEqualTo(ErrorCode.DEAL_ALREADY_WON);
+        }
+
+        /**
+         * 재개만 코드가 갈린다 — 07 §C 에러 표가 이 조합을 {@code DEAL_NOT_OPEN}으로 확정했다(v1.6.7).
+         * 그 코드는 <b>종결(LOST·WON)에서 나가는 전이</b>를 위해 신설된 것이고, 재개는 실패에만
+         * 있는 전이라 성사는 종결 쪽에 속한다. 나머지 셋({@code advance}·{@code revert}·{@code lose})은
+         * "성사 Deal의 단계 변경·실패 처리"라 07 §C 223행 그대로 {@code DEAL_ALREADY_WON}이다.
+         */
+        @Test
+        @DisplayName("성사 Deal의 재개는 DEAL_NOT_OPEN — 종결에서 나가는 전이라 코드가 갈린다 (07 v1.6.7)")
+        void 성사_재개는_NOT_OPEN() {
             assertThatThrownBy(dealAt(Stage.WON)::reopen)
-                    .extracting(DealStageTransitionTest::errorOf).isEqualTo(ErrorCode.DEAL_ALREADY_WON);
+                    .isInstanceOf(BusinessException.class)
+                    .extracting(DealStageTransitionTest::errorOf).isEqualTo(ErrorCode.DEAL_NOT_OPEN);
         }
 
         @Test

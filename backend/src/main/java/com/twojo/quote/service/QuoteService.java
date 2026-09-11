@@ -106,6 +106,35 @@ public class QuoteService {
     }
 
     /**
+     * 복제 (QT-19) — 원본을 새 작성 중(DRAFT) 견적으로 베낀다.
+     *
+     * <p><b>원본 견적의 상태는 보지 않는다</b> (전이표 §6 "모든 상태 → 복제"). 반려된 견적을
+     * 고쳐 다시 보내는 것이 주 용도이고(Q-18), 발송 견적 불변(QT-16)을 지키면서 재제안하는
+     * 유일한 경로다. 막는 것은 <b>종결 Deal 하나뿐</b>이다 (Q-25) — {@code create}와 같은 판정이고,
+     * 추가 거래는 새 Deal로 간다.
+     *
+     * <p><b>새 견적은 원본과 같은 Deal에 붙는다.</b> 다른 Deal로 옮겨 복제하는 요청은 명세에 없다 —
+     * 그건 새 작성({@code create})이 하는 일이다.
+     *
+     * <p>번호는 새로 채번하고 유효기간은 오늘 기준으로 다시 정한다 — 원본의 유효기간은
+     * 이미 지났을 수 있고, 그대로 베끼면 만들자마자 만료된 견적이 된다.
+     */
+    @Transactional
+    public QuoteResponses.QuoteDetail clone(AccessContext ctx, UUID quoteId) {
+        ScopedQuote scoped = findInScope(ctx, quoteId);   // 범위 판정 + Deal 제목을 한 번에
+
+        if (!dealQuery.isOpen(scoped.quote().getDealId())) {
+            throw new BusinessException(ErrorCode.QUOTE_DEAL_CLOSED);
+        }
+
+        String quoteNo = documentNumberService.next(ctx.companyId(), DocType.QUOTE);
+        LocalDate validUntil = LocalDate.now(SEOUL).plusDays(DEFAULT_VALIDITY_DAYS);
+
+        Quote copy = quoteRepository.save(scoped.quote().cloneAsDraft(quoteNo, validUntil));
+        return QuoteResponses.QuoteDetail.of(copy, scoped.dealTitle());
+    }
+
+    /**
      * 목록·상태 조회 (QT-20).
      *
      * <p>영업(OWNED_ONLY)은 <b>담당 Deal의 견적만</b> 본다 — 요청에 어떤 dealId를 넣든 그렇다.
@@ -171,6 +200,13 @@ public class QuoteService {
         // 승급이 반영된 단계를 다시 읽는다 — 규칙을 여기서 다시 계산하면 전이표와 두 벌이 된다.
         // 같은 트랜잭션이라 조회가 더티 엔티티를 flush시켜 갱신된 값이 온다.
         String dealStage = requireDealInScope(ctx, dealId).stage();
+
+        // 응답에 최신 version을 싣는다 (08 검증 노트 #4) — update·withdraw와 같은 모양이다.
+        // 지금은 바로 위 Deal 조회의 auto-flush가 quote 갱신까지 함께 내보내 값이 맞지만,
+        // 그건 Hibernate가 쿼리 대상 테이블을 어떻게 계산하느냐에 딸린 우연이다.
+        // 규칙을 그 우연에 맡기지 않는다 — 조회가 빠지거나 순서가 바뀌면 조용히 어긋난다.
+        quoteRepository.flush();
+
         return new QuoteResponses.SendResult(
                 quote.getId(), quote.getStatus().name(), dealStage, quote.getVersion());
     }
