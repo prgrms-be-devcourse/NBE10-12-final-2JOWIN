@@ -102,3 +102,11 @@ variable "deploy_public_key" {
   description = "배포용 SSH 공개키. 개인키는 GitHub Secrets 에 둔다. 공개키라 tfstate 에 들어가도 무방하다"
   type        = string
 }
+
+# ── 메일 ─────────────────────────────────────────────────────────────────
+
+variable "mail_domain" {
+  description = "SES 발신 도메인. DKIM 토큰이 이 이름으로 발급된다"
+  type        = string
+  default     = "jomin4.cloud"
+}

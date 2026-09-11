@@ -3,6 +3,7 @@
 #   network  -> 서브넷 · 보안그룹
 #   storage  -> ECR · S3 · 인스턴스 접근 정책
 #   compute  -> EC2 · EIP · 인스턴스 프로파일
+#   mail     -> SES 도메인 자격 · 설정 세트
 
 module "network" {
   source = "./modules/network"
@@ -61,4 +62,14 @@ module "compute" {
 
   key_name          = var.key_name
   deploy_public_key = var.deploy_public_key
+}
+
+# mail 은 다른 모듈과 의존이 없다. SES 는 VPC 밖 서비스이고, 발송은
+# 인스턴스 역할이 아니라 SMTP 자격증명으로 인증한다(mail.md §3).
+module "mail" {
+  source = "./modules/mail"
+
+  project    = var.project
+  aws_region = var.aws_region
+  domain     = var.mail_domain
 }

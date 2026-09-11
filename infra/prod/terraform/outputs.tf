@@ -48,3 +48,20 @@ output "instance_role_name" {
   description = "인스턴스 역할 이름"
   value       = module.compute.instance_role_name
 }
+
+# ── 메일 ───────────────────────────────────────────────────────────
+
+output "mail_dkim_dns_records" {
+  description = "dnszi 에 등록할 CNAME 3개. 넣기 전에는 발송이 안 된다"
+  value       = module.mail.dkim_dns_records
+}
+
+output "mail_smtp_host" {
+  description = ".env 의 MAIL_SMTP_HOST 값"
+  value       = module.mail.smtp_host
+}
+
+output "mail_identity_verification_status" {
+  description = "도메인 검증 상태. CNAME 반영 전에는 PENDING"
+  value       = module.mail.identity_verification_status
+}
