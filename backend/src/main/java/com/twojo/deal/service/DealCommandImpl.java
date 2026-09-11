@@ -35,9 +35,8 @@ import org.springframework.transaction.annotation.Transactional;
  *
  * <p><b>{@code MANDATORY}는 {@code readOnly}를 걸러내지 못한다</b> — 트랜잭션의 존재만 본다.
  * 읽기 전용 호출자는 검사를 통과하고 flush가 건너뛰어져 <b>변경이 예외 없이 사라진다</b>
- * (PR #225 리뷰). 현재 호출부 셋은 전부 쓰기 트랜잭션 안이다 —
- * {@code QuoteService.send} · {@code OrderService.convert} ·
- * {@code MemberAdminService.deactivate}({@code transferOpenDeals} 경유).
+ * (PR #225 리뷰). 호출부가 쓰기 트랜잭션 안인지는 사람이 아니라
+ * {@code MandatoryCallerWriteTransactionTest}가 지킨다 — 호출 사슬을 거슬러 올라가 검사한다 (13 §3.1, #302).
  */
 @Service
 @RequiredArgsConstructor
