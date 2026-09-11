@@ -10,6 +10,7 @@ import static org.mockito.BDDMockito.willThrow;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -43,6 +44,11 @@ import org.springframework.test.context.bean.override.mockito.MockitoBean;
  * 구간·정지 회사·활성 토큰·멱등)은 {@code schedule()}이 동기로 끝내는 부분이라 대기가 필요 없고,
  * SCHEDULED/SENT 전이는 비동기 타이밍에 따라 갈려 검증하면 플레이키해진다. <b>6번만</b> 발송 실패 →
  * 재시도 → FAILED 기록 → 이벤트 → 인앱 알림까지 다단 비동기라 {@code Awaitility}로 폴링한다.
+ *
+ * <p><b>"오늘"을 {@code batch.run(today)}로 고정한다</b> — {@code batch.run()}(무인자)이 내부에서
+ * {@code LocalDate.now(zone)}(Asia/Seoul)로 계산하는데, 여기서 시드를 {@code LocalDate.now()}(JVM 기본
+ * 시간대)로 잡으면 CI(UTC)의 KST 00:00~09:00 구간에서 두 "오늘"이 하루 어긋나 구간 경계 테스트가
+ * 시간대에 따라 깨진다({@code QuoteExpiryBatch}와 같은 이유로 {@code run(LocalDate)} 오버로드를 뒀다).
  */
 @SpringBootTest
 @ActiveProfiles("test")
@@ -66,9 +72,12 @@ class ExpiringQuoteIntegrationTest {
     private UUID quoteId;
     private UUID tokenId;
     private String contactEmail;
+    /** 배치가 zone 인자로 계산하는 "오늘"과 같은 값 — 시드·assert·batch.run(today) 전부 이 값을 쓴다. */
+    private LocalDate today;
 
     @BeforeEach
     void seed() {
+        today = LocalDate.now(ZoneId.of("Asia/Seoul"));
         applicationId = UUID.randomUUID();
         companyId = UUID.randomUUID();
         assigneeId = UUID.randomUUID();
@@ -114,7 +123,7 @@ class ExpiringQuoteIntegrationTest {
                 insert into quote (id, company_id, deal_id, quote_no, status, vat_mode,
                                    supply_amount, vat_amount, total_amount, valid_until, sent_at, version)
                 values (?, ?, ?, 'Q-NT06-001', 'SENT', 'EXCLUDED', 1000000, 100000, 1100000, ?, ?, 0)
-                """, quoteId, companyId, dealId, LocalDate.now().plusDays(1), OffsetDateTime.now().minusDays(1));
+                """, quoteId, companyId, dealId, today.plusDays(1), OffsetDateTime.now().minusDays(1));
         jdbc.update("""
                 insert into quote_view_token (id, quote_id, recipient_contact_id, token_hash, status, expires_at)
                 values (?, ?, ?, ?, 'ACTIVE', ?)
@@ -156,7 +165,7 @@ class ExpiringQuoteIntegrationTest {
     @Test
     @DisplayName("구간 안의 미응답 견적 - 고객사 담당자에게 QUOTE_EXPIRING 메일을 예약한다")
     void 정상_예약() {
-        batch.run();
+        batch.run(today);
 
         assertThat(emailLogRows(contactEmail)).singleElement().satisfies(r -> {
             assertThat(r.get("company_id")).isEqualTo(companyId);
@@ -168,8 +177,8 @@ class ExpiringQuoteIntegrationTest {
     @Test
     @DisplayName("배치를 두 번 돌려도 메일 예약은 1건이다 (견적당 1회)")
     void 재실행해도_멱등() {
-        batch.run();
-        batch.run();
+        batch.run(today);
+        batch.run(today);
 
         assertThat(emailLogCount(contactEmail)).isEqualTo(1);
     }
@@ -179,7 +188,7 @@ class ExpiringQuoteIntegrationTest {
     void 정지_회사는_억제() {
         jdbc.update("update company set status = 'SUSPENDED' where id = ?", companyId);
 
-        batch.run();
+        batch.run(today);
 
         assertThat(emailLogCount(contactEmail)).isZero();
     }
@@ -187,9 +196,9 @@ class ExpiringQuoteIntegrationTest {
     @Test
     @DisplayName("이미 유효기간이 지난 견적은 대상이 아니다 (구간 하한 밖)")
     void 구간_하한_밖은_제외() {
-        jdbc.update("update quote set valid_until = ? where id = ?", LocalDate.now().minusDays(1), quoteId);
+        jdbc.update("update quote set valid_until = ? where id = ?", today.minusDays(1), quoteId);
 
-        batch.run();
+        batch.run(today);
 
         assertThat(emailLogCount(contactEmail)).isZero();
     }
@@ -197,9 +206,9 @@ class ExpiringQuoteIntegrationTest {
     @Test
     @DisplayName("아직 임박 기준일보다 여유 있는 견적은 대상이 아니다 (구간 상한 밖, before-days=3)")
     void 구간_상한_밖은_제외() {
-        jdbc.update("update quote set valid_until = ? where id = ?", LocalDate.now().plusDays(4), quoteId);
+        jdbc.update("update quote set valid_until = ? where id = ?", today.plusDays(4), quoteId);
 
-        batch.run();
+        batch.run(today);
 
         assertThat(emailLogCount(contactEmail)).isZero();
     }
@@ -209,7 +218,7 @@ class ExpiringQuoteIntegrationTest {
     void 활성_토큰_없으면_건너뜀() {
         jdbc.update("delete from quote_view_token where id = ?", tokenId);
 
-        assertThatCode(() -> batch.run()).doesNotThrowAnyException();
+        assertThatCode(() -> batch.run(today)).doesNotThrowAnyException();
 
         assertThat(emailLogCount(contactEmail)).isZero();
     }
@@ -219,7 +228,7 @@ class ExpiringQuoteIntegrationTest {
     void 메일_강제_실패시_EMAIL_FAILED_관통() {
         willThrow(new RuntimeException("SMTP down")).given(emailSender).send(eq(contactEmail), any(), any());
 
-        batch.run();
+        batch.run(today);
 
         await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
                 assertThat(notifications()).singleElement().satisfies(r -> {

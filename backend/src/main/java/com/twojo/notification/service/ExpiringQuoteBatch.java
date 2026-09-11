@@ -60,7 +60,11 @@ class ExpiringQuoteBatch {
 
     @Scheduled(cron = "${notification.expiring.cron}", zone = "${notification.expiring.zone:Asia/Seoul}")
     public void run() {
-        LocalDate today = LocalDate.now(zone);
+        run(LocalDate.now(zone));
+    }
+
+    /** 대상 날짜를 받는 본체 — 테스트가 "오늘"을 고정한다(스케줄러 없이 직접 부른다, {@code QuoteExpiryBatch}와 같은 패턴). */
+    void run(LocalDate today) {
         List<QuoteQuery.QuoteSummary> quotes =
                 quoteQuery.findExpiringBetween(today, today.plusDays(beforeDays));
         Map<UUID, List<QuoteQuery.QuoteSummary>> byCompany = quotes.stream()
