@@ -384,7 +384,7 @@ COMMIT
 | 회사 정지 중: 열람 허용·응답 차단·배치 알림 중단 (만료 **전이** 배치는 계속) | SC-10, Q-27 |
 | 메일 실패: 재시도 1회 → 실패 시 인앱 EMAIL_FAILED (NT-07로 못 끔) — **수신자는 실패 메일별 규칙(요구사항 §2.13 NT-12 수신자 표). NT-13 실패는 인앱 수신자 없음 → email_log FAILED 지표로 감지** | NT-12, Q-35 |
 | NT-05 리마인드 배치: 배치가 `notification`(`REMIND_NO_RESPONSE`·해당 견적) 존재로 **견적 전체를 스킵**해 인앱·메일 모두 견적당 1회 — 담당자가 재배정돼도 재알림 없음. `email_log` UNIQUE는 정상 흐름에서 미도달하는 백스톱 | NT-05 |
-| NT-06 임박 배치: `valid_until`이 오늘 ~ N일 구간·미응답 견적을 회사별로 훑어 그 견적을 받은 고객사 담당자에게 `QUOTE_EXPIRING` 메일 예약. **인앱 레그 없음**(계정 없는 수신자) — `email_log` UNIQUE `(QUOTE_EXPIRING, quoteId, email)` + 예약 전 사전 체크가 견적당 1회. 수신 연락처는 `ViewTokenQuery.recipientContactIdOf`(활성 열람 토큰). 메일 최종 실패 시 인앱 `EMAIL_FAILED`는 딜 담당 구성원(§2.13, Q-26 폴백). 정지 회사 억제(Q-27). `QuoteQuery.findExpiringBetween` 실구현은 #315로 머지됨 — 통합 테스트 확인 후 cron 활성은 후속 PR | NT-06 |
+| NT-06 임박 배치: `valid_until`이 오늘 ~ N일 구간·미응답 견적을 회사별로 훑어 그 견적을 받은 고객사 담당자에게 `QUOTE_EXPIRING` 메일 예약. **인앱 레그 없음**(계정 없는 수신자) — `email_log` UNIQUE `(QUOTE_EXPIRING, quoteId, email)` + 예약 전 사전 체크가 견적당 1회. 수신 연락처는 `ViewTokenQuery.recipientContactIdOf`(활성 열람 토큰). 메일 최종 실패 시 인앱 `EMAIL_FAILED`는 딜 담당 구성원(§2.13, Q-26 폴백). 정지 회사 억제(Q-27). `QuoteQuery.findExpiringBetween` 실구현은 #315로 머지됨 — `ExpiringQuoteIntegrationTest`(실 PG)로 확인 후 cron 활성화 | NT-06 |
 | 대시보드 집계는 SC절 범위를 따름 — 영업은 본인 담당 Deal 기준 · **집계·후보 조회는 C의 `SalesStatsQuery`·`QuoteQuery` 경유(deal·quote·orders 직접 조회 금지, v2.0.1)** | DB-01~05, SC-02 |
 
 ---
