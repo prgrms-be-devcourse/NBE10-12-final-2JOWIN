@@ -134,13 +134,15 @@ const quoteSeeds: QuoteSeed[] = [
   [3, 16, 'APPROVED', 8000000, '2026-09-10', '2026-08-22T00:00:00Z', '2026-08-23T04:00:00Z', '2026-08-25T01:30:00Z', null, null, null, '강민철', '구매과장'],
   [5, 17, 'EXPIRED', 18400000, '2026-09-01', '2026-08-15T01:00:00Z', null, null, null, null, null, null, null],
   [7, 12, 'REJECTED', 26000000, '2026-09-05', '2026-08-19T01:00:00Z', '2026-08-20T00:00:00Z', '2026-08-21T07:00:00Z', null, null, '예산 초과', '서동윤', '시설담당'],
-  [8, 13, 'VIEWED', 18000000, '2026-09-12', '2026-08-21T05:00:00Z', '2026-08-24T01:00:00Z', null, null, null, null, null, null],
+  // 008·010·016 유효기간은 백엔드 시드가 #296에서 09-30으로 올렸다(R__demo_seed.sql의 UPDATE) — 고정 날짜가 지나면
+  // 진행 중 견적이 재발송 409·링크 410으로 막혀 데모가 깨져서다. 목도 같은 값을 쓴다 (#352)
+  [8, 13, 'VIEWED', 18000000, '2026-09-30', '2026-08-21T05:00:00Z', '2026-08-24T01:00:00Z', null, null, null, null, null, null],
   [9, 8, 'WITHDRAWN', 2900000, '2026-09-09', '2026-08-20T01:00:00Z', null, null, null, null, null, null, null],
-  [10, 11, 'SENT', 1400000, '2026-09-12', '2026-08-25T06:00:00Z', null, null, null, null, null, null, null],
+  [10, 11, 'SENT', 1400000, '2026-09-30', '2026-08-25T06:00:00Z', null, null, null, null, null, null, null],
   [11, 9, 'SENT', 4180000, '2026-09-30', '2026-08-23T00:00:00Z', null, null, null, null, null, null, null],
   [13, 10, 'DRAFT', 4800000, '2026-09-20', null, null, null, null, null, null, null, null],
   [14, 8, 'VIEWED', 3050000, '2026-09-30', '2026-08-24T01:00:00Z', '2026-08-25T05:20:00Z', null, '설치는 납품일로부터 3일 이내 진행됩니다.', 9, null, null, null],
-  [16, 12, 'SENT', 23800000, '2026-09-09', '2026-08-26T02:00:00Z', null, null, '단가 재조정안입니다. 검토 부탁드립니다.', 7, null, null, null],
+  [16, 12, 'SENT', 23800000, '2026-09-30', '2026-08-26T02:00:00Z', null, null, '단가 재조정안입니다. 검토 부탁드립니다.', 7, null, null, null],
 ]
 /** QuoteDetailResponse에서 items·dealTitle을 뺀 본체 + 목록(QuoteResponse)이 공유하는 필드 */
 export const quotes = quoteSeeds.map(([n, dealN, status, supply, validUntil, sentAt, firstViewedAt, respondedAt, terms, clonedFromN, rejectReason, responderName, responderTitle]) => ({
@@ -209,12 +211,14 @@ export const viewTokens: ViewTokenSeed[] = [
   vt(3, 3, 'RESPONDED', null, '2026-09-10', 'demo-sungwon-03'),
   vt(5, 8, 'EXPIRED', 'DEAL_LOST', '2026-09-01', 'demo-mirae-05'),
   vt(7, 7, 'RESPONDED', null, '2026-09-05', 'demo-hanul-07'),
-  vt(8, 1, 'ACTIVE', null, '2026-09-12', 'demo-dodam-08'),
+  // 활성 링크 008·010·016도 09-30 — 링크 만료는 발급 때 유효기간 23:59:59로 고정되므로(Q-17) 견적과 함께 올린다.
+  // 한쪽만 올리면 "유효기간은 남았는데 링크는 만료된" 상태가 된다 (백엔드 시드 #296과 같은 이유, #352)
+  vt(8, 1, 'ACTIVE', null, '2026-09-30', 'demo-dodam-08'),
   vt(9, 1, 'EXPIRED', 'WITHDRAWN', '2026-09-09', 'demo-dodam-09'),
-  vt(10, 6, 'ACTIVE', null, '2026-09-12', 'demo-taesung-10'),
+  vt(10, 6, 'ACTIVE', null, '2026-09-30', 'demo-taesung-10'),
   vt(11, 3, 'ACTIVE', null, '2026-09-30', 'demo-sungwon-11'),
   vt(14, 1, 'ACTIVE', null, '2026-09-30', 'demo-dodam-14'), // 메인 시나리오 — 이수정이 여는 링크
-  vt(16, 7, 'ACTIVE', null, '2026-09-09', 'demo-hanul-16'),
+  vt(16, 7, 'ACTIVE', null, '2026-09-30', 'demo-hanul-16'),
 ]
 
 // ── 초대 1건 — 시드 invitation과 같은 값 (PENDING) ─────────────────────────

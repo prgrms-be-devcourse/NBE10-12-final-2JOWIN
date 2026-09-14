@@ -148,10 +148,13 @@ interface ResendProps {
   quote: QuoteDetailResponse
   loading: boolean
   error: unknown
-  onSubmit: (recipientContactId: string) => void
+  onSubmit: (recipientContactId: string, message: string | null) => void
 }
 
-/** 수신인 변경 재발송 (AP-13) — 기존 링크는 만료되고 새 링크가 나간다 */
+/**
+ * 수신인 변경 재발송 (AP-13) — 기존 링크는 만료되고 새 링크가 나간다.
+ * 발송처럼 담당자 한마디를 싣는다 (#214) — 새 수신인이 첫 수신인보다 빈약한 메일을 받지 않게.
+ */
 export function ResendDialog({ open, onOpenChange, quote, loading, error, onSubmit }: ResendProps) {
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
@@ -166,6 +169,7 @@ function ResendForm({ quote, loading, error, onSubmit }: Omit<ResendProps, 'open
   const recipients = useQuoteRecipients(quote.dealId)
   const contacts = recipients.data?.contacts ?? []
   const [recipient, setRecipient] = useState('')
+  const [message, setMessage] = useState('')
   const apiError = error instanceof ApiError ? error : null
   return (
     <>
@@ -179,6 +183,10 @@ function ResendForm({ quote, loading, error, onSubmit }: Omit<ResendProps, 'open
         ) : (
           <RecipientSelect contacts={contacts} value={recipient} onChange={setRecipient} disabled={loading || recipients.isPending} />
         )}
+        {/* 발송 모달과 같은 한도·같은 전송 규칙 — 공백만이면 null (08 ResendViewTokenRequest.message, 500자) */}
+        <Field label="메시지 (선택)" hint={`${message.length}/500`}>
+          <TextArea rows={3} value={message} maxLength={500} placeholder="안녕하세요, 요청하신 견적서를 다시 보내드립니다." disabled={loading} onChange={(e) => setMessage(e.target.value)} />
+        </Field>
         {apiError && <ErrorCallout code={apiError.code} />}
         {apiError && <ActionHint code={apiError.code} path="resend" />}
         <Flex gap="3" justify="end" mt="1">
@@ -187,7 +195,7 @@ function ResendForm({ quote, loading, error, onSubmit }: Omit<ResendProps, 'open
               취소
             </Button>
           </Dialog.Close>
-          <Button loading={loading} disabled={!recipient} onClick={() => onSubmit(recipient)}>
+          <Button loading={loading} disabled={!recipient} onClick={() => onSubmit(recipient, message.trim() || null)}>
             재발송
           </Button>
         </Flex>

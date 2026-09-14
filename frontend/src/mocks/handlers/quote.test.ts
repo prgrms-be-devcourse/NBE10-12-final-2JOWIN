@@ -98,12 +98,19 @@ describe('POST /api/v1/quotes/{id}/view-token/* — 링크 재발송·수동 만
     const deal = db.deals.find((d) => d.id === quote.dealId)!
     const recipient = (db.contacts.get(deal.customerId) ?? []).find((c) => c.id !== token.recipientContactId)?.id ?? token.recipientContactId
     const before = { status: quote.status, version: quote.version }
-    const res = (await post(`/quotes/${quote.id}/view-token/resend`, admin, { recipientContactId: recipient }))!
-    expect(res.status).toBe(204)
-    expect({ status: quote.status, version: quote.version }).toEqual(before)
-    expect(token.status).toBe('EXPIRED')
-    expect(token.expiredReason).toBe('RESENT')
-    expect(activeTokenOf(quote.id)).toBeDefined()
+    // 시드 유효기간은 고정 날짜다 — 달력이 지나면 이 테스트가 204 대신 409를 받는다(#352). 미래로 두고 돌린 뒤 되돌린다
+    const validUntil = quote.validUntil
+    quote.validUntil = '2999-12-31'
+    try {
+      const res = (await post(`/quotes/${quote.id}/view-token/resend`, admin, { recipientContactId: recipient }))!
+      expect(res.status).toBe(204)
+      expect({ status: quote.status, version: quote.version }).toEqual(before)
+      expect(token.status).toBe('EXPIRED')
+      expect(token.expiredReason).toBe('RESENT')
+      expect(activeTokenOf(quote.id)).toBeDefined()
+    } finally {
+      quote.validUntil = validUntil
+    }
   })
 
   it('수동 만료는 204이고 멱등 — 두 번 눌러도 성공, 견적 상태는 그대로 (서버 expireViewToken)', async () => {
@@ -116,6 +123,30 @@ describe('POST /api/v1/quotes/{id}/view-token/* — 링크 재발송·수동 만
     expect(token.expiredReason).toBe('MANUAL')
     expect((await post(`/quotes/${quote.id}/view-token/expire`, admin))!.status).toBe(204)
     expect(quote.status).toBe(status)
+  })
+
+  /**
+   * 재발송도 담당자 한마디를 받는다 (#214) — 한도는 발송과 같은 500자(서버 @Size).
+   * 거절 경로만 본다: 성공시키면 시드 링크가 RESENT로 닫혀 뒤의 고객 열람 테스트가 그 링크를 잃는다.
+   * 시드 유효기간은 고정 날짜라 지나면 409(QUOTE_VALID_UNTIL_PASSED)가 먼저 난다 — 아래 고객 열람 테스트처럼
+   * 유효기간을 미래로 두고 돌린 뒤 되돌린다. 날짜로 견적을 고르면 그 날짜가 지나는 순간 고를 견적이 사라진다.
+   */
+  it('재발송 한마디가 500자를 넘으면 400 VALIDATION_FAILED(message) — 링크는 그대로 (#214)', async () => {
+    session.login(admin)
+    const quote = db.quotes.find((q) => (q.status === 'SENT' || q.status === 'VIEWED') && activeTokenOf(q.id))!
+    const deal = db.deals.find((d) => d.id === quote.dealId)!
+    const recipient = (db.contacts.get(deal.customerId) ?? [])[0]!.id
+    const token = activeTokenOf(quote.id)
+    const validUntil = quote.validUntil
+    quote.validUntil = '2999-12-31'
+    try {
+      const res = await post(`/quotes/${quote.id}/view-token/resend`, admin, { recipientContactId: recipient, message: '가'.repeat(501) })
+      expect(res!.status).toBe(400)
+      expect((await errorOf(res)).fieldErrors.map((f) => f.field)).toEqual(['message'])
+      expect(activeTokenOf(quote.id)).toBe(token)
+    } finally {
+      quote.validUntil = validUntil
+    }
   })
 })
 
