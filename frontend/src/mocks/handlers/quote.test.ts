@@ -71,12 +71,19 @@ describe('POST /api/v1/quotes/{id}/view-token/* — 링크 재발송·수동 만
     const deal = db.deals.find((d) => d.id === quote.dealId)!
     const recipient = (db.contacts.get(deal.customerId) ?? []).find((c) => c.id !== token.recipientContactId)?.id ?? token.recipientContactId
     const before = { status: quote.status, version: quote.version }
-    const res = (await post(`/quotes/${quote.id}/view-token/resend`, admin, { recipientContactId: recipient }))!
-    expect(res.status).toBe(204)
-    expect({ status: quote.status, version: quote.version }).toEqual(before)
-    expect(token.status).toBe('EXPIRED')
-    expect(token.expiredReason).toBe('RESENT')
-    expect(activeTokenOf(quote.id)).toBeDefined()
+    // 시드 유효기간은 고정 날짜다 — 달력이 지나면 이 테스트가 204 대신 409를 받는다(#352). 미래로 두고 돌린 뒤 되돌린다
+    const validUntil = quote.validUntil
+    quote.validUntil = '2999-12-31'
+    try {
+      const res = (await post(`/quotes/${quote.id}/view-token/resend`, admin, { recipientContactId: recipient }))!
+      expect(res.status).toBe(204)
+      expect({ status: quote.status, version: quote.version }).toEqual(before)
+      expect(token.status).toBe('EXPIRED')
+      expect(token.expiredReason).toBe('RESENT')
+      expect(activeTokenOf(quote.id)).toBeDefined()
+    } finally {
+      quote.validUntil = validUntil
+    }
   })
 
   it('수동 만료는 204이고 멱등 — 두 번 눌러도 성공, 견적 상태는 그대로 (서버 expireViewToken)', async () => {
