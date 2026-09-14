@@ -1,6 +1,7 @@
 package com.twojo.quote;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.twojo.boundary.AccessContext;
 import com.twojo.boundary.AccessScope;
@@ -144,6 +145,41 @@ class QuoteOptimisticLockTest {
         var 둘째_응답 = quoteService.update(ctx, quoteId, 수정요청(첫_응답.version(), 200_000L));
         assertThat(둘째_응답.version()).isEqualTo(첫_응답.version() + 1);
         assertThat(둘째_응답.totalAmount()).isEqualTo(220_000L);   // 200,000 + 부가세
+    }
+
+    /** 헤더(유효기간·부가세·조건)와 합계가 그대로이고 항목 순서만 다른 두 요청 — {@code quote} 행에 바뀌는 컬럼이 없다 (#360) */
+    private static QuoteRequests.UpdateQuote 항목순서요청(int version, boolean 뒤집기) {
+        var 실측 = new QuoteRequests.UpdateQuote.Item(null, "현장 실측", "식", 1, 100_000L, 뒤집기 ? 1 : 0);
+        var 설계 = new QuoteRequests.UpdateQuote.Item(null, "배치 설계", "식", 1, 100_000L, 뒤집기 ? 0 : 1);
+        return new QuoteRequests.UpdateQuote(
+                LocalDate.now().plusDays(15), "EXCLUDED", "납기 2주",
+                뒤집기 ? List.of(설계, 실측) : List.of(실측, 설계),
+                version);
+    }
+
+    /**
+     * <b>항목만 바뀐 저장도 version을 올려야 한다</b> (#360).
+     *
+     * <p>{@code items}는 {@code mappedBy} 쪽 컬렉션이라 항목 교체만으로는 {@code quote} 행이 바뀌지 않는다.
+     * 헤더·합계가 그대로면 version이 멈춰, 옛 화면의 저장이 {@code checkVersion}을 통과해 앞사람 수정을 덮었다.
+     * 이 클래스의 다른 수정 요청({@code 수정요청})은 매번 유효기간·조건·금액을 함께 바꿔 이 경우를 거치지 않았다.
+     */
+    @Test
+    @DisplayName("헤더·합계가 그대로인 항목 변경도 version이 오르고, 옛 version의 저장은 409다")
+    void 항목만_바꾼_저장도_version이_오른다() {
+        var 기준 = quoteService.update(ctx, quoteId, 항목순서요청(0, false));
+
+        var 순서만_바꾼_응답 = quoteService.update(ctx, quoteId, 항목순서요청(기준.version(), true));
+
+        assertThat(순서만_바꾼_응답.version()).isEqualTo(기준.version() + 1);
+        assertThat(순서만_바꾼_응답.version()).isEqualTo(
+                jdbc.queryForObject("select version from quote where id = ?", Integer.class, quoteId));
+
+        // 기준 version을 들고 있던 옛 화면의 저장 — 앞사람 수정을 덮으면 안 된다
+        assertThatThrownBy(() -> quoteService.update(ctx, quoteId, 항목순서요청(기준.version(), false)))
+                .isInstanceOf(BusinessException.class)
+                .extracting(e -> ((BusinessException) e).getErrorCode())
+                .isEqualTo(ErrorCode.STALE_VERSION);
     }
 
     @Test

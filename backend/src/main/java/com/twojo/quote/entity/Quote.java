@@ -22,6 +22,7 @@ import java.util.UUID;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.OptimisticLock;
 
 /**
  * 견적 — 7상태 (전이표 §6). 발송 후 불변 (QT-16) · 금액 3분리는 항상 서버 계산 (QT-08·22).
@@ -92,6 +93,8 @@ public class Quote extends BaseTimeEntity {
 
     @OneToMany(mappedBy = "quote", cascade = CascadeType.ALL, orphanRemoval = true)
     @OrderBy("sortOrder ASC")
+    // mappedBy 쪽이라 명시하지 않으면 항목만 바뀐 저장이 version을 올리지 않는다 — 헤더·합계가 그대로면 옛 화면이 덮어쓴다 (#360)
+    @OptimisticLock(excluded = false)
     private List<QuoteItem> items = new ArrayList<>();   // DRAFT PUT 전체 갱신 시 교체 (하드 삭제)
 
     /**
