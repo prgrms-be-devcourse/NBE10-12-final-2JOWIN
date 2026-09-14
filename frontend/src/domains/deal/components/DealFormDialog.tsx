@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button, Dialog, Flex, Select, Text, TextField } from '@radix-ui/themes'
 import { ApiError } from '../../../shared/api/client'
 import { ErrorCallout, Field } from '../../../shared/ui'
@@ -6,6 +6,7 @@ import type { CreateDealRequest, DealDetailResponse, UpdateDealRequest } from '.
 import { useSession, hasCompanyWideScope } from '../../../app/session'
 import { useCustomerList } from '../../customer/hooks'
 import { SELECT_CONTENT } from '../../customer/constants'
+import { rebaseEditFields, toEditFields } from '../editForm'
 import { useMemberOptions } from '../hooks'
 
 /**
@@ -15,7 +16,7 @@ import { useMemberOptions } from '../hooks'
  * - 수정: 제목 · 예상 금액 · 마감일 + version — 고객사·담당자는 여기서 바꾸지 않는다 (담당자 변경은 별도 엔드포인트 DL-05)
  * - 수정은 PATCH라 null = 미변경이다 (DealRequests.UpdateDeal · Deal.update) — 값을 "미정"으로 되돌리는 경로가 v1에 없어
  *   비운 채 저장하면 서버가 무시한다. 화면은 비우기를 막고 이유를 말한다
- * - 409 STALE_VERSION은 [새로고침]으로 상세를 재조회한다 (10 §6.3) — 입력은 그대로 두고 새 version으로 다시 저장할 수 있다
+ * - 409 STALE_VERSION은 [새로고침]으로 상세를 재조회한다 (10 §6.3) — 손대지 않은 필드는 새 값으로 바뀌고 고친 필드는 입력을 지킨다 (#356)
  * - 영업 담당자는 담당자 필드를 보지 않는다 — assigneeMemberId를 생략하면 생성자 본인 (CreateDealRequest)
  */
 
@@ -73,9 +74,20 @@ function DealForm(props: Props) {
 
   const [form, setForm] = useState<Form>(() =>
     props.mode === 'edit'
-      ? { customerId: props.deal.customerId, title: props.deal.title, expectedAmount: props.deal.expectedAmount === null ? '' : String(props.deal.expectedAmount), dueDate: props.deal.dueDate ?? '', assigneeMemberId: props.deal.assigneeMemberId }
+      ? { customerId: props.deal.customerId, ...toEditFields(props.deal), assigneeMemberId: props.deal.assigneeMemberId }
       : { customerId: props.defaultCustomerId ?? NONE, title: '', expectedAmount: '', dueDate: '', assigneeMemberId: session.memberId },
   )
+
+  // [새로고침]으로 상세가 새 값을 받으면 손대지 않은 필드만 따라간다 — 같은 값이면 아무것도 바뀌지 않는다 (#356)
+  const editDeal = props.mode === 'edit' ? props.deal : null
+  const base = useRef(editDeal ? toEditFields(editDeal) : null)
+  useEffect(() => {
+    const previous = base.current
+    if (!editDeal || !previous) return
+    const next = toEditFields(editDeal)
+    setForm((current) => ({ ...current, ...rebaseEditFields(current, previous, next) }))
+    base.current = next
+  }, [editDeal])
   const apiError = props.error instanceof ApiError ? props.error : null
   const set = <K extends keyof Form>(key: K) => (value: Form[K]) => setForm((prev) => ({ ...prev, [key]: value }))
 

@@ -169,7 +169,11 @@ export function DealDetailPage() {
         deal={deal}
         loading={m.update.isPending}
         error={m.update.error}
-        onRetry={() => refetch()}
+        // 새로고침하면 안내를 거둔다 — 폼은 새 값을 받았고 새 version으로 다시 저장할 수 있다 (#356)
+        onRetry={() => {
+          m.update.reset()
+          refetch()
+        }}
         onSubmit={(body) => m.update.mutate(body, { onSuccess: close })}
       />
       <LoseDealDialog
