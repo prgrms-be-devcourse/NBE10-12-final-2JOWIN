@@ -62,6 +62,6 @@ output "mail_smtp_host" {
 }
 
 output "mail_identity_verification_status" {
-  description = "도메인 검증 상태. CNAME 반영 전에는 PENDING"
+  description = "도메인 검증 완료 여부(불리언). CNAME 반영 전에는 false"
   value       = module.mail.identity_verification_status
 }

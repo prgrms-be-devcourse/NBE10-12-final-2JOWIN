@@ -14,7 +14,9 @@ output "dkim_dns_records" {
 }
 
 output "identity_verification_status" {
-  description = "도메인 검증 상태. CNAME 반영 전에는 PENDING 이다"
+  # 이름은 status 지만 값은 불리언이다(true/false). 처음에 설명을 PENDING 으로
+  # 적었다가 apply 출력에서 false 가 나와 어긋났다 — 상태 문자열이 아니다.
+  description = "도메인 검증 완료 여부. CNAME 이 반영되고 SES 가 조회하기 전에는 false"
   value       = aws_sesv2_email_identity.domain.verified_for_sending_status
 }
 
