@@ -48,7 +48,12 @@ public interface DealQuery {
     /** B의 CU-08 판정 — 고객사 삭제 차단 (v2.0.1 보강) */
     boolean hasOpenDeals(UUID customerId);
 
-    /** B의 CU-12 — 고객사 상세 Deal 이력 (v2.0.1 보강) */
+    /**
+     * B의 CU-12 — 고객사 상세 Deal 이력 (v2.0.1 보강). 최신순이고 종결 Deal도 포함한다.
+     *
+     * <p>성사 딜에는 {@link DealSummary#wonAmount}로 <b>주문 합계</b>(DL-18)를 싣는다 — 고객사 상세의
+     * Deal 이력이 성사 금액을 이 값으로 그린다. 성사 딜이 없으면 주문 조회가 따라붙지 않는다.
+     */
     List<DealSummary> summariesByCustomer(UUID customerId);
 
     /**

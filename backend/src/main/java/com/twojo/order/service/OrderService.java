@@ -139,8 +139,9 @@ public class OrderService {
                 .stream().collect(Collectors.toMap(DealQuery.DealSummary::id, Function.identity()));
 
         // 고객사 이름도 배치로 한 번에 (#273) — 이제 이 목록의 조회 횟수가 줄 수와 무관해진다.
-        // 관리자는 네 번(주문 페이지 · 견적 출처 · 딜 요약 · 고객사 이름), 영업은 범위를 좁히는
-        // assignedDealIds·quoteIdsByDeals가 앞에 붙어 여섯 번이다.
+        // 관리자는 여섯 번(주문 페이지 · 견적 출처 · 딜 요약 · 고객사 이름, 그리고 딜 요약이 성사 금액을
+        // 채우려 붙이는 견적·주문 두 번 — 주문이 달린 딜은 모두 성사다, #358), 영업은 범위를 좁히는
+        // assignedDealIds·quoteIdsByDeals가 앞에 붙어 여덟 번이다.
         Map<UUID, String> customerNames = customerNamesOf(ctx.companyId(),
                 dealById.values().stream().map(DealQuery.DealSummary::customerId).toList());
 
