@@ -50,11 +50,12 @@ export function useDealBoard(filters: BoardFilters) {
   }
 }
 
-export function useDealList(params: DealListParams) {
+export function useDealList(params: DealListParams, enabled = true) {
   return useQuery({
     queryKey: dealKeys.list(params),
     queryFn: () => fetchDeals(params),
     placeholderData: (previous) => previous,
+    enabled,
   })
 }
 

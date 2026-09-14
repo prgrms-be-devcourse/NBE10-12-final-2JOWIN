@@ -5,7 +5,10 @@ import { ErrorCallout, PageHeader } from '../../../shared/ui'
 import { codeOf } from '../../../shared/api/client'
 import { date } from '../../../shared/lib/format'
 import { hasCompanyWideScope, useSession } from '../../../app/session'
+import { useDealList } from '../../deal/hooks'
 import { useCompleteTask, useDashboardSummary } from '../hooks'
+import { isMonthParam, monthBounds, monthLabel, monthOf, shiftMonth } from '../period'
+import { looksEmpty, showStartChecklist } from '../checklist'
 import { PipelineCards } from '../components/PipelineCards'
 import { PipelineChart } from '../components/PipelineChart'
 import { WaitingQuotes } from '../components/WaitingQuotes'
@@ -22,30 +25,23 @@ import { StartChecklist } from '../components/StartChecklist'
  * - 월 이동·실적 기간은 URL 쿼리 (`month` · `from`·`to`) — 새로고침·링크 공유가 그대로 동작한다
  * - 딜이 하나도 없으면 시작하기 체크리스트 (§6.2)
  */
-// 기본 월은 KST 기준 — UTC로 자르면 매달 1일 아침 9시 전에는 지난달이 뜬다
-const thisMonth = () => date(new Date().toISOString()).slice(0, 7)
-const shiftMonth = (month: string, delta: number) => {
-  const [y, m] = month.split('-').map(Number)
-  const d = new Date(Date.UTC(y, m - 1 + delta, 1))
-  return d.toISOString().slice(0, 7)
-}
-const monthLabel = (month: string) => `${Number(month.slice(5, 7))}월`
-const monthBounds = (month: string) => {
-  const [y, m] = month.split('-').map(Number)
-  return { from: `${month}-01`, to: new Date(Date.UTC(y, m, 0)).toISOString().slice(0, 10) }
-}
-
 export function DashboardPage() {
   const session = useSession()
   const admin = hasCompanyWideScope(session)
   const [params, setParams] = useSearchParams()
-  const month = /^\d{4}-\d{2}$/.test(params.get('month') ?? '') ? params.get('month')! : thisMonth()
-  const bounds = monthBounds(month)
+  // 오늘은 KST 기준 — UTC로 자르면 매달 1일 아침 9시 전에는 지난달이 뜬다
+  const today = date(new Date().toISOString())
+  const monthParam = params.get('month')
+  const month = isMonthParam(monthParam) ? monthParam : monthOf(today)
+  const bounds = monthBounds(month, today)
   const from = params.get('from') || bounds.from
   const to = params.get('to') || bounds.to
 
   const { data, isPending, isFetching, error, refetch } = useDashboardSummary(month)
   const completeTask = useCompleteTask()
+  // 요약이 비어 보일 때만 딜 수를 묻는다 — 지난달 성사·실패 딜만 남은 회사를 체크리스트로 보내지 않는다 (#357)
+  const summaryEmpty = data ? looksEmpty(data) : false
+  const dealCount = useDealList({ size: 1 }, summaryEmpty)
 
   const update = (next: Record<string, string>) => {
     const merged = new URLSearchParams(params)
@@ -56,8 +52,9 @@ export function DashboardPage() {
     setParams(merged, { replace: true })
   }
 
-  const totalDeals = data ? data.pipeline.reduce((sum, p) => sum + p.count, 0) + data.monthWonCount : 0
-  const empty = data && totalDeals === 0 && data.waitingQuotes.length === 0 && data.followUps.length === 0 && data.recentActivities.length === 0
+  const empty = data ? showStartChecklist(data, dealCount.data?.totalElements) : false
+  // 비어 보이는 요약에서 딜 수를 기다리는 동안은 체크리스트도 빈 대시보드도 그리지 않는다 — 한쪽이 번쩍 보였다 바뀌지 않게
+  const checkingDeals = summaryEmpty && dealCount.isPending
 
   return (
     <>
@@ -72,7 +69,7 @@ export function DashboardPage() {
             <Text size="2" weight="medium" style={{ fontVariantNumeric: 'tabular-nums', minWidth: 64, textAlign: 'center' }}>
               {month.replace('-', '.')}
             </Text>
-            <IconButton variant="soft" color="gray" size="1" aria-label="다음 달" disabled={month >= thisMonth()} onClick={() => update({ month: shiftMonth(month, 1), from: '', to: '' })}>
+            <IconButton variant="soft" color="gray" size="1" aria-label="다음 달" disabled={month >= monthOf(today)} onClick={() => update({ month: shiftMonth(month, 1), from: '', to: '' })}>
               <ChevronRightIcon />
             </IconButton>
           </Flex>
@@ -81,7 +78,7 @@ export function DashboardPage() {
 
       {error && <ErrorCallout code={codeOf(error)} onRetry={() => refetch()} />}
 
-      {isPending ? (
+      {isPending || checkingDeals ? (
         <DashboardSkeleton />
       ) : empty ? (
         <StartChecklist canInvite={admin} />

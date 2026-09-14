@@ -5,7 +5,6 @@ import { moneyShort } from '../../../shared/lib/format'
 import { BarChart } from './BarChart'
 import { codeOf } from '../../../shared/api/client'
 import { useDashboardPerformance } from '../hooks'
-import { CONVERSIONS_PENDING, PENDING_LABEL } from '../pending'
 
 interface Props {
   from: string
@@ -110,11 +109,9 @@ export function PerformanceSection({ from, to, onRangeChange }: Props) {
                 단계별 전환율
               </Text>
               {data.conversions.length === 0 ? (
-                // 빈 목록의 뜻이 플래그로 갈린다 — 아직 안 센 것(#216)인지, 정말 이동이 없었던 것인지
+                // 서버는 이동이 없는 기간에도 rate 0인 네 행을 준다 — 빈 목록은 방어용이다 ("집계 준비 중" 플래그 제거, #357)
                 <Text as="p" size="2" color="gray" my="3">
-                  {CONVERSIONS_PENDING
-                    ? `${PENDING_LABEL} — 단계 이동 이력이 쌓이면 이 자리에 표시됩니다.`
-                    : '이 기간에 단계 이동이 없습니다.'}
+                  이 기간에 단계 이동이 없습니다.
                 </Text>
               ) : (
                 <Flex direction="column" gap="2">
