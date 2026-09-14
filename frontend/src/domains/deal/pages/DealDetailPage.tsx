@@ -26,6 +26,9 @@ import { ChangeAssigneeDialog } from '../components/ChangeAssigneeDialog'
  * - 단계 이동은 허용 전이만 버튼으로 (전이표 §5) · 모든 변경에 version, STALE_VERSION은 새로고침 유도
  * - 견적 작성·발송·복제는 진행 중(리드~협상) 딜에서만 (Q-25) — 종결 딜에서는 버튼을 숨긴다
  * - 담당자 변경은 기업 관리자만 (DL-05) · 404는 존재 여부를 구별하지 않는다 (SC-09)
+ * - 삭제는 견적이 없는 딜만 (DL-17) — 메뉴에서 미리 막고 이유를 항목에 적는다 (#352).
+ *   서버 판정(`quoteIdsByDeals`)과 이 화면의 견적 목록(`briefsByDeals`)은 둘 다 상태로 거르지 않는 같은 집합이다.
+ *   다른 탭에서 방금 견적이 생긴 경우는 다이얼로그의 `DEAL_HAS_QUOTES`가 받는다
  */
 export function DealDetailPage() {
   const { id = '' } = useParams()
@@ -95,8 +98,15 @@ export function DealDetailPage() {
                   </DropdownMenu.Item>
                 )}
                 <DropdownMenu.Separator />
-                <DropdownMenu.Item color="red" onSelect={() => setDialog('delete')}>
+                {/* 이유는 툴팁이 아니라 항목 글자로 둔다 — 비활성 요소는 포인터 이벤트가 없어 툴팁을 달려면 감싸야 하고
+                    (MemberListPage), 메뉴 안에서는 보이는 글자가 더 단순하다. 앞 공백은 읽히는 이름을 "삭제 · 견적 N건"으로 띄운다 */}
+                <DropdownMenu.Item color="red" disabled={deal.quotes.length > 0} onSelect={() => setDialog('delete')}>
                   <TrashIcon /> 삭제
+                  {deal.quotes.length > 0 && (
+                    <Text size="1" color="gray">
+                      {` · 견적 ${deal.quotes.length}건 연결`}
+                    </Text>
+                  )}
                 </DropdownMenu.Item>
               </DropdownMenu.Content>
             </DropdownMenu.Root>

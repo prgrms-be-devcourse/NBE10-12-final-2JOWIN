@@ -34,6 +34,9 @@ const post = (path: string, account: (typeof demoAccounts)[number], body: unknow
     method: 'POST', headers: { ...auth(account), 'Content-Type': 'application/json' }, body: JSON.stringify(body),
   }))
 
+const del = (path: string, account: (typeof demoAccounts)[number]) =>
+  call(dealHandlers, new Request(`http://localhost/api/v1${path}`, { method: 'DELETE', headers: auth(account) }))
+
 const list = async (path: string, account: (typeof demoAccounts)[number]) => {
   const res = await get(path, account)
   expect(res.status).toBe(200)
@@ -70,6 +73,34 @@ describe('GET /api/v1/deals — 목록·보드 (DL-06·13·14)', () => {
     session.login(salesRep)
     const other = db.deals.find((d) => d.assigneeMemberId !== salesRep.memberId && !d.deleted)!
     expect((await get(`/deals/${other.id}`, salesRep)).status).toBe(404)
+  })
+})
+
+/**
+ * 삭제 (DL-16·17) — 화면은 상세의 견적 목록 길이로 메뉴를 미리 막는다(#352). 그 판단이 맞으려면
+ * 목도 서버처럼 "상태와 무관하게 견적이 하나라도 있으면 거절"이어야 한다.
+ */
+describe('DELETE /api/v1/deals/{id} — 견적이 달린 딜은 삭제할 수 없다 (DL-17)', () => {
+  it('견적이 있으면 409 DEAL_HAS_QUOTES — 딜은 그대로 남는다', async () => {
+    session.login(admin)
+    const withQuotes = db.deals.find((d) => !d.deleted && db.quotes.some((q) => q.dealId === d.id))!
+    const res = await del(`/deals/${withQuotes.id}`, admin)
+    expect(res.status).toBe(409)
+    expect((await res.json()).code).toBe('DEAL_HAS_QUOTES')
+    expect(withQuotes.deleted).toBe(false)
+  })
+
+  it('견적이 없으면 204이고 이후 상세는 404 — 상세의 견적 목록이 비어 있던 딜이다', async () => {
+    session.login(admin)
+    const bare = db.deals.find((d) => !d.deleted && !db.quotes.some((q) => q.dealId === d.id))!
+    const detail = await get(`/deals/${bare.id}`, admin)
+    expect((await detail.json()).quotes).toEqual([])   // 화면이 메뉴를 열어 두는 조건
+    try {
+      expect((await del(`/deals/${bare.id}`, admin)).status).toBe(204)
+      expect((await get(`/deals/${bare.id}`, admin)).status).toBe(404)
+    } finally {
+      bare.deleted = false   // 뒤 테스트가 같은 시드를 쓴다
+    }
   })
 })
 

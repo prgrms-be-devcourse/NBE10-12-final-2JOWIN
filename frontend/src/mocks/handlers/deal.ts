@@ -201,7 +201,7 @@ export const dealHandlers = [
     return HttpResponse.json(toItem(deal))
   }),
 
-  // 소프트 삭제 (DL-16·17) — 07에만 있고 DealController에는 아직 없는 엔드포인트
+  // 소프트 삭제 (DL-16·17) — 서버 DealService.delete와 같다: 상태와 무관하게 견적이 하나라도 달려 있으면 DEAL_HAS_QUOTES
   http.delete(`${BASE}/:id`, ({ params, request }) => {
     const hit = scoped(request, String(params.id))
     if (!hit) return notFound()
