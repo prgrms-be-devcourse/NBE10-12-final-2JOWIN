@@ -25,6 +25,21 @@ type Dialog = 'send' | 'withdraw' | 'resend' | 'expire' | 'convert' | null
 
 export function QuoteDetailPage() {
   const { id = '' } = useParams()
+  return <KeyedQuoteDetail id={id} />
+}
+
+/**
+ * 견적 id마다 상세를 새로 마운트한다 (#366).
+ *
+ * `quotes/:id` 안에서 id만 바뀌면(복제 후 이동 · 원본/대체 견적 링크 · 알림 클릭) 라우터는 같은 컴포넌트를 재사용한다.
+ * 그러면 앞 견적의 mutation 상태가 남아 **보내지 않은 새 견적에 발송 완료 안내가 떴다.**
+ * id를 key로 걸어 mutation·열린 dialog 상태를 통째로 새로 시작한다 — 액션마다 reset()을 부르면 빠뜨릴 곳이 생긴다.
+ */
+export function KeyedQuoteDetail({ id }: { id: string }) {
+  return <QuoteDetail key={id} id={id} />
+}
+
+function QuoteDetail({ id }: { id: string }) {
   const navigate = useNavigate()
   const { data: quote, isPending, error, refetch } = useQuoteDetail(id)
   const actions = useQuoteActions(id)
