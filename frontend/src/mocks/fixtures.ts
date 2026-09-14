@@ -142,9 +142,6 @@ const quoteSeeds: QuoteSeed[] = [
   [14, 8, 'VIEWED', 3050000, '2026-09-30', '2026-08-24T01:00:00Z', '2026-08-25T05:20:00Z', null, '설치는 납품일로부터 3일 이내 진행됩니다.', 9, null, null, null],
   [16, 12, 'SENT', 23800000, '2026-09-09', '2026-08-26T02:00:00Z', null, null, '단가 재조정안입니다. 검토 부탁드립니다.', 7, null, null, null],
 ]
-/** 대체 관계(QT-28) — 반려·회수된 견적 → 그것을 대체한 복제본 (clonedFrom의 역방향) */
-const supersededBy: Record<number, number> = { 7: 16, 9: 14 }
-
 /** QuoteDetailResponse에서 items·dealTitle을 뺀 본체 + 목록(QuoteResponse)이 공유하는 필드 */
 export const quotes = quoteSeeds.map(([n, dealN, status, supply, validUntil, sentAt, firstViewedAt, respondedAt, terms, clonedFromN, rejectReason, responderName, responderTitle]) => ({
   id: quoteId(n),
@@ -157,8 +154,9 @@ export const quotes = quoteSeeds.map(([n, dealN, status, supply, validUntil, sen
   supplyAmount: supply,
   vatAmount: supply / 10,
   totalAmount: supply + supply / 10,
+  // 대체 견적(QT-28)은 저장하지 않는다 — 서버처럼 clonedFrom의 역방향으로 읽을 때 구한다 (handlers/quote.ts supersededByOf).
+  // 시드상 7(REJECTED)→16(SENT) · 9(WITHDRAWN)→14(VIEWED)가 그 규칙으로 잡힌다
   clonedFromQuoteId: clonedFromN === null ? null : quoteId(clonedFromN),
-  supersededByQuoteId: supersededBy[n] === undefined ? null : quoteId(supersededBy[n]),
   rejectReason,
   responderName,
   responderTitle,
