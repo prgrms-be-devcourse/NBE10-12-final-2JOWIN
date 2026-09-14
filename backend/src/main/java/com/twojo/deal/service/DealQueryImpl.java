@@ -1,14 +1,19 @@
 package com.twojo.deal.service;
 
 import com.twojo.boundary.DealQuery;
+import com.twojo.boundary.OrderQuery;
+import com.twojo.boundary.QuoteQuery;
 import com.twojo.deal.entity.Deal;
 import com.twojo.deal.repository.DealRepository;
 import com.twojo.global.error.BusinessException;
 import com.twojo.global.error.ErrorCode;
 import java.util.Collection;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,6 +29,11 @@ import org.springframework.transaction.annotation.Transactional;
  * <p>{@code assigneeIdOf}·{@code isOpen}은 계약상 companyId를 받지 않는다 —
  * 호출자가 이미 회사 안에서 얻은 dealId를 넘기는 자리이기 때문이다.
  * 구성원 요청을 직접 받는 경로에서는 회사 스코프가 걸린 조회를 쓴다 (SC-01).
+ *
+ * <p><b>{@link QuoteQuery}는 {@link ObjectProvider}로 받는다.</b> {@code QuoteQueryImpl}이 딜 제목을
+ * 채우려고 이 계약({@link DealQuery})을 주입받아, 생성자 주입끼리 서로를 기다리는 순환이 된다 —
+ * Spring Boot는 순환 참조를 기본으로 막아 기동이 실패한다. 호출 시점에 꺼내면 생성 순서가 끊긴다.
+ * {@link OrderQuery}는 이 계약에 기대지 않아 그대로 받는다.
  */
 @Service
 @RequiredArgsConstructor
@@ -31,6 +41,8 @@ import org.springframework.transaction.annotation.Transactional;
 class DealQueryImpl implements DealQuery {
 
     private final DealRepository dealRepository;
+    private final ObjectProvider<QuoteQuery> quoteQuery;
+    private final OrderQuery orderQuery;
 
     /** 없으면 RESOURCE_NOT_FOUND — 알림 수신자·담당자 표시가 걸린 자리라 조용히 null을 돌려주지 않는다 */
     @Override
@@ -65,12 +77,15 @@ class DealQueryImpl implements DealQuery {
         return dealRepository.existsByCustomerIdAndStageInAndDeletedAtIsNull(customerId, Deal.OPEN_STAGES);
     }
 
-    /** CU-12 — 고객사 상세의 Deal 이력. 최신순, 종결 Deal 포함 */
+    /** CU-12 — 고객사 상세의 Deal 이력. 최신순, 종결 Deal 포함. 성사 딜에는 주문 합계를 싣는다 (DL-18) */
     @Override
     public List<DealSummary> summariesByCustomer(UUID customerId) {
-        return dealRepository.findByCustomerIdAndDeletedAtIsNullOrderByCreatedAtDesc(customerId).stream()
-                .map(DealQueryImpl::toSummary)
-                .toList();
+        List<Deal> deals = dealRepository.findByCustomerIdAndDeletedAtIsNullOrderByCreatedAtDesc(customerId);
+        if (deals.isEmpty()) {
+            return List.of();
+        }
+        // 고객사는 한 회사에만 속하므로 그 딜들의 회사가 곧 주문 조회의 스코프다 (SC-01)
+        return toSummaries(deals.get(0).getCompanyId(), deals);
     }
 
     /**
@@ -82,9 +97,7 @@ class DealQueryImpl implements DealQuery {
         if (dealIds == null || dealIds.isEmpty()) {
             return List.of();
         }
-        return dealRepository.findByCompanyIdAndIdInAndDeletedAtIsNull(companyId, dealIds).stream()
-                .map(DealQueryImpl::toSummary)
-                .toList();
+        return toSummaries(companyId, dealRepository.findByCompanyIdAndIdInAndDeletedAtIsNull(companyId, dealIds));
     }
 
     /** SC-02 범위 필터 — 담당 Deal id 전체. 종결도 포함하고 소프트 삭제만 제외한다 */
@@ -100,12 +113,44 @@ class DealQueryImpl implements DealQuery {
                 companyId, memberId, Deal.OPEN_STAGES);
     }
 
+    private List<DealSummary> toSummaries(UUID companyId, List<Deal> deals) {
+        Map<UUID, Long> wonAmounts = wonAmountsOf(companyId, deals);
+        return deals.stream()
+                .map(deal -> toSummary(deal, wonAmounts.get(deal.getId())))
+                .toList();
+    }
+
     /**
-     * {@code wonAmount}는 주문 합계(DL-18)라 orders 조회가 필요하다.
-     * <b>주문 전환 이슈까지 null이다</b> — 소비자(B·D)는 성사 금액을 이 창구로 받지 않는다.
+     * 성사 딜의 주문 합계 (DL-18) — <b>묶음 전체를 두 번의 조회로</b> 얻는다.
+     * 딜 목록의 {@code DealService.wonAmountsOf}와 같은 규칙이다.
+     *
+     * <p><b>성사(WON) 딜만 묻는다.</b> 성사는 주문 전환만이 만들어(DL-09) 진행 중인 딜에는 주문이 없고,
+     * 성사 딜이 하나도 없으면 두 창구 모두 부르지 않는다 — 진행 중 딜만 묻는 호출은 비용이 0이다.
+     * 주문 목록처럼 성사 딜이 섞이는 묶음은 조회가 두 번 늘어난다 (#358).
+     *
+     * <p>주문에는 {@code deal_id}가 없어 <b>견적을 한 홉 지나</b> 딜로 되짚는다.
      */
-    private static DealSummary toSummary(Deal deal) {
+    private Map<UUID, Long> wonAmountsOf(UUID companyId, List<Deal> deals) {
+        List<UUID> wonDealIds = deals.stream()
+                .filter(deal -> deal.getStage() == Deal.Stage.WON)
+                .map(Deal::getId)
+                .toList();
+        if (wonDealIds.isEmpty()) {
+            return Map.of();
+        }
+
+        Map<UUID, UUID> dealByQuote = quoteQuery.getObject().briefsByDeals(companyId, wonDealIds).stream()
+                .collect(Collectors.toMap(QuoteQuery.QuoteBrief::id, QuoteQuery.QuoteBrief::dealId));
+
+        return orderQuery.briefsByQuotes(companyId, dealByQuote.keySet()).stream()
+                .collect(Collectors.groupingBy(
+                        order -> dealByQuote.get(order.quoteId()),
+                        Collectors.summingLong(OrderQuery.OrderBrief::totalAmount)));
+    }
+
+    /** 성사 전에는 {@code wonAmount}가 null이다 — 0을 넣으면 화면이 "주문 0원"으로 읽는다 (08 표시 규칙) */
+    private static DealSummary toSummary(Deal deal, Long wonAmount) {
         return new DealSummary(deal.getId(), deal.getCustomerId(), deal.getTitle(), deal.getStage().name(),
-                deal.getExpectedAmount(), null, deal.getCreatedAt());
+                deal.getExpectedAmount(), wonAmount, deal.getCreatedAt());
     }
 }

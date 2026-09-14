@@ -17,7 +17,7 @@ public final class DealResponses {
     /**
      * 목록·보드 공용 (DL-06·13·14).
      *
-     * @param wonAmount 성사 후 주문 합계 (DL-18) — <b>주문 전환 이슈까지 null</b>.
+     * @param wonAmount 성사 딜의 주문 합계 (DL-18) — 성사 전에는 null이다.
      *                  표시 규칙은 성사 전 expectedAmount, 성사 후 wonAmount
      */
     public record DealItem(
