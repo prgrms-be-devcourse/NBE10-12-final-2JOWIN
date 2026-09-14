@@ -14,8 +14,9 @@ import type { DashboardSummaryResponse, ErrorResponse } from '../../shared/api/t
  * performance의 `to` 기본값도 월말 → **오늘**로 맞췄지만 응답으로는 구별되지 않아 테스트로 고정하지
  * 못했다 — 서버 실응답과 손으로 대조했다 (DashboardController).
  *
- * `monthWonAmount`·`members`·`conversions`는 서버가 아직 자리표시자라(#216) 값 자체를 맞추지
- * 않는다 — 화면이 그 셋을 "집계 준비 중"으로 가리는 것은 `domains/dashboard/pending.ts`가 판정한다.
+ * `monthWonAmount`·`members`·`conversions`는 **값 자체를 맞추지 않는다** — 셋 다 서버가 실제로 계산하지만
+ * (이달 성사·담당자별 실적 #274, 전환율 #307) 목은 기간·전이 이력을 단순화해 수치가 다를 수 있다
+ * (전환율 차이는 핸들러 주석). 여기서는 규칙(400 경계 · 건수 상한 · 네 단계)만 고정한다.
  */
 
 vi.stubGlobal('location', { href: 'http://localhost/', origin: 'http://localhost' })

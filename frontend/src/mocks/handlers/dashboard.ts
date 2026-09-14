@@ -113,10 +113,10 @@ export const dashboardHandlers = [
      * 전환율(DB-07) — 목의 단순 계산. 단계 이동 이력이 없으므로 "현재 단계 이상에 도달했다"를 도달로 본다:
      *   도달(S) = 현재 단계 순서가 S 이상인 Deal + 성사(WON) Deal + 실패(LOST)했지만 실패 직전 단계가 S 이상인 Deal
      *   rate(from→to) = 도달(to) / 도달(from)   (도달(from)=0이면 0)
-     * 실제 서버는 audit_log의 STAGE_MOVED로 계산해야 하는데 그 적재가 아직 없어(#217)
-     * `conversions`를 **빈 배열로 돌려준다**(#216). 즉 이 목을 켜면 전환율 막대가 뜨고,
-     * 실 API에서는 같은 자리가 "집계 준비 중"으로 뜬다 — 화면이 달라지는 유일한 칸이다
-     * (`domains/dashboard/pending.ts`의 CONVERSIONS_PENDING).
+     * 서버(SalesStatsQueryImpl.conversions, #307)도 도달 기준이지만 둘이 다르다 — 서버는 **기간 안에 등록된 딜**만
+     * 모집단으로 삼고 되돌린 딜의 봉우리를 audit_log로 보정한다. 목은 기간을 보지 않고 전체 딜의 현재 단계만 본다.
+     * 그래서 목과 실 API 모두 네 칸에 막대가 뜨지만 **수치는 다를 수 있다**. 서버는 딜이 없는 기간에도 rate 0인
+     * 네 행을 돌려주므로, 빈 목록일 때만 타는 "집계 준비 중" 분기(`domains/dashboard/pending.ts`)에는 어느 쪽도 닿지 않는다.
      */
     const order = (stage: DealStage) => DEAL_STAGES.indexOf(stage)
     const reachedStage = (d: (typeof deals)[number]): DealStage | null => {

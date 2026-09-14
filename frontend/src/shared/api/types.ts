@@ -617,7 +617,7 @@ export interface OrderScheduleRequest {
 // D. 고객 열람 · 알림 · 대시보드 (approval/dto · notification/dto · dashboard/dto)
 // ═══════════════════════════════════════════════════════════════════════════
 
-/** boundary/PublicQuoteResponse — 고객 열람(D)과 구성원 미리보기(C, QT-12)가 공유. 미리보기는 #114 전까지 회사·담당자 없는 PublicQuoteView 모양 */
+/** boundary/PublicQuoteResponse — 고객 열람(D)과 구성원 미리보기(C, QT-12)가 공유한다. 두 경로 모두 같은 조립기(PublicQuoteAssembler)가 만든다 (#114) */
 export interface PublicQuoteResponse {
   quoteNo: string
   status: QuoteStatus
