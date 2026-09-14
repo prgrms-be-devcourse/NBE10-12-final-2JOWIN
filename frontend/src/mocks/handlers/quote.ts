@@ -250,6 +250,8 @@ export const quoteHandlers = [
     if (quote.validUntil < today()) return error('QUOTE_VALID_UNTIL_PASSED')
     const body = (await request.json()) as ResendViewTokenRequest
     if (!body.recipientContactId) return error('VALIDATION_FAILED', [{ field: 'recipientContactId', reason: '수신인을 선택해 주세요.' }])
+    // 발송과 같은 한도 (서버 @Size(max = 500), #214)
+    if (body.message && body.message.length > 500) return error('VALIDATION_FAILED', [{ field: 'message', reason: '500자 이하로 입력해 주세요.' }])
     const deal = findDeal(quote.dealId)!
     if (!contactsOf(deal.customerId).some((c) => c.id === body.recipientContactId)) return error('CONTACT_NOT_IN_CUSTOMER')
     const current = activeTokenOf(quote.id)

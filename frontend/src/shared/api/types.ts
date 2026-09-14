@@ -500,9 +500,10 @@ export interface SendQuoteRequest {
   message?: string | null
 }
 
-/** 08 §C ResendViewTokenRequest — AP-13 수신인 변경 재발송 */
+/** 08 §C ResendViewTokenRequest — AP-13 수신인 변경 재발송. message는 발송과 같은 담당자 한마디 (500자, #214) */
 export interface ResendViewTokenRequest {
   recipientContactId: string
+  message?: string | null
 }
 
 /** 08 §C SendQuoteResponse — dealStage는 Q-25 자동 승급 반영값 */

@@ -160,7 +160,7 @@ export function QuoteDetailPage() {
         quote={quote}
         loading={actions.resend.isPending}
         error={actions.resend.error}
-        onSubmit={(recipientContactId) => actions.resend.mutate({ recipientContactId }, { onSuccess: close })}
+        onSubmit={(recipientContactId, message) => actions.resend.mutate({ recipientContactId, message }, { onSuccess: close })}
       />
       <WithdrawDialog
         open={dialog === 'withdraw'}
