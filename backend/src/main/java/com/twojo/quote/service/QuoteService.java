@@ -251,7 +251,7 @@ public class QuoteService {
         quote.requireResendable(LocalDate.now(SEOUL));
         requireContactInCustomer(quote.getDealId(), request.recipientContactId());
 
-        viewTokenCommand.issue(quoteId, request.recipientContactId(), null);   // 08 ResendViewTokenRequest에는 message가 없다
+        viewTokenCommand.issue(quoteId, request.recipientContactId(), request.message());   // 담당자 한마디 (#214)
     }
 
     /**

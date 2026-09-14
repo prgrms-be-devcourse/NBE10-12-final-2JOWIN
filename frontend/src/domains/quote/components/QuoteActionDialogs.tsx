@@ -47,6 +47,32 @@ interface SendProps {
   onSubmit: (recipientContactId: string, message: string | null) => void
 }
 
+/**
+ * 경로별 행동 안내 (#300) — 부록 문구(`errors.ts`)는 <b>상태만</b> 알리고, 무엇을 할지는 여기서 말한다.
+ *
+ * 같은 코드라도 취할 행동이 경로마다 다르다. `QUOTE_VALID_UNTIL_PASSED`는 발송(작성 중)에서는
+ * 편집기의 유효기간을 고치면 되지만, 재발송에서는 발송된 견적이라 그 값을 바꿀 수 없어(QT-16)
+ * 복제(QT-19)뿐이다. 부록에 한쪽 행동을 박으면 다른 쪽에서 틀린 안내가 된다.
+ */
+const ACTION_HINTS: Record<'send' | 'resend', Record<string, string>> = {
+  send: {
+    QUOTE_VALID_UNTIL_PASSED: '유효기간을 다시 지정한 뒤 발송해 주세요.',
+  },
+  resend: {
+    QUOTE_VALID_UNTIL_PASSED: '발송된 견적은 유효기간을 바꿀 수 없습니다 — 복제해 새 견적으로 보내 주세요.',
+    QUOTE_NOT_RESENDABLE: '발송됨·열람됨 상태에서만 재발송할 수 있습니다. 다시 제안하려면 복제해 주세요.',
+  },
+}
+
+function ActionHint({ code, path }: { code: string; path: 'send' | 'resend' }) {
+  const hint = ACTION_HINTS[path][code]
+  return hint ? (
+    <Text size="1" color="gray" mt="-2">
+      {hint}
+    </Text>
+  ) : null
+}
+
 /** 발송 모달 (10 §5.5) — 되돌릴 수 없는 효과 3줄을 발송 전에 알린다 */
 export function SendQuoteDialog({ open, onOpenChange, quote, loading, error, onSubmit }: SendProps) {
   return (
@@ -99,6 +125,7 @@ function SendForm({ quote, loading, error, onSubmit }: Omit<SendProps, 'open' | 
         </Callout.Root>
 
         {apiError && <ErrorCallout code={apiError.code} />}
+        {apiError && <ActionHint code={apiError.code} path="send" />}
 
         <Flex gap="3" justify="end" mt="1">
           <Dialog.Close>
@@ -153,6 +180,7 @@ function ResendForm({ quote, loading, error, onSubmit }: Omit<ResendProps, 'open
           <RecipientSelect contacts={contacts} value={recipient} onChange={setRecipient} disabled={loading || recipients.isPending} />
         )}
         {apiError && <ErrorCallout code={apiError.code} />}
+        {apiError && <ActionHint code={apiError.code} path="resend" />}
         <Flex gap="3" justify="end" mt="1">
           <Dialog.Close>
             <Button type="button" variant="soft" color="gray" disabled={loading}>

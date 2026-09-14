@@ -67,10 +67,16 @@ public enum ErrorCode {
     QUOTE_NOT_DRAFT(HttpStatus.CONFLICT, "작성 중인 견적만 수정·발송할 수 있습니다."),
     QUOTE_EMPTY_ITEMS(HttpStatus.CONFLICT, "견적 항목을 1개 이상 추가해 주세요."),
     QUOTE_NOT_WITHDRAWABLE(HttpStatus.CONFLICT, "이 상태의 견적은 회수할 수 없습니다."),
-    // 판정 축은 링크가 아니라 견적 상태 — 수동 만료(AP-14) 뒤 다른 수신인에게 다시 보내는 흐름을 막지 않는다
+    // 판정 축은 링크가 아니라 견적 상태 — 수동 만료(AP-14) 뒤 다른 수신인에게 다시 보내는 흐름을 막지 않는다.
+    // 문구는 상태만 알린다 — 할 수 있는 행동이 상태마다 달라서다. DRAFT면 그냥 보내면 되고,
+    // 승인됨은 주문 전환이며, 반려·회수·만료여야 복제다. 행동 안내는 화면이 경로별로 한다 (#300)
     QUOTE_NOT_RESENDABLE(HttpStatus.CONFLICT, "이 상태의 견적은 재발송할 수 없습니다."),
-    // 입력은 @Future로 막지만 저장된 값이 낡는 것은 못 막는다 — 발송 시점 재검증 (Q-17)
-    QUOTE_VALID_UNTIL_PASSED(HttpStatus.CONFLICT, "유효기간이 지났습니다. 유효기간을 다시 지정한 뒤 발송해 주세요."),
+    // 입력은 @Future로 막지만 저장된 값이 낡는 것은 못 막는다 — 발송 시점 재검증 (Q-17).
+    // 종전 문구 "유효기간을 다시 지정한 뒤 발송해 주세요"는 재발송에서 거짓이었다 — 발송된 견적의
+    // validUntil은 Quote.update가 requireDraft로 막는다(QT-16). 그렇다고 "복제하세요"로 바꾸면
+    // 이번엔 발송 경로가 차선이 된다 — 작성 중이면 편집기에서 날짜만 고치면 되기 때문이다.
+    // 그래서 상태만 알리고 행동은 화면이 경로별로 안내한다 (#300, #342 리뷰)
+    QUOTE_VALID_UNTIL_PASSED(HttpStatus.CONFLICT, "유효기간이 지났습니다."),
     QUOTE_DEAL_CLOSED(HttpStatus.CONFLICT, "종결된 Deal에는 견적을 작성할 수 없습니다. 새 Deal을 만들어 진행해 주세요."),
     // 승인·반려는 열람됨(VIEWED)에서만 열린다 (전이표 §6). 링크 상태는 D가 먼저 거르므로
     // 여기 닿는 것은 링크가 멀쩡한데 견적 상태가 어긋난 경우다 — LINK_ALREADY_RESPONDED와 판정 축이 다르다

@@ -1,4 +1,4 @@
-# DTO 설계서 — v1.6.24
+# DTO 설계서 — v1.6.25
 
 > 🧭 [문서 지도](README.md) · ← [07 API 명세서](07-api-spec.md) · [09 권한 매트릭스](09-permissions-matrix.md) →
 
@@ -9,6 +9,7 @@
 
 | 버전 | 변경 |
 | --- | --- |
+| v1.6.25 | **`ResendViewTokenRequest`에 `message` 추가(2026-09-11, #214)** — 첫 발송(`SendQuoteRequest`)에만 담당자 한마디가 실리고 재발송(AP-13)에는 안 실려, 수신인을 바꿔 보낸 **새 수신인이 첫 수신인보다 빈약한 메일**을 받았다. 앞선 맥락이 없는 사람이 받는 자리라 한마디가 첫 발송보다 더 필요하다. **선택 필드**(`@Size(max = 500)`, `SendQuoteRequest`와 같은 축)이고 비우면 종전과 같다 — 계약(`ViewTokenCommand.issue`)과 본문 렌더가 이미 `message`를 받고 있었고 `null`을 넘기고 있었을 뿐이다 |
 | v1.6.24 | **`QuoteDetailResponse.supersededByQuoteId` 주석을 확정 규칙에 맞춘다(2026-09-11, #326)** — "반려 → 대체 견적 링크"가 **회수(QT-17)를 빠뜨리고** 있었다. QT-28은 "반려·회수된 견적에서"라 적고, 구현도 둘을 같이 본다. 어느 복제본인지도 함께 적는다 — `DRAFT`가 아닌 것 중 `sent_at` 최신이다. 규칙의 근거는 07 v1.6.19가 정본이다 |
 | v1.6.23 | **딜·주문 응답 `customerName` nullable 명시(2026-09-10)** — `DealResponse`·`DealDetailResponse`·`OrderResponse`·`OrderDetailResponse` 네 곳. 목록이 고객사 이름을 배치 창구(`CustomerQuery.namesByIds`)로 받게 되면서(#273) **지워진 고객사는 그 줄만 이름이 빈다** — 예전 단건 `get`은 없으면 던져 한 줄이 목록 전체를 404로 만들었다. 고객사 삭제는 <b>진행 중</b> 딜만 막으므로(`hasOpenDeals`) 성사된 딜의 주문이 남은 채 고객사만 지워질 수 있어 실제로 도달한다. 주문 상세·전환은 404 → 200(null)로 바뀐다 — 목록과 상세가 이름을 다르게 얻으면 "목록엔 있는데 상세엔 없는" 차이가 생겨 통일했다(D 확인). 프론트 타입도 `string | null`로 맞췄다. 응답 대기(DB-03)는 해당 없음 — 딜이 진행 중이라 삭제가 막힌다 |
 | v1.6.22 | **§B `audit_log` payload 봉투 명시(2026-09-09)** — 변경 필드를 `changes`로 감싸고 부가 필드는 최상위에 둔다. 종전 주석의 예시는 `{"stage": …}` 하나뿐이라 봉투 전체로 읽히는데, 같은 예시에 `dealId`가 없어 06(견적·주문 이벤트 `dealId` 필수)과 어긋났다. 08이 "B가 이벤트 포맷 정의 시 준수"로 위임한 그 정의가 이슈 #22 §2인데 문서에는 담기지 않았다. 적재 리스너가 아직 없어 실데이터가 쌓이기 전인 지금이 맞추는 시점이다. `changes` 자리가 없으면 "값이 바뀐 것"과 "표시용으로 딸려온 값"을 구별할 수 없다. 발견 경로: 감사 로그 조회 구현(#244) |
@@ -360,7 +361,8 @@ public record SendQuoteRequest(
         @Size(max = 500) String message) {}
 
 public record ResendViewTokenRequest(                                 // v1.6 보강 — POST /quotes/{id}/view-token/resend (AP-13)
-        @NotNull UUID recipientContactId) {}                          // 수신인 변경 재발송 — 기존 링크 EXPIRED(RESENT) + 새 행.
+        @NotNull UUID recipientContactId,                             // 수신인 변경 재발송 — 기존 링크 EXPIRED(RESENT) + 새 행.
+        @Size(max = 500) String message) {}                           // 담당자 한마디 — 선택, 비우면 종전과 같다 (v1.6.25, #214)
                                                                       // CONTACT_NOT_IN_CUSTOMER 검증은 /send와 동일
 
 public record SendQuoteResponse(
