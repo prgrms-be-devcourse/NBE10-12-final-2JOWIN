@@ -31,7 +31,8 @@ public interface ViewTokenCommand {
      *
      * <p><b>{@code message}는 담당자가 안내 메일에 덧붙이는 한마디다</b> (08 {@code SendQuoteRequest.message},
      * 최대 500자 — 길이 검증은 C의 DTO가 한다). <b>null·공백이면 덧붙이지 않는다.</b> 평문 메일이라 이스케이프는 없다.
-     * 재발송(AP-13)의 요청 DTO에는 이 필드가 없으므로 C는 재발송에서 {@code null}을 넘긴다 (v2.0.12, #183).
+     * 재발송(AP-13)도 이 필드를 받는다 — 08 {@code ResendViewTokenRequest.message}(선택)가 그대로 넘어온다.
+     * 새 수신인이 앞선 맥락 없이 받는 자리라 한마디가 첫 발송보다 오히려 더 필요하다 (#214).
      */
     void issue(UUID quoteId, UUID recipientContactId, String message);
 
