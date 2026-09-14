@@ -26,7 +26,8 @@ export function ErrorCallout({ code, onRetry }: Props) {
       <Flex align="center" justify="between" gap="3" width="100%">
         <Callout.Text>{messageOf(code)}</Callout.Text>
         {recoverable && onRetry && (
-          <Button size="1" variant="soft" color="amber" onClick={onRetry}>
+          // type="button" — 폼 안(DealFormDialog)에 놓이면 기본 submit이라 재조회와 함께 옛 version으로 제출된다 (#361)
+          <Button type="button" size="1" variant="soft" color="amber" onClick={onRetry}>
             새로고침
           </Button>
         )}
