@@ -7,8 +7,8 @@ import { MAIL_SETTING_TYPES } from '../../shared/ui/status'
  * 인앱 알림 목 — notification/controller/NotificationController · NotificationResponse.
  * 본인 수신분만 (NT-08) — 타인 것은 읽음 처리도 404 (SC-09). 정렬 createdAt DESC · id DESC 고정.
  *
- * 알림 수신 설정(`/me/notification-settings`, NT-07)도 여기다 — 경로는 /me지만 소유는 D의 notification
- * 모듈(#127)이라 `notification` 키로 켜고 끈다. auth를 실 API로 돌려도 이 둘은 #127 전까지 목이다.
+ * 알림 수신 설정(`/me/notification-settings`, NT-07)도 이 파일에 있다 — 다만 인앱 알림과 따로
+ * `notificationSettingHandlers`로 내보내 `notificationSettings` 키로 켜고 끈다(handlers/index.ts). 실 API는 이미 있다.
  */
 
 const mine = (memberId: string) => db.notifications.filter((n) => n.recipientMemberId === memberId)
@@ -46,8 +46,8 @@ export const notificationHandlers = [
 /**
  * 알림 수신 설정 (NT-07, Q-23 메일 채널만) — 인앱 알림과 별도 키 `notificationSettings`로 켜고 끈다.
  *
- * 인앱 알림 API(NotificationController)는 develop에 있어 실 API로 갔지만, `/me/notification-settings`는
- * D의 #132가 경계 계약·서비스만 넣었고 HTTP 엔드포인트는 A 몫(11 §2)이라 아직 없다. 그때까지 이 둘만 목이다.
+ * 인앱 알림 API(NotificationController)와 달리 `/me/notification-settings`는 D의 #132가 경계 계약·서비스를,
+ * HTTP 엔드포인트는 A가 맡아(11 §2) 따로 켜고 끈다. 지금은 백엔드에 있다(`NotificationSettingController` GET·PUT) — 이 둘은 목 모드에서만 쓴다.
  */
 export const notificationSettingHandlers = [
   http.get('/api/v1/me/notification-settings', ({ request }) => {

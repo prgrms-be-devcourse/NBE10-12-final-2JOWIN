@@ -98,8 +98,8 @@ export const authHandlers = [
     return noContent()
   }),
 
-  // /me/notification-settings(NT-07)는 여기 없다 — 백엔드가 D의 notification 모듈(#127)이라
-  // 목도 `notification` 키에 둔다. auth를 실 API로 돌려도 그 탭은 #127 전까지 목으로 남는다.
+  // /me/notification-settings(NT-07)는 여기 없다 — 목은 notification.ts의 `notificationSettingHandlers`이고
+  // `notificationSettings` 키로 따로 켜고 끈다(handlers/index.ts). auth 키와는 무관하다.
 ]
 
 /**
