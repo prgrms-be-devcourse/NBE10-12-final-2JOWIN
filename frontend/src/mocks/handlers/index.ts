@@ -37,7 +37,7 @@ const BY_DOMAIN: Record<string, RequestHandler[]> = {
   order: orderHandlers,
   activity: [...activityHandlers, ...auditHandlers],
   notification: notificationHandlers,
-  // 알림 수신 설정(/me/notification-settings)만 따로 — 인앱 알림 API는 있지만 이 엔드포인트는 아직 없다(A 몫, 11 §2)
+  // 알림 수신 설정(/me/notification-settings)만 따로 — 인앱 알림(D)과 엔드포인트 담당이 달라(A 몫, 11 §2) 따로 켜고 끈다 (지금은 둘 다 실 API)
   notificationSettings: notificationSettingHandlers,
   dashboard: dashboardHandlers,
   // 플랫폼 관리자 (/admin/api/v1) — 별도 세션 (AU-08)

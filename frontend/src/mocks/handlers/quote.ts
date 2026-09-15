@@ -12,7 +12,7 @@ import { VAT_MODES, isOpenStage } from '../../shared/ui/status'
 
 /**
  * 견적 목 (구성원용 `/api/v1/quotes`) — 07-api-spec.md §C (QT · AP-13·14 · OD-01~07) · 08-dto.md §C.
- * 정본은 백엔드 QuoteService(#101·#154)다 — 응답 형태·판정 순서를 그쪽에 맞춘다. 복제·주문 전환만 아직 서버에 없어 docs 기준이다.
+ * 정본은 백엔드 QuoteService(#101·#154)다 — 응답 형태·판정 순서를 그쪽에 맞춘다. 복제는 QuoteService.clone, 주문 전환은 OrderService.convert가 정본이다.
  *
  * 실패 경로: QUOTE_NOT_DRAFT · QUOTE_EMPTY_ITEMS · QUOTE_VALID_UNTIL_PASSED · CONTACT_NOT_IN_CUSTOMER ·
  * QUOTE_DEAL_CLOSED · PRODUCT_DISCONTINUED · QUOTE_NOT_WITHDRAWABLE · QUOTE_NOT_RESENDABLE ·
