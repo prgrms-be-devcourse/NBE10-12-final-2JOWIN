@@ -62,7 +62,7 @@
 | 역할 구분 | **Vercel = 프론트 호스팅** · **AWS = 백엔드 + PostgreSQL** | 스택 확정 |
 | **오리진 구성 (확정)** | **서브도메인 분리** — 프론트 `app.x.com` · API `api.x.com`. 같은 사이트(eTLD+1 동일)라 refresh 쿠키가 **`SameSite=Lax`로 동작**한다. 오리진은 서로 다르므로 **CORS는 필요**: `Access-Control-Allow-Origin`에 `https://app.x.com` **정확히 명시** + `Allow-Credentials: true`, 프론트는 `credentials:'include'`.<br>⚠️ **`x.com`은 자리표시자다** — 도메인 확보 시 이 문자열만 교체하면 되고 구조는 바뀌지 않는다. 확보하지 못한 채 배포하면 교차 오리진이 되어 `SameSite=None; Secure` + **Origin 헤더 검증**으로 전환해야 한다(§2-1) | §2-2, Q-32 |
 | CI | GitHub Actions — build / flyway-validate / flyway-version-check 3잡, PR 차단 (required check) | 13-dev-workflow.md §3 |
-| CD | 프론트: Vercel Git 연동(develop=Preview, release·main=Production 권장). 백엔드: GitHub Actions → AWS (형태는 §3-1 미결) | 13-dev-workflow.md §1 |
+| CD | 프론트: Vercel Git 연동 — **Production 브랜치 = `develop`** (백엔드 CD 와 같은 브랜치를 본다). 백엔드: GitHub Actions → AWS | 13-dev-workflow.md §1 · 2jo-infra-docs/frontend-deploy.md §3.1 |
 | 메일 발송 | NT-01~06·13의 시스템 메일 — AWS 위에서는 **SES가 자연스러운 후보**이나 미확정 (§3-3). email_log가 발송 기록·중복 방지 담당 | 06-erd.md · 07-api-spec.md |
 
 ### 1.5 모니터링 — Prometheus + Loki + Grafana
